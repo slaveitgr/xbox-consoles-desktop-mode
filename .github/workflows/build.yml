@@ -42,6 +42,7 @@ jobs:
         with:
           submodules: recursive
       - name: Ensure VS 2022 C++ UWP prerequisites
+        id: toolchain
         run: |
           $ErrorActionPreference = 'Stop'
           $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
@@ -69,6 +70,7 @@ jobs:
       - name: Build test-signed diagnostic AppX and public certificate
         run: ./tools/build-uwp.ps1 -Configuration Release -Sign
       - name: Build pinned upstream Win32Bridge DLL only
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
         run: ./tools/build-upstream.ps1 -Configuration Release
       - name: Reject private signing keys in outputs
         if: always()

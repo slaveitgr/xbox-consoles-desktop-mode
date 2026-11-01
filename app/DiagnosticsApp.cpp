@@ -108,7 +108,7 @@ unsigned StatusColor(ProbeStatus status) noexcept {
     }
 }
 
-struct DiagnosticsApp final : implements<DiagnosticsApp, IFrameworkView> {
+struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
     void Initialize(CoreApplicationView const& view) {
         m_activated = view.Activated([](CoreApplicationView const&, IActivatedEventArgs const&) {
             CoreWindow::GetForCurrentThread().Activate();
@@ -409,7 +409,7 @@ private:
         check_hresult(m_d2dDevice->CreateDeviceContext(D2D1_DEVICE_CONTEXT_OPTIONS_NONE, m_context.put()));
         check_hresult(m_context->CreateSolidColorBrush(Color(0xFFFFFF), m_brush.put()));
         check_hresult(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory),
-            reinterpret_cast<IUnknown**>(m_writeFactory.put())));
+            reinterpret_cast<::IUnknown**>(m_writeFactory.put())));
         CreateFormat(22.0f, DWRITE_FONT_WEIGHT_NORMAL, m_small);
         CreateFormat(28.0f, DWRITE_FONT_WEIGHT_NORMAL, m_body);
         CreateFormat(34.0f, DWRITE_FONT_WEIGHT_SEMI_BOLD, m_heading);
@@ -457,7 +457,7 @@ private:
             desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
             desc.AlphaMode = DXGI_ALPHA_MODE_IGNORE;
             check_hresult(factory->CreateSwapChainForCoreWindow(m_d3d.get(),
-                reinterpret_cast<IUnknown*>(get_abi(m_window)), &desc, nullptr, m_swapchain.put()));
+                reinterpret_cast<::IUnknown*>(get_abi(m_window)), &desc, nullptr, m_swapchain.put()));
             check_hresult(device.as<IDXGIDevice1>()->SetMaximumFrameLatency(1));
         }
         com_ptr<IDXGISurface> surface;
@@ -602,7 +602,7 @@ private:
     com_ptr<IDWriteTextFormat> m_small, m_body, m_heading, m_title;
 };
 
-struct AppSource final : implements<AppSource, IFrameworkViewSource> {
+struct AppSource : implements<AppSource, IFrameworkViewSource> {
     IFrameworkView CreateView() { return make<DiagnosticsApp>(); }
 };
 } // namespace
