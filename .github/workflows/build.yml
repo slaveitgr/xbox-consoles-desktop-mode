@@ -1,0 +1,124 @@
+name: Build and validate
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  portable-tests:
+    name: Portable PE parser and probe tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug -DXCDM_SANITIZERS=ON
+      - name: Build
+        run: cmake --build build --parallel
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-test-logs
+          path: build/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  windows-uwp:
+    name: Windows x64 UWP packages and upstream bridge DLL
+    # VS 2022 is required for the v143 UWP toolset; do not use windows-latest.
+    runs-on: windows-2022
+    timeout-minutes: 50
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Ensure VS 2022 C++ UWP prerequisites
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if (-not $vsPath) { throw 'The runner has no Visual Studio 2022 C++ installation.' }
+          $uwpPath = & $vswhere -latest -products '*' -version '[17.0,18.0)' -requires Microsoft.VisualStudio.ComponentGroup.UWP.VC -property installationPath
+          $sdkHeaders = "${env:ProgramFiles(x86)}\Windows Kits\10\Include\10.0.26100.0\cppwinrt\winrt\base.h"
+          if (-not $uwpPath -or -not (Test-Path $sdkHeaders)) {
+            $installer = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\setup.exe"
+            $installArgs = @('modify', '--installPath', "`"$vsPath`"", '--channelId', 'VisualStudio.17.Release',
+              '--add', 'Microsoft.VisualStudio.ComponentGroup.UWP.VC',
+              '--add', 'Microsoft.VisualStudio.Component.Windows11SDK.26100', '--quiet', '--norestart')
+            $process = Start-Process -FilePath $installer -ArgumentList $installArgs -Wait -PassThru
+            if ($process.ExitCode -notin @(0, 3010)) { throw "Visual Studio prerequisite install failed: $($process.ExitCode)." }
+          }
+          ./tools/build-uwp.ps1 -CheckOnly | Format-List
+      - name: Configure Windows native host tests
+        run: cmake -S . -B build-windows -A x64
+      - name: Build Windows native host tests
+        run: cmake --build build-windows --config Release --parallel
+      - name: Run Windows native host tests
+        run: ctest --test-dir build-windows -C Release --output-on-failure
+      - name: Build unsigned diagnostic AppX
+        run: ./tools/build-uwp.ps1 -Configuration Release
+      - name: Build test-signed diagnostic AppX and public certificate
+        run: ./tools/build-uwp.ps1 -Configuration Release -Sign
+      - name: Build pinned upstream Win32Bridge DLL only
+        run: ./tools/build-upstream.ps1 -Configuration Release
+      - name: Reject private signing keys in outputs
+        if: always()
+        run: |
+          $keys = @(Get-ChildItem artifacts -Recurse -File -ErrorAction SilentlyContinue |
+            Where-Object { $_.Extension -in @('.pfx', '.p12', '.key') })
+          if ($keys.Count -gt 0) { throw 'Private signing-key material must never be uploaded.' }
+      # AppX packages belong only to our clean diagnostics companion. These
+      # artifacts do not contain an upstream shell package or guest programs.
+      - name: Upload unsigned diagnostic packages
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-x64-release-UNSIGNED
+          path: |
+            artifacts/diagnostics/packages/Release/unsigned/
+            !**/*.pfx
+            !**/*.p12
+            !**/*.key
+          if-no-files-found: warn
+      - name: Upload test-signed diagnostic packages and public certificate
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-x64-release-TEST-SIGNED
+          path: |
+            artifacts/diagnostics/packages/Release/test-signed/
+            !**/*.pfx
+            !**/*.p12
+            !**/*.key
+          if-no-files-found: warn
+      - name: Upload diagnostic symbols and build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: diagnostics-x64-release-symbols-and-logs
+          path: |
+            artifacts/diagnostics/bin/x64/Release/*.pdb
+            artifacts/diagnostics/logs/
+            build-windows/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+      - name: Upload upstream bridge DLL, metadata, symbols and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: upstream-win32bridge-x64-release-DLL-ONLY
+          path: |
+            artifacts/upstream-bridge/Release/*.dll
+            artifacts/upstream-bridge/Release/*.winmd
+            artifacts/upstream-bridge/Release/*.pdb
+            artifacts/upstream-bridge/Release/*.log
+            artifacts/upstream-bridge/Release/*.binlog
+          if-no-files-found: warn

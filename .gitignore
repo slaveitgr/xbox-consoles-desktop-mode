@@ -1,0 +1,25 @@
+# Generated builds and test output
+/build/
+/build-*/
+/out/
+/artifacts/
+/app/AppPackages/
+/app/x64/
+/app/Debug/
+/app/Release/
+.vs/
+*.vcxproj.user
+*.suo
+*.user
+*.VC.db
+*.VC.opendb
+*.binlog
+__pycache__/
+*.pyc
+
+# Never commit signing keys or local machine configuration.
+*.pfx
+*.p12
+*.key
+*.cer
+GeckoBuild.local.props
