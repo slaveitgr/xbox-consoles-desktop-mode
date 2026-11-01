@@ -34,10 +34,12 @@
 #include <cmath>
 #include <cstdint>
 #include <ctime>
+#include <iomanip>
 #include <iterator>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <vector>
 
 using namespace winrt;
 using namespace Windows::ApplicationModel;
@@ -63,6 +65,27 @@ constexpr std::array<D2D1_RECT_F, 3> Buttons{{
     {988.0f, 540.0f, 1768.0f, 606.0f},
     {1496.0f, 770.0f, 1768.0f, 840.0f}
 }};
+constexpr D2D1_RECT_F PageButton{1476.0f, 134.0f, 1796.0f, 194.0f};
+constexpr std::array<D2D1_RECT_F, 4> ControllerButtons{{
+    {96.0f, 755.0f, 400.0f, 817.0f},
+    {420.0f, 755.0f, 724.0f, 817.0f},
+    {744.0f, 755.0f, 1096.0f, 817.0f},
+    {1440.0f, 755.0f, 1796.0f, 817.0f}
+}};
+constexpr std::size_t MaxControllerEntries = 64;
+constexpr std::uint32_t MaxRawButtons = 1024, MaxRawAxes = 256, MaxRawSwitches = 256;
+constexpr std::size_t VisibleControllerRows = 6;
+
+struct ControllerEntry {
+    RawGameController raw{nullptr};
+    Gamepad gamepad{nullptr};
+    std::wstring name{L"Gamepad (raw details unavailable)"};
+    std::wstring details;
+    std::wstring metadataError;
+    std::int32_t buttonCount{0}, axisCount{0}, switchCount{0};
+    std::uint16_t vendor{0}, product{0};
+    bool hasMetadata{false}, wireless{false};
+};
 
 D2D1_COLOR_F Color(unsigned rgb, float alpha = 1.0f) noexcept {
     return D2D1::ColorF(static_cast<float>((rgb >> 16) & 255) / 255.0f,
@@ -73,6 +96,48 @@ D2D1_COLOR_F Color(unsigned rgb, float alpha = 1.0f) noexcept {
 bool Contains(D2D1_RECT_F const& rect, Point const& point) noexcept {
     return point.X >= rect.left && point.X <= rect.right &&
            point.Y >= rect.top && point.Y <= rect.bottom;
+}
+
+std::wstring Hex(std::uint64_t value, int width = 0) {
+    std::wostringstream text;
+    text << L"0x" << std::uppercase << std::hex << std::setfill(L'0') << std::setw(width) << value;
+    return text.str();
+}
+
+std::wstring ApiError(wchar_t const* operation, hresult_error const& error) {
+    return std::wstring(operation) + L": " + Hex(static_cast<std::uint32_t>(error.code().value), 8);
+}
+
+std::wstring ModelName(hstring const& name) {
+    // Device-supplied labels must not introduce lines into the diagnostic report.
+    std::wstring result;
+    for (const auto character : name) {
+        if (result.size() >= 100) break;
+        result += character < 32 || character == 127 ? L' ' : character;
+    }
+    return result.empty() ? L"Unnamed controller" : result;
+}
+
+std::wstring GamepadButtonNames(GamepadButtons buttons) {
+    constexpr std::array<std::pair<GamepadButtons, wchar_t const*>, 18> names{{
+        {GamepadButtons::A, L"A"}, {GamepadButtons::B, L"B"},
+        {GamepadButtons::X, L"X"}, {GamepadButtons::Y, L"Y"},
+        {GamepadButtons::DPadUp, L"Up"}, {GamepadButtons::DPadDown, L"Down"},
+        {GamepadButtons::DPadLeft, L"Left"}, {GamepadButtons::DPadRight, L"Right"},
+        {GamepadButtons::LeftShoulder, L"LB"}, {GamepadButtons::RightShoulder, L"RB"},
+        {GamepadButtons::LeftThumbstick, L"LS"}, {GamepadButtons::RightThumbstick, L"RS"},
+        {GamepadButtons::Menu, L"Menu"}, {GamepadButtons::View, L"View"},
+        {GamepadButtons::Paddle1, L"P1"}, {GamepadButtons::Paddle2, L"P2"},
+        {GamepadButtons::Paddle3, L"P3"}, {GamepadButtons::Paddle4, L"P4"}
+    }};
+    std::wstring result;
+    const auto value = static_cast<std::uint64_t>(buttons);
+    for (auto const& item : names) {
+        if ((value & static_cast<std::uint64_t>(item.first)) == 0) continue;
+        if (!result.empty()) result += L" ";
+        result += item.second;
+    }
+    return result.empty() ? L"none" : result;
 }
 
 std::wstring Wide(std::string const& text) {
@@ -154,7 +219,17 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
         });
         m_window.KeyDown([this](CoreWindow const&, KeyEventArgs const& args) {
             const auto key = args.VirtualKey();
-            if (key == VirtualKey::Enter || key == VirtualKey::F5) {
+            if (key == VirtualKey::C) {
+                TogglePage();
+            } else if (m_controllersPage) {
+                if (key == VirtualKey::S) SaveReportAsync();
+                else if (key == VirtualKey::R || key == VirtualKey::F5) RefreshControllers(true);
+                else if (key == VirtualKey::Tab || key == VirtualKey::Right || key == VirtualKey::Down)
+                    SelectController(1);
+                else if (key == VirtualKey::Left || key == VirtualKey::Up) SelectController(-1);
+                else if (key == VirtualKey::Escape) TogglePage();
+                else return;
+            } else if (key == VirtualKey::Enter || key == VirtualKey::F5) {
                 RunProbesAsync(-1);
             } else if (key == VirtualKey::S) {
                 SaveReportAsync();
@@ -178,6 +253,35 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
             auto point = args.CurrentPoint();
             if (!point.Properties().IsLeftButtonPressed()) return;
             m_pointer = LogicalPoint(point.Position());
+            if (Contains(PageButton, m_pointer)) {
+                TogglePage();
+                args.Handled(true);
+                return;
+            }
+            if (m_controllersPage) {
+                for (std::size_t index = 0; index < ControllerButtons.size(); ++index) {
+                    if (!Contains(ControllerButtons[index], m_pointer)) continue;
+                    if (index == 0) SelectController(-1);
+                    else if (index == 1) SelectController(1);
+                    else if (index == 2) RefreshControllers(true);
+                    else SaveReportAsync();
+                    args.Handled(true);
+                    return;
+                }
+                const auto first = (m_controllerIndex / VisibleControllerRows) * VisibleControllerRows;
+                for (std::size_t row = 0; row < VisibleControllerRows; ++row) {
+                    const auto top = 328.0f + static_cast<float>(row) * 60.0f;
+                    if (first + row < m_controllers.size() &&
+                        Contains({112.0f, top, 732.0f, top + 56.0f}, m_pointer)) {
+                        m_controllerIndex = first + row;
+                        ResetControllerReading();
+                        ReadSelectedController();
+                        args.Handled(true);
+                        break;
+                    }
+                }
+                return;
+            }
             for (int index = 0; index < 3; ++index) {
                 if (Contains(Buttons[index], m_pointer)) {
                     m_selected = index;
@@ -208,12 +312,16 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
 
     void Run() {
         // A launch from Device Portal can collect results without remote input.
+        RefreshControllers(true);
+        ReadSelectedController();
         RunProbesAsync(-1);
         while (!m_closed) {
             if (m_visible && !m_suspended) {
                 m_window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
                 if (m_closed || !m_visible || m_suspended) continue;
+                RefreshControllers(false);
                 PollGamepad();
+                if (m_controllersPage) ReadSelectedController();
                 Render();
             } else {
                 m_window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessOneAndAllPending);
@@ -230,6 +338,17 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
     }
 
 private:
+    void TogglePage() {
+        m_controllersPage = !m_controllersPage;
+        // Changing pages must not reinterpret a held button as a new action.
+        m_controllerConnected = false;
+        m_previousButtons = 0;
+        if (m_controllersPage) {
+            RefreshControllers(true);
+            ReadSelectedController();
+        }
+    }
+
     Point LogicalPoint(Point point) const noexcept {
         return Point{(point.X - m_offsetX) / m_scale, (point.Y - m_offsetY) / m_scale};
     }
@@ -245,16 +364,179 @@ private:
             m_actionStatus = L"Report selected. A runs both tests; X saves the current report.";
     }
 
-    void PollGamepad() {
+    void PopulateControllerMetadata(ControllerEntry& entry) {
+        if (!entry.raw) return;
+        entry.name = L"Raw controller";
+        try { entry.name = ModelName(entry.raw.DisplayName()); }
+        catch (hresult_error const& error) { entry.metadataError = ApiError(L"Device name", error); }
+        try {
+            entry.vendor = entry.raw.HardwareVendorId();
+            entry.product = entry.raw.HardwareProductId();
+            entry.wireless = entry.raw.IsWireless();
+            entry.buttonCount = entry.raw.ButtonCount();
+            entry.axisCount = entry.raw.AxisCount();
+            entry.switchCount = entry.raw.SwitchCount();
+            entry.hasMetadata = true;
+            entry.details = L"VID " + Hex(entry.vendor, 4) + L" / PID " + Hex(entry.product, 4) +
+                (entry.wireless ? L" / wireless" : L" / wired");
+        } catch (hresult_error const& error) {
+            entry.metadataError = ApiError(L"Device metadata", error);
+        } catch (...) {
+            entry.metadataError = L"Device metadata query failed.";
+        }
+    }
+
+    void RefreshControllers(bool force) {
+        const auto now = std::chrono::steady_clock::now();
+        if (!force && now - m_lastControllerRefresh < std::chrono::seconds(1)) return;
+        m_lastControllerRefresh = now;
+        m_inventoryTime = UtcNow();
+        RawGameController selectedRaw{nullptr};
+        Gamepad selectedGamepad{nullptr};
+        if (m_controllerIndex < m_controllers.size()) {
+            selectedRaw = m_controllers[m_controllerIndex].raw;
+            selectedGamepad = m_controllers[m_controllerIndex].gamepad;
+        }
+        std::vector<ControllerEntry> entries;
+        m_navigationGamepads.clear();
+        m_rawApiOkay = false;
+        m_gamepadApiOkay = false;
+        m_associationWarning = false;
+        try {
+            const auto raw = RawGameController::RawGameControllers();
+            m_rawCount = raw.Size();
+            m_rawApiStatus = std::to_wstring(m_rawCount) + L" exposed";
+            m_rawApiOkay = true;
+            for (std::uint32_t index = 0; index < raw.Size() && entries.size() < MaxControllerEntries; ++index) {
+                ControllerEntry entry;
+                entry.raw = raw.GetAt(index);
+                PopulateControllerMetadata(entry);
+                try { entry.gamepad = Gamepad::FromGameController(entry.raw); }
+                catch (...) { m_associationWarning = true; }
+                entries.push_back(std::move(entry));
+            }
+        } catch (hresult_error const& error) {
+            m_rawApiOkay = false;
+            m_rawApiStatus = ApiError(L"Enumeration failed", error);
+        } catch (...) {
+            m_rawApiOkay = false;
+            m_rawApiStatus = L"Enumeration failed (unknown error).";
+        }
         try {
             const auto gamepads = Gamepad::Gamepads();
-            if (gamepads.Size() == 0) {
+            m_gamepadCount = gamepads.Size();
+            m_gamepadApiStatus = std::to_wstring(m_gamepadCount) + L" exposed";
+            m_gamepadApiOkay = true;
+            for (std::uint32_t index = 0; index < gamepads.Size() && index < MaxControllerEntries; ++index) {
+                const auto gamepad = gamepads.GetAt(index);
+                m_navigationGamepads.push_back(gamepad);
+                RawGameController raw{nullptr};
+                try { raw = RawGameController::FromGameController(gamepad); }
+                catch (...) { m_associationWarning = true; }
+                const auto found = std::find_if(entries.begin(), entries.end(), [&](ControllerEntry const& entry) {
+                    return (entry.gamepad && entry.gamepad == gamepad) || (raw && entry.raw == raw);
+                });
+                if (found != entries.end()) {
+                    found->gamepad = gamepad;
+                } else if (entries.size() < MaxControllerEntries) {
+                    ControllerEntry entry;
+                    entry.raw = raw;
+                    entry.gamepad = gamepad;
+                    PopulateControllerMetadata(entry);
+                    entries.push_back(std::move(entry));
+                }
+            }
+        } catch (hresult_error const& error) {
+            m_gamepadApiOkay = false;
+            m_gamepadApiStatus = ApiError(L"Enumeration failed", error);
+        } catch (...) {
+            m_gamepadApiOkay = false;
+            m_gamepadApiStatus = L"Enumeration failed (unknown error).";
+        }
+        const auto found = std::find_if(entries.begin(), entries.end(), [&](ControllerEntry const& entry) {
+            return (selectedRaw && entry.raw == selectedRaw) ||
+                (selectedGamepad && entry.gamepad == selectedGamepad);
+        });
+        const bool sameSelection = found != entries.end();
+        m_controllerIndex = sameSelection ? static_cast<std::size_t>(found - entries.begin()) : 0;
+        m_controllers = std::move(entries);
+        if (!sameSelection) ResetControllerReading();
+    }
+
+    void ResetControllerReading() {
+        m_rawReadingOkay = false;
+        m_gamepadReadingOkay = false;
+        m_rawReadingStatus = L"Not sampled";
+        m_gamepadReadingStatus = L"Not sampled";
+        m_rawButtons = {};
+        m_rawAxes = {};
+        m_rawSwitches = {};
+        m_controllerConnected = false;
+        m_previousButtons = 0;
+    }
+
+    void SelectController(int direction) {
+        if (m_controllers.empty()) return;
+        if (direction > 0) m_controllerIndex = (m_controllerIndex + 1) % m_controllers.size();
+        else m_controllerIndex = (m_controllerIndex + m_controllers.size() - 1) % m_controllers.size();
+        ResetControllerReading();
+        ReadSelectedController();
+    }
+
+    void ReadSelectedController() {
+        m_rawReadingOkay = false;
+        m_gamepadReadingOkay = false;
+        if (m_controllerIndex >= m_controllers.size()) return;
+        auto const& entry = m_controllers[m_controllerIndex];
+        m_readingTime = UtcNow();
+        if (entry.gamepad) {
+            try {
+                m_gamepadReading = entry.gamepad.GetCurrentReading();
+                m_gamepadReadingOkay = true;
+                m_gamepadReadingStatus = L"Reading received";
+            } catch (hresult_error const& error) { m_gamepadReadingStatus = ApiError(L"Reading failed", error); }
+            catch (...) { m_gamepadReadingStatus = L"Reading failed (unknown error)."; }
+        } else m_gamepadReadingStatus = L"No Gamepad mapping for this entry";
+        if (!entry.raw) {
+            m_rawReadingStatus = L"No RawGameController association";
+            return;
+        }
+        if (!entry.hasMetadata) {
+            m_rawReadingStatus = L"Raw reading unavailable: metadata query failed";
+            return;
+        }
+        if (entry.buttonCount < 0 || entry.axisCount < 0 || entry.switchCount < 0 ||
+            static_cast<std::uint32_t>(entry.buttonCount) > MaxRawButtons ||
+            static_cast<std::uint32_t>(entry.axisCount) > MaxRawAxes ||
+            static_cast<std::uint32_t>(entry.switchCount) > MaxRawSwitches) {
+            m_rawReadingStatus = L"Raw reading skipped: control counts exceed diagnostic bounds";
+            return;
+        }
+        try {
+            const auto buttons = static_cast<std::uint32_t>(entry.buttonCount);
+            const auto axes = static_cast<std::uint32_t>(entry.axisCount);
+            const auto switches = static_cast<std::uint32_t>(entry.switchCount);
+            if (m_rawButtons.size() != buttons) m_rawButtons = com_array<bool>(buttons);
+            if (m_rawAxes.size() != axes) m_rawAxes = com_array<double>(axes);
+            if (m_rawSwitches.size() != switches) m_rawSwitches = com_array<GameControllerSwitchPosition>(switches);
+            entry.raw.GetCurrentReading(m_rawButtons, m_rawSwitches, m_rawAxes);
+            m_rawReadingOkay = true;
+            m_rawReadingStatus = L"Reading received";
+        } catch (hresult_error const& error) { m_rawReadingStatus = ApiError(L"Reading failed", error); }
+        catch (...) { m_rawReadingStatus = L"Reading failed (unknown error)."; }
+    }
+
+    void PollGamepad() {
+        try {
+            Gamepad gamepad{nullptr};
+            if (m_controllerIndex < m_controllers.size()) gamepad = m_controllers[m_controllerIndex].gamepad;
+            if (!gamepad && !m_navigationGamepads.empty()) gamepad = m_navigationGamepads.front();
+            if (!gamepad) {
                 m_previousButtons = 0;
                 m_controllerConnected = false;
                 m_gamepad = nullptr;
                 return;
             }
-            const auto gamepad = gamepads.GetAt(0);
             if (!m_gamepad || gamepad != m_gamepad) {
                 m_gamepad = gamepad;
                 m_controllerConnected = false;
@@ -273,6 +555,16 @@ private:
             auto edge = [pressed](GamepadButtons button) {
                 return (pressed & static_cast<std::uint64_t>(button)) != 0;
             };
+            if (edge(GamepadButtons::Y)) {
+                TogglePage();
+                return;
+            }
+            if (m_controllersPage) {
+                if (edge(GamepadButtons::LeftShoulder)) SelectController(-1);
+                else if (edge(GamepadButtons::RightShoulder)) SelectController(1);
+                if (edge(GamepadButtons::X)) SaveReportAsync();
+                return;
+            }
             if (edge(GamepadButtons::A)) RunProbesAsync(-1);
             if (edge(GamepadButtons::X)) SaveReportAsync();
             if (edge(GamepadButtons::B)) SelectReport();
@@ -338,6 +630,11 @@ private:
                << L"OS version: " << m_osVersion << L"\n"
                << L"Application architecture: x64\n"
                << L"Last test completed: " << m_testTime << L"\n\n";
+        try {
+            const auto version = Package::Current().Id().Version();
+            report << L"Package version: " << version.Major << L'.' << version.Minor << L'.'
+                   << version.Build << L'.' << version.Revision << L"\n\n";
+        } catch (...) { report << L"Package version unavailable\n\n"; }
         auto append = [&report](wchar_t const* title, ProbeResult const& result) {
             report << title << L"\nStatus: " << StatusName(result.status)
                    << L"\nError code: " << result.errorCode
@@ -346,6 +643,46 @@ private:
         };
         append(L"Executable memory (write, then execute)", m_memoryResult);
         append(L"Minimal x64 Portable Executable", m_peResult);
+        report << L"Controller APIs (counts overlap; do not add them)\n"
+               << L"Inventory sampled: " << m_inventoryTime << L"\n"
+               << L"RawGameController: " << m_rawApiStatus << L"\n"
+               << L"Gamepad: " << m_gamepadApiStatus << L"\n"
+               << L"Grouped entries shown: " << m_controllers.size() << L" (limit " << MaxControllerEntries << L")\n"
+               << L"Gamepad mappings are grouped with their raw entry where an association is available.\n"
+               << L"Unassociated entries are not proof of additional physical devices.\n";
+        if (m_associationWarning) report << L"One or more association queries failed; grouping may be incomplete.\n";
+        for (std::size_t index = 0; index < m_controllers.size(); ++index) {
+            auto const& entry = m_controllers[index];
+            report << L"\nEntry " << index + 1 << L": " << entry.name << L"\n"
+                   << L"Raw association: " << (entry.raw ? L"yes" : L"no") << L"\n"
+                   << L"Gamepad mapping: " << (entry.gamepad ? L"yes" : L"no") << L"\n";
+            if (entry.hasMetadata) {
+                report << entry.details << L"\n"
+                       << L"Declared buttons/axes/switches: " << entry.buttonCount << L'/'
+                       << entry.axisCount << L'/' << entry.switchCount << L"\n";
+            }
+            if (!entry.metadataError.empty()) report << entry.metadataError << L"\n";
+        }
+        if (m_controllerIndex < m_controllers.size()) {
+            report << L"\nSelected entry: " << m_controllerIndex + 1 << L"\n"
+                   << L"Input sampled: " << m_readingTime << L"\n"
+                   << L"Gamepad input: " << m_gamepadReadingStatus << L"\n";
+            if (m_gamepadReadingOkay) {
+                report << GamepadSummary() << L"\n";
+            }
+            report << L"Raw input: " << m_rawReadingStatus << L"\n";
+            if (m_rawReadingOkay) {
+                report << L"Raw pressed buttons (zero-based): " << RawButtonSummary(MaxRawButtons) << L"\n"
+                       << L"Raw axes: " << RawAxisSummary(MaxRawAxes) << L"\n"
+                       << L"Raw switches (enum values): " << RawSwitchSummary(MaxRawSwitches) << L"\n";
+            }
+        } else if (m_rawApiOkay && m_gamepadApiOkay) {
+            report << L"\nNo controller entry is currently exposed to this application.\n";
+        } else {
+            report << L"\nController inventory is incomplete because an API query failed.\n";
+        }
+        report << L"\nThis checks input exposed by Xbox/Windows to this UWP application.\n"
+                  L"It does not install USB/Bluetooth drivers or establish Xbox 360 controller compatibility.\n\n";
         report << L"These are self-authored runtime diagnostics. They do not establish\n"
                   L"compatibility with Steam, arbitrary Win32 programs or commercial games.\n";
         return report.str();
@@ -361,6 +698,8 @@ private:
         m_saving = true;
         m_actionStatus = L"Saving runtime-diagnostics.txt to this application's local storage...";
         try {
+            RefreshControllers(true);
+            ReadSelectedController();
             const auto text = ReportText();
             const auto file = co_await ApplicationData::Current().LocalFolder().CreateFileAsync(
                 L"runtime-diagnostics.txt", CreationCollisionOption::ReplaceExisting);
@@ -538,6 +877,126 @@ private:
         Button(index, m_busy ? L"Running checks..." : (index == 0 ? L"Run x64 memory test" : L"Run minimal PE test"));
     }
 
+    std::wstring GamepadSummary() const {
+        std::wostringstream text;
+        text << std::fixed << std::setprecision(3)
+             << L"Buttons: " << GamepadButtonNames(m_gamepadReading.Buttons) << L"\n"
+             << L"Triggers: L " << m_gamepadReading.LeftTrigger << L"  R " << m_gamepadReading.RightTrigger << L"\n"
+             << L"Sticks: L (" << m_gamepadReading.LeftThumbstickX << L", " << m_gamepadReading.LeftThumbstickY
+             << L")  R (" << m_gamepadReading.RightThumbstickX << L", " << m_gamepadReading.RightThumbstickY << L')';
+        return text.str();
+    }
+
+    std::wstring RawButtonSummary(std::size_t limit) const {
+        std::wstring text;
+        std::size_t pressed = 0;
+        for (std::size_t index = 0; index < m_rawButtons.size(); ++index) {
+            if (!m_rawButtons[index]) continue;
+            if (pressed < limit) {
+                if (!text.empty()) text += L", ";
+                text += std::to_wstring(index);
+            }
+            ++pressed;
+        }
+        if (pressed > limit) text += L" ... (" + std::to_wstring(pressed) + L" pressed)";
+        return text.empty() ? L"none" : text;
+    }
+
+    std::wstring RawAxisSummary(std::size_t limit) const {
+        std::wostringstream text;
+        text << std::fixed << std::setprecision(3);
+        const auto count = std::min<std::size_t>(m_rawAxes.size(), limit);
+        for (std::size_t index = 0; index < count; ++index) {
+            if (index != 0) text << (index % 4 == 0 ? L"\n" : L"   ");
+            text << index << L'=' << m_rawAxes[index];
+        }
+        if (m_rawAxes.size() > count) text << L" ... (" << m_rawAxes.size() << L" axes)";
+        return count == 0 ? L"none" : text.str();
+    }
+
+    std::wstring RawSwitchSummary(std::size_t limit) const {
+        std::wostringstream text;
+        const auto count = std::min<std::size_t>(m_rawSwitches.size(), limit);
+        for (std::size_t index = 0; index < count; ++index) {
+            if (index != 0) text << L"  ";
+            text << index << L'=' << static_cast<std::int32_t>(m_rawSwitches[index]);
+        }
+        if (m_rawSwitches.size() > count) text << L" ... (" << m_rawSwitches.size() << L" switches)";
+        return count == 0 ? L"none" : text.str();
+    }
+
+    void ActionButton(D2D1_RECT_F rect, std::wstring_view label) {
+        Fill(rect, Contains(rect, m_pointer) ? 0x96F36F : 0x87DD61, 8.0f);
+        rect.left += 20;
+        rect.top += 16;
+        Text(label, rect, m_body.get(), 0x13200E);
+    }
+
+    void RenderControllers() {
+        Text(L"RawGameController: " + m_rawApiStatus + L"   |   Gamepad: " + m_gamepadApiStatus +
+             L"   (counts overlap)", {96, 218, 1796, 248}, m_small.get(), 0xAAB9AF);
+        Fill({96, 256, 748, 724}, 0x151F19, 14.0f);
+        Border({96, 256, 748, 724}, 0x2B3C30, 1.0f, 14.0f);
+        Fill({776, 256, 1796, 724}, 0x151F19, 14.0f);
+        Border({776, 256, 1796, 724}, 0x2B3C30, 1.0f, 14.0f);
+        Text(L"Exposed entries", {124, 277, 720, 324}, m_heading.get(), 0xF0F5F1);
+        if (m_controllers.empty()) {
+            const bool empty = m_rawApiOkay && m_gamepadApiOkay;
+            Text(empty ? L"No devices exposed to this app." : L"Controller API query failed.",
+                 {124, 345, 716, 420}, m_body.get(), empty ? 0xD1DCD5 : 0xF1C875);
+            Text(L"Connect the controller, then refresh. A USB connection alone does not establish input support.",
+                 {124, 447, 716, 560}, m_small.get(), 0xAAB9AF);
+            Text(L"Only devices returned by Xbox/Windows appear here. No USB or Bluetooth driver is installed.",
+                 {806, 340, 1768, 470}, m_body.get(), 0xD1DCD5);
+        } else {
+            const auto first = (m_controllerIndex / VisibleControllerRows) * VisibleControllerRows;
+            for (std::size_t row = 0; row < VisibleControllerRows && first + row < m_controllers.size(); ++row) {
+                const auto index = first + row;
+                const auto top = 328.0f + static_cast<float>(row) * 60.0f;
+                auto const& entry = m_controllers[index];
+                if (index == m_controllerIndex) {
+                    Fill({112, top, 732, top + 56}, 0x263C2C, 6.0f);
+                    Border({112, top, 732, top + 56}, 0x8CEB67, 1.0f, 6.0f);
+                }
+                Text(std::to_wstring(index + 1) + L". " + entry.name.substr(0, 42),
+                     {124, top + 3, 720, top + 30}, m_small.get(), 0xF0F5F1);
+                const auto kind = entry.raw ? (entry.gamepad ? L"Raw + Gamepad mapping" : L"Raw; no Gamepad mapping") :
+                    L"Gamepad; raw association unavailable";
+                Text(kind, {124, top + 29, 720, top + 56}, m_small.get(), 0xAAB9AF);
+            }
+            Text(L"Entry " + std::to_wstring(m_controllerIndex + 1) + L" / " + std::to_wstring(m_controllers.size()),
+                 {124, 695, 720, 724}, m_small.get(), 0xAAB9AF);
+            auto const& entry = m_controllers[m_controllerIndex];
+            Text(entry.name.substr(0, 50), {806, 277, 1768, 322}, m_heading.get(), 0xF0F5F1);
+            Text(entry.hasMetadata ? entry.details : L"Hardware details unavailable",
+                 {806, 325, 1768, 355}, m_small.get(), 0xAAB9AF);
+            Text(entry.hasMetadata ? L"Declared buttons / axes / switches: " + std::to_wstring(entry.buttonCount) +
+                 L" / " + std::to_wstring(entry.axisCount) + L" / " + std::to_wstring(entry.switchCount) : entry.metadataError,
+                 {806, 358, 1768, 389}, m_small.get(), 0xAAB9AF);
+            Text(L"Gamepad: " + m_gamepadReadingStatus, {806, 395, 1768, 426}, m_small.get(),
+                 m_gamepadReadingOkay ? 0x8CEB67 : 0xF1C875);
+            if (m_gamepadReadingOkay) {
+                Text(GamepadSummary(), {806, 430, 1768, 536}, m_small.get(), 0xD1DCD5);
+            }
+            Text(L"Raw: " + m_rawReadingStatus, {806, 539, 1768, 571}, m_small.get(),
+                 m_rawReadingOkay ? 0x8CEB67 : 0xF1C875);
+            if (m_rawReadingOkay) {
+                Text(L"Pressed buttons: " + RawButtonSummary(20), {806, 575, 1768, 607}, m_small.get(), 0xD1DCD5);
+                Text(L"Axes: " + RawAxisSummary(8), {806, 609, 1768, 667}, m_small.get(), 0xD1DCD5);
+                Text(L"Switches (enum): " + RawSwitchSummary(8), {806, 673, 1768, 706}, m_small.get(), 0xD1DCD5);
+            }
+        }
+        ActionButton(ControllerButtons[0], L"Previous device");
+        ActionButton(ControllerButtons[1], L"Next device");
+        ActionButton(ControllerButtons[2], L"Refresh inventory");
+        ActionButton(ControllerButtons[3], m_saving ? L"Saving..." : L"Save report");
+        Fill({96, 840, 1796, 938}, 0x121C16, 14.0f);
+        Text(m_actionStatus, {124, 858, 1768, 925}, m_small.get(), 0xD1DCD5);
+        Text(L"LB / RB  Select device     X  Save report     Y  Runtime checks", {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
+        Text(L"Keyboard: arrows / Tab select  |  R / F5 refresh  |  S save  |  C switch page. No controller driver is installed.",
+             {96, 1006, 1796, 1043}, m_small.get(), 0x9FB0A4);
+    }
+
     void Render() {
         if (!m_context || !m_swapchain) return;
         m_context->BeginDraw();
@@ -549,8 +1008,12 @@ private:
         Fill({0, 0, 14, CanvasHeight}, 0x78CF52);
         Fill({96, 211, 1796, 213}, 0x2B3C30);
         Text(L"XBOX DESKTOP MODE", {96, 66, 1300, 107}, m_small.get(), 0x8CEB67);
-        Text(L"Runtime diagnostics", {91, 111, 1500, 192}, m_title.get(), 0xF0F5F1);
+        Text(m_controllersPage ? L"Controller diagnostics" : L"Runtime diagnostics", {91, 111, 1450, 192}, m_title.get(), 0xF0F5F1);
         Text(m_deviceFamily + L"  /  x64", {1340, 78, 1796, 116}, m_small.get(), 0xAAB9AF);
+        ActionButton(PageButton, m_controllersPage ? L"Runtime checks" : L"Controllers");
+        if (m_controllersPage) {
+            RenderControllers();
+        } else {
         ProbeCard(96, L"01", L"Executable memory", L"Write a tiny x64 function, then switch its memory to executable.", m_memoryResult, 0);
         ProbeCard(960, L"02", L"Minimal PE loader", L"Map and run a self-authored x64 Portable Executable fixture.", m_peResult, 1);
         Fill({96, 666, 1796, 922}, 0x121C16, 14.0f);
@@ -562,9 +1025,10 @@ private:
             Text(L"Saved: " + m_savedPath, {124, 861, 1768, 906}, m_small.get(), 0x9FB0A4);
         }
         Button(2, m_saving ? L"Saving..." : L"Save report");
-        Text(L"A  Run both     X  Save report     B  Select report", {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
+        Text(L"A  Run both     X  Save report     B  Select report     Y  Controllers", {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
         Text(L"Keyboard: Enter / F5 run  |  S save  |  Tab / arrows focus  |  Space activate  |  Esc select report",
              {96, 1006, 1796, 1043}, m_small.get(), 0x9FB0A4);
+        }
         const auto drawn = m_context->EndDraw();
         if (drawn == D2DERR_RECREATE_TARGET || drawn == DXGI_ERROR_DEVICE_REMOVED || drawn == DXGI_ERROR_DEVICE_RESET) {
             RecreateGraphics();
@@ -586,6 +1050,21 @@ private:
     event_token m_activated{}, m_suspending{}, m_resuming{}, m_dpiChanged{};
     bool m_closed{false}, m_visible{true}, m_suspended{false}, m_busy{false}, m_saving{false};
     bool m_controllerConnected{false};
+    bool m_controllersPage{true};
+    bool m_rawApiOkay{false}, m_gamepadApiOkay{false}, m_associationWarning{false};
+    bool m_rawReadingOkay{false}, m_gamepadReadingOkay{false};
+    std::uint32_t m_rawCount{0}, m_gamepadCount{0};
+    std::size_t m_controllerIndex{0};
+    std::vector<ControllerEntry> m_controllers;
+    std::vector<Gamepad> m_navigationGamepads;
+    com_array<bool> m_rawButtons;
+    com_array<double> m_rawAxes;
+    com_array<GameControllerSwitchPosition> m_rawSwitches;
+    GamepadReading m_gamepadReading{};
+    std::chrono::steady_clock::time_point m_lastControllerRefresh{};
+    std::wstring m_rawApiStatus{L"Not queried"}, m_gamepadApiStatus{L"Not queried"};
+    std::wstring m_rawReadingStatus{L"Not sampled"}, m_gamepadReadingStatus{L"Not sampled"};
+    std::wstring m_inventoryTime{L"Not sampled"}, m_readingTime{L"Not sampled"};
     int m_selected{0};
     std::uint64_t m_previousButtons{0};
     Point m_pointer{-100.0f, -100.0f};

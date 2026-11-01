@@ -21,6 +21,31 @@ recorded in `VALIDATION.md`; other models have not been tested by us.
    runs. Repeat failures should retain the same error details rather than
    becoming a silent pass.
 
+## Controller detection
+
+The 0.2 companion adds a Controllers view for devices exposed to the application
+by `Windows.Gaming.Input`. This is an input diagnostic, not a USB/Bluetooth
+driver or a change to the console's accessory compatibility.
+
+1. Start with one known Xbox-compatible controller, then test each additional
+   controller separately. Record its exact model and connection: wired USB,
+   receiver/dongle, or Xbox Wireless. A USB cable may provide charging only.
+2. Record both Gamepad and RawGameController enumeration results. They are
+   overlapping API views, so their counts must not be added together.
+3. Select the device and check buttons, sticks, triggers and available raw
+   switches. Record actual readings, not merely an enumerated device name.
+4. Save the report after connecting or disconnecting a device. No exposed device
+   is distinct from an API failure; retain the actual error if one occurs.
+5. Unplug/reconnect and suspend/resume, then verify detection and release of
+   previously held inputs. Keep these physical tests separate from compilation.
+
+Xbox 360/PC gamepad support in a Windows API does not establish direct Xbox One
+console compatibility. Microsoft's Xbox UWP limitations list generic HID and
+Bluetooth APIs as unsupported; adding those manifest capabilities does not
+provide a controller driver. See
+[Xbox UWP limitations](https://github.com/MicrosoftDocs/winrt-related/blob/docs/winrt-related-src/extension-sdks/uwp-limitations-on-xbox.md)
+and [Gamepad API](https://learn.microsoft.com/en-us/windows/uwp/gaming/gamepad-and-vibration).
+
 ## What a pass means
 
 The memory test proves one small x64 function ran after an RW-to-RX transition.
