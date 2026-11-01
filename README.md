@@ -13,8 +13,8 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 | Component | Status |
 | --- | --- |
 | Desktop and Win32Bridge source | Pinned upstream source; not independently tested on our Xbox yet |
-| Native runtime diagnostics | Separate UWP companion to measure executable-memory and minimal-PE support |
-| Portable PE validation | Automated host tests, including malformed images |
+| Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
+| Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -53,6 +53,11 @@ must also be recorded separately from physical Xbox results.
 See [`docs/BUILD.md`](docs/BUILD.md) for Windows prerequisites, companion packaging
 and the upstream desktop's external dependencies. See
 [`docs/XBOX_TESTING.md`](docs/XBOX_TESTING.md) for the actual console checklist.
+
+The first physical Xbox One X run passed on 2026-11-02 (Europe/Athens).
+The UWP companion launched, ran both native probes and saved its report.
+See [`docs/VALIDATION.md`](docs/VALIDATION.md) for exact scope and build links.
+The full upstream desktop and commercial applications have not been tested by us.
 
 The companion runs only self-authored diagnostic code. Its PE fixture has no
 imports, relocations, TLS or CRT and returns `42` through a deliberately tiny

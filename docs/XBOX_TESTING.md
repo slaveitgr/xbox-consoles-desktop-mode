@@ -1,8 +1,8 @@
 # Physical Xbox testing
 
 Target first: retail Xbox One / One S / One X in Developer Mode. Record the
-exact model and OS version for each run. No console result has been recorded
-in this repository yet.
+exact model and OS version for each run. The first Xbox One X baseline is
+recorded in `VALIDATION.md`; other models have not been tested by us.
 
 ## Companion baseline
 

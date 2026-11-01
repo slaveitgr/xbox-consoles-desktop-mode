@@ -33,10 +33,12 @@ removes the certificate/private key from the store afterwards. It never commits
 a private key. Each invocation creates a new test certificate; for repeated
 local deployment, remove the previous test app if certificate trust conflicts.
 
-Outputs are under `artifacts/diagnostics/packages/Release/test-signed/` with
+AppX/MSIX outputs are under `artifacts/diagnostics/packages/Release/test-signed/` with
 logs under `artifacts/diagnostics/logs/`. Without `-Sign`, the result is unsigned
 and must be signed before ordinary installation. The package metadata records
-the toolchain, certificate thumbprint and that Xbox hardware has not been tested.
+the toolchain, certificate thumbprint and that this build job itself does not
+perform hardware testing. Physical test evidence is recorded separately in
+`VALIDATION.md`.
 
 On a Windows development PC, trust only the public test certificate you built
 and install the package plus its generated x64 dependencies. For Xbox, use

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-Build the native x64 UWP diagnostics companion and create an AppX package.
+Build the native x64 UWP diagnostics companion and create an AppX/MSIX package.
 .DESCRIPTION
 Requires Windows, Visual Studio 2022 with C++ UWP tools, and SDK 22621 or later.
 Output: artifacts/diagnostics/packages/{Configuration}/{unsigned|test-signed}/.
@@ -99,14 +99,16 @@ try {
             -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
         Export-Certificate -Cert $certificate -FilePath (Join-Path $packageDir 'SlaveIT-Development.cer') | Out-Null
         $arguments += @('/p:AppxPackageSigningEnabled=true', "/p:PackageCertificateThumbprint=$($certificate.Thumbprint)", '/p:PackageCertificateKeyFile=')
-        Write-Host 'Creating a test-signed AppX. The exported .cer contains the public certificate only.'
+        Write-Host 'Creating a test-signed AppX/MSIX. The exported .cer contains the public certificate only.'
     } else {
         $arguments += @('/p:AppxPackageSigningEnabled=false', '/p:PackageCertificateThumbprint=', '/p:PackageCertificateKeyFile=')
     }
     & $msbuild @arguments
     if ($LASTEXITCODE -ne 0) { throw "UWP build failed (MSBuild exit $LASTEXITCODE). See $logDir." }
-    $packages = @(Get-ChildItem $packageDir -Recurse -File -Filter '*.appx')
-    if ($packages.Count -eq 0) { throw "Build finished without producing an AppX under $packageDir." }
+    $packages = @(Get-ChildItem $packageDir -Recurse -File | Where-Object {
+        $_.Extension -in @('.appx', '.msix') -and $_.BaseName -like 'RuntimeDiagnostics_*'
+    })
+    if ($packages.Count -eq 0) { throw "Build finished without producing the main diagnostic AppX/MSIX under $packageDir. Dependency packages do not count." }
     [pscustomobject]@{
         PackageType = $packageKind
         Configuration = $Configuration
