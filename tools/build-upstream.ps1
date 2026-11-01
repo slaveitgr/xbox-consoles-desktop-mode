@@ -63,7 +63,7 @@ if ($FullShell) { $arguments += '/restore' }
 else { $arguments += "/p:IntDir=$outputDir\obj\" }
 & $toolchain.MSBuild @arguments
 if ($LASTEXITCODE -ne 0) { throw "Upstream build failed (MSBuild exit $LASTEXITCODE). See $outputDir." }
-if (-not $FullShell -and -not (Test-Path (Join-Path $outputDir 'Win32Bridge.Runtime.dll'))) {
+if (-not $FullShell -and @(Get-ChildItem $outputDir -Recurse -File -Filter 'Win32Bridge.Runtime.dll').Count -eq 0) {
     throw "The upstream build produced no Win32Bridge.Runtime.dll in $outputDir. Inspect the MSBuild log."
 }
 Write-Host "Build outputs: $outputDir"

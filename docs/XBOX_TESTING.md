@@ -11,9 +11,11 @@ in this repository yet.
    signing requirements for your development setup.
 3. Launch it outside the Visual Studio debugger so debugger-only resource
    behavior does not contaminate the baseline.
-4. Run the executable-memory probe and record its actual status/error code.
-5. Run the minimal-PE probe and record its actual status/error code.
-6. Save the report, retrieve it from the app's LocalState using Device Portal,
+4. Both probes run automatically on launch. Record the executable-memory
+   probe's actual status/error code; the buttons also allow individual reruns.
+5. Record the minimal-PE probe's actual status/error code.
+6. Both-test runs save the report automatically. Retrieve `runtime-diagnostics.txt`
+   from the app's LocalState using Device Portal,
    and retain its console model/OS details next to the results.
 7. Check controller reconnect, keyboard input, resize/resume and repeated probe
    runs. Repeat failures should retain the same error details rather than

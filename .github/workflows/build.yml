@@ -118,9 +118,9 @@ jobs:
         with:
           name: upstream-win32bridge-x64-release-DLL-ONLY
           path: |
-            artifacts/upstream-bridge/Release/*.dll
-            artifacts/upstream-bridge/Release/*.winmd
-            artifacts/upstream-bridge/Release/*.pdb
+            artifacts/upstream-bridge/Release/**/Win32Bridge.Runtime.dll
+            artifacts/upstream-bridge/Release/**/Win32Bridge.Runtime.winmd
+            artifacts/upstream-bridge/Release/**/Win32Bridge.Runtime.pdb
             artifacts/upstream-bridge/Release/*.log
             artifacts/upstream-bridge/Release/*.binlog
           if-no-files-found: warn

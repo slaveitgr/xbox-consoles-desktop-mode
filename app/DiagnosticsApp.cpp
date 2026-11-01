@@ -187,7 +187,11 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
                 }
             }
         });
-        m_window.PointerCursor(CoreCursor(CoreCursorType::Arrow, 0));
+        try {
+            m_window.PointerCursor(CoreCursor(CoreCursorType::Arrow, 0));
+        } catch (hresult_error const&) {
+            // Controller-only hosts do not need a platform mouse cursor.
+        }
         m_display = DisplayInformation::GetForCurrentView();
         m_dpiChanged = m_display.DpiChanged([this](DisplayInformation const&, IInspectable const&) {
             ResizeSafely();
@@ -203,6 +207,8 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
     void Load(hstring const&) {}
 
     void Run() {
+        // A launch from Device Portal can collect results without remote input.
+        RunProbesAsync(-1);
         while (!m_closed) {
             if (m_visible && !m_suspended) {
                 m_window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
@@ -320,6 +326,7 @@ private:
         if (which == -1 || which == 1) m_peResult = std::move(pe);
         m_testTime = UtcNow();
         m_actionStatus = L"Checks complete. Save the report to keep the exact results from this device.";
+        if (which == -1) SaveReportAsync();
     }
 
     std::wstring ReportText() const {
