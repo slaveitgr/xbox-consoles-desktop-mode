@@ -3,7 +3,7 @@
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
          xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
          IgnorableNamespaces="uap mp">
-  <Identity Name="SlaveIT.XboxDesktopDiagnostics" Publisher="CN=SlaveIT" Version="0.2.0.0" />
+  <Identity Name="SlaveIT.XboxDesktopDiagnostics" Publisher="CN=SlaveIT" Version="0.2.0.1" />
   <mp:PhoneIdentity PhoneProductId="95322952-9a83-4d76-be32-c73f7c5d9b70" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties>
     <DisplayName>Xbox Desktop Diagnostics</DisplayName>

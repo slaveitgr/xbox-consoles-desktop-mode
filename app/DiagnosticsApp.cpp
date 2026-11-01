@@ -30,12 +30,14 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <ctime>
 #include <iomanip>
 #include <iterator>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -85,6 +87,18 @@ struct ControllerEntry {
     std::int32_t buttonCount{0}, axisCount{0}, switchCount{0};
     std::uint16_t vendor{0}, product{0};
     bool hasMetadata{false}, wireless{false};
+};
+
+struct ControllerEventState {
+    // Static WGI events may arrive on a worker thread or outlive unsubscription.
+    // Handlers capture only this shared state, never a DiagnosticsApp pointer.
+    std::atomic<bool> active{true};
+    std::atomic<bool> dirty{true};
+    std::array<std::atomic<std::uint64_t>, 4> counts{};
+
+    ControllerEventState() noexcept {
+        for (auto& count : counts) count.store(0, std::memory_order_relaxed);
+    }
 };
 
 D2D1_COLOR_F Color(unsigned rgb, float alpha = 1.0f) noexcept {
@@ -175,6 +189,9 @@ unsigned StatusColor(ProbeStatus status) noexcept {
 
 struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
     void Initialize(CoreApplicationView const& view) {
+        // Xbox input discovery can depend on an Added listener before enumeration.
+        // Keep listeners alive for the complete framework-view lifetime.
+        InitializeControllerEvents();
         m_activated = view.Activated([](CoreApplicationView const&, IActivatedEventArgs const&) {
             CoreWindow::GetForCurrentThread().Activate();
         });
@@ -330,6 +347,7 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
     }
 
     void Uninitialize() {
+        UninitializeControllerEvents();
         if (m_view) m_view.Activated(m_activated);
         if (m_display) m_display.DpiChanged(m_dpiChanged);
         CoreApplication::Suspending(m_suspending);
@@ -338,6 +356,61 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
     }
 
 private:
+    void InitializeControllerEvents() {
+        const auto state = m_controllerEvents;
+        auto notify = [state](std::size_t index) noexcept {
+            if (!state->active.load(std::memory_order_relaxed)) return;
+            state->counts[index].fetch_add(1, std::memory_order_relaxed);
+            state->dirty.store(true, std::memory_order_release);
+        };
+        try {
+            m_controllerEventTokens[0] = Gamepad::GamepadAdded(
+                [notify](IInspectable const&, Gamepad const&) { notify(0); });
+            m_controllerEventRegistered[0] = true;
+            m_controllerEventStatus[0] = L"Registered";
+        } catch (hresult_error const& error) { m_controllerEventStatus[0] = ApiError(L"Subscription failed", error); }
+        catch (...) { m_controllerEventStatus[0] = L"Subscription failed (unknown error)"; }
+        try {
+            m_controllerEventTokens[1] = Gamepad::GamepadRemoved(
+                [notify](IInspectable const&, Gamepad const&) { notify(1); });
+            m_controllerEventRegistered[1] = true;
+            m_controllerEventStatus[1] = L"Registered";
+        } catch (hresult_error const& error) { m_controllerEventStatus[1] = ApiError(L"Subscription failed", error); }
+        catch (...) { m_controllerEventStatus[1] = L"Subscription failed (unknown error)"; }
+        try {
+            m_controllerEventTokens[2] = RawGameController::RawGameControllerAdded(
+                [notify](IInspectable const&, RawGameController const&) { notify(2); });
+            m_controllerEventRegistered[2] = true;
+            m_controllerEventStatus[2] = L"Registered";
+        } catch (hresult_error const& error) { m_controllerEventStatus[2] = ApiError(L"Subscription failed", error); }
+        catch (...) { m_controllerEventStatus[2] = L"Subscription failed (unknown error)"; }
+        try {
+            m_controllerEventTokens[3] = RawGameController::RawGameControllerRemoved(
+                [notify](IInspectable const&, RawGameController const&) { notify(3); });
+            m_controllerEventRegistered[3] = true;
+            m_controllerEventStatus[3] = L"Registered";
+        } catch (hresult_error const& error) { m_controllerEventStatus[3] = ApiError(L"Subscription failed", error); }
+        catch (...) { m_controllerEventStatus[3] = L"Subscription failed (unknown error)"; }
+    }
+
+    void UninitializeControllerEvents() noexcept {
+        m_controllerEvents->active.store(false, std::memory_order_relaxed);
+        // Remove independently: one failing provider must not retain the others.
+        if (m_controllerEventRegistered[0]) {
+            try { Gamepad::GamepadAdded(m_controllerEventTokens[0]); } catch (...) {}
+        }
+        if (m_controllerEventRegistered[1]) {
+            try { Gamepad::GamepadRemoved(m_controllerEventTokens[1]); } catch (...) {}
+        }
+        if (m_controllerEventRegistered[2]) {
+            try { RawGameController::RawGameControllerAdded(m_controllerEventTokens[2]); } catch (...) {}
+        }
+        if (m_controllerEventRegistered[3]) {
+            try { RawGameController::RawGameControllerRemoved(m_controllerEventTokens[3]); } catch (...) {}
+        }
+        m_controllerEventRegistered.fill(false);
+    }
+
     void TogglePage() {
         m_controllersPage = !m_controllersPage;
         // Changing pages must not reinterpret a held button as a new action.
@@ -388,7 +461,8 @@ private:
 
     void RefreshControllers(bool force) {
         const auto now = std::chrono::steady_clock::now();
-        if (!force && now - m_lastControllerRefresh < std::chrono::seconds(1)) return;
+        const bool changed = m_controllerEvents->dirty.exchange(false, std::memory_order_acquire);
+        if (!force && !changed && now - m_lastControllerRefresh < std::chrono::seconds(1)) return;
         m_lastControllerRefresh = now;
         m_inventoryTime = UtcNow();
         RawGameController selectedRaw{nullptr};
@@ -650,6 +724,13 @@ private:
                << L"Grouped entries shown: " << m_controllers.size() << L" (limit " << MaxControllerEntries << L")\n"
                << L"Gamepad mappings are grouped with their raw entry where an association is available.\n"
                << L"Unassociated entries are not proof of additional physical devices.\n";
+        constexpr std::array<wchar_t const*, 4> eventNames{{
+            L"GamepadAdded", L"GamepadRemoved", L"RawGameControllerAdded", L"RawGameControllerRemoved"
+        }};
+        for (std::size_t index = 0; index < eventNames.size(); ++index) {
+            report << eventNames[index] << L": " << m_controllerEventStatus[index]
+                   << L"; received=" << m_controllerEvents->counts[index].load(std::memory_order_relaxed) << L"\n";
+        }
         if (m_associationWarning) report << L"One or more association queries failed; grouping may be incomplete.\n";
         for (std::size_t index = 0; index < m_controllers.size(); ++index) {
             auto const& entry = m_controllers[index];
@@ -1057,6 +1138,12 @@ private:
     std::size_t m_controllerIndex{0};
     std::vector<ControllerEntry> m_controllers;
     std::vector<Gamepad> m_navigationGamepads;
+    std::shared_ptr<ControllerEventState> m_controllerEvents{std::make_shared<ControllerEventState>()};
+    std::array<event_token, 4> m_controllerEventTokens{};
+    std::array<bool, 4> m_controllerEventRegistered{};
+    std::array<std::wstring, 4> m_controllerEventStatus{{
+        L"Not registered", L"Not registered", L"Not registered", L"Not registered"
+    }};
     com_array<bool> m_rawButtons;
     com_array<double> m_rawAxes;
     com_array<GameControllerSwitchPosition> m_rawSwitches;
