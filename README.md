@@ -12,7 +12,8 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 
 | Component | Status |
 | --- | --- |
-| Desktop and Win32Bridge source | Pinned upstream source; not independently tested on our Xbox yet |
+| Upstream desktop | Release 21286 / 1.0.46.0 installed and launched on Xbox One X; user confirmed desktop and taskbar appear |
+| Desktop and Win32Bridge source | Pinned upstream source; bridge compiles, independent full desktop build still pending |
 | Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
 | Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
@@ -57,7 +58,12 @@ and the upstream desktop's external dependencies. See
 The first physical Xbox One X run passed on 2026-11-02 (Europe/Athens).
 The UWP companion launched, ran both native probes and saved its report.
 See [`docs/VALIDATION.md`](docs/VALIDATION.md) for exact scope and build links.
-The full upstream desktop and commercial applications have not been tested by us.
+The upstream desktop release was also installed and launched on the same console;
+the user confirmed the desktop and taskbar on the TV. This was the upstream
+binary, not a desktop built or customized by this repository. See
+[`docs/DESKTOP_BASELINE.md`](docs/DESKTOP_BASELINE.md) for its version,
+dependencies, controls and remaining checks. Commercial applications have not
+been tested by us.
 
 The companion runs only self-authored diagnostic code. Its PE fixture has no
 imports, relocations, TLS or CRT and returns `42` through a deliberately tiny
@@ -66,8 +72,8 @@ compatibility. It does not execute arbitrary files from your game library.
 
 ## Development direction
 
-1. Build and deploy the existing desktop with a reproducible dependency setup.
-2. Record real Xbox results for the upstream bridge and our minimal probes.
+1. Make the full upstream desktop build reproducible, including its external Gecko inputs.
+2. Qualify the installed desktop's input, built-in apps and experimental bridge on Xbox.
 3. Add repeatable import-coverage and classic-app regression checks.
 4. Evaluate Playden's Steam library/auth/download components separately.
 5. Add a graphics backend only after defining a small, testable game target.

@@ -38,6 +38,26 @@ the constrained mapping contract inside our UWP application on this console.
 It does not prove support for ordinary desktop apps, Steam, Direct3D games,
 32-bit code, DRM, anti-cheat or arbitrary PE entry-point initialization.
 
-The complete upstream desktop has not been built/deployed by us; its external
-Gecko dependency remains a separate integration task. Controller reconnect,
-keyboard behavior and extended suspend/resume qualification are also outstanding.
+## Upstream desktop baseline
+
+On the same test date, the published upstream release
+[21286](https://github.com/Pedro1234-code/DesktopMode_uwp/releases/tag/21286),
+package version **1.0.46.0 x64**, was installed with all five supplied x64
+framework dependencies. All six downloaded files matched their published
+GitHub SHA-256 digests.
+
+- No installed package had the upstream CoreShell identity before deployment;
+  the installed Edge Stable package has a different identity.
+- Device Portal deployment completed successfully, code 0.
+- Device Portal accepted launch, HTTP 200; process enumeration then reported
+  `DesktopMode.exe` running.
+- The user confirmed that the desktop and taskbar appeared on the physical TV.
+- Device Portal screenshot capture failed after this launch, so this visual
+  confirmation is a user observation, not an independently captured screenshot.
+
+This validates installation and initial shell display of the **upstream binary**.
+It does not mean our repository independently built or customized that desktop.
+See [`DESKTOP_BASELINE.md`](DESKTOP_BASELINE.md) for the exact package/dependencies.
+The full source build still needs upstream's external Gecko inputs. Built-in app
+interaction, upstream Win32 application compatibility, controller reconnect,
+keyboard behavior and extended suspend/resume qualification remain outstanding.
