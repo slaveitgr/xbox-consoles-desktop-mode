@@ -2,6 +2,22 @@ name: Mihawk Xbox desktop
 
 on:
   push:
+    paths:
+      - '.github/workflows/mihawk-desktop.yml'
+      - '.gitmodules'
+      - 'AGENTS.md'
+      - 'CMakeLists.txt'
+      - 'external/**'
+      - 'desktop/native/**'
+      - 'desktop/mihawk/**'
+      - 'app/**'
+      - 'bridge/**'
+      - 'runtime/**'
+      - 'samples/**'
+      - 'tests/**'
+      - 'third_party/**'
+      - 'patches/**'
+      - 'tools/**'
   pull_request:
   workflow_dispatch:
 
@@ -63,7 +79,7 @@ jobs:
       - name: Upload development desktop
         uses: actions/upload-artifact@v4
         with:
-          name: mihawk-xbox-x64-1.0.47.2-DEV-SIGNED
+          name: mihawk-xbox-x64-1.0.47.3-DEV-SIGNED
           path: |
             artifacts/mihawk-desktop/*.msix
             artifacts/mihawk-desktop/*.cer

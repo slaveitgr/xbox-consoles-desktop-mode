@@ -1,25 +1,22 @@
-# Wine desktop and Mihawk Xbox tools
+# Mihawk Xbox desktop and native Wine port
 
-The requested primary environment is now a real Wine desktop session launched
-through the source-built BoxedWine interpreter in an isolated WebView2 view.
-The native UWP host supplies Xbox storage/setup, Game Library, LAN and browser
-tools. The HTML Mihawk adaptation remains the Xbox tools/setup view.
+The requested Wine route is native x64 execution through Win32Bridge, outside
+BoxedWine. The first integration milestone is the actual Wine Explorer window
+with a working folder view. It needs Wine's real shell classes and a consistent
+shell namespace; compiling an EXE alone does not provide those services.
+Pinned sources, concrete blockers and the build work are in `wine-explorer/`.
+A working native Wine Explorer, full Wine desktop, Steam and games have not
+been established on Xbox.
 
-The first backend uses stock Wine 11 Explorer, desktop, Start and taskbar.
-The original Mihawk native Explorer/style patches are pinned for porting in
-`wine-explorer/`; they are not yet applied to the runtime image. This does not
-establish game or Steam compatibility.
-
-Source build and image provenance: `boxedwine/README.md`. The privately supplied
-runtime goes in LocalState/WineRuntime; it is not included in the MSIX or Git.
-After validated native connection, the tools auto-open Wine Desktop when its
-required files are present. The user can disable this in Personalization.
-Wine's virtual filesystem currently remains separate from Xbox USB storage.
-
-
-Native x64 UWP host and a focused adaptation of MihawkOS visual design for
+The working desktop remains a native x64 UWP host with a focused adaptation of MihawkOS visual design for
 Xbox One family Developer Mode. This replaces the compiled Gecko desktop UI;
-it does not port the PS5 Wine/Proton backend.
+it does not port the PS5 Wine/Proton backend. Files, Game Library, LAN transfer
+and browser use this host. The frontend does not automatically launch Wine.
+
+The separate `boxedwine/` source and ignored payload are retained as research
+reference only. That route emulates Linux/x86 and runs 32-bit Wine in WebView2;
+it is not the native x64 port. Its private test image was removed from the
+console before validating the host fix, and it is not bundled in the MSIX.
 
 The desktop includes a persistent local Game Library with user-selected EXEs,
 cover images and per-game notes/input settings. Importing a title does not
@@ -33,7 +30,7 @@ The trusted desktop uses a separate WebView2 mapped only to its packaged
 Mihawk folder. Its native RPC validates both the sending control and exact
 local origin/page; its CSP blocks external requests and frames.
 The official Microsoft Xbox sample is the integration reference:
-https://github.com/microsoft/Media-App-Samples-for-Xbox/tree/main/WebView2
+[Microsoft's WebView2 Xbox sample](https://github.com/microsoft/Media-App-Samples-for-Xbox/tree/main/WebView2).
 
 The frontend is GPL-3.0-or-later; see `mihawk/COPYING`. Other repository code
 keeps its existing licenses. The native host uses C++/CX to consume the pinned
@@ -62,8 +59,22 @@ Aero Meadow artwork are staged. The separately licensed Bubble City image is
 not used. `tools/stage-mihawk.py` copies the relevant licenses into the MSIX.
 
 `LocalState/mihawk-desktop-status.json` records native start, page navigation,
-JavaScript readiness, platform WebView user agent and any startup error.
+JavaScript readiness, WebView2 user agent and any startup error.
 Browser mock checks are UI checks, separate from physical Xbox validation.
+
+Physical One X validation of version 1.0.47.2 established native page readiness
+with three accepted RPC requests, zero rejected requests, Edge 150.0.4078.112,
+and a 1920 by 1080 viewport at device-pixel ratio 1. The previous package's
+event-sender wrapper comparison rejected legitimate WebView2 messages; the
+fixed handler retains the subscribed core and checks the exact trusted page.
+This validates the desktop connection, not Wine execution.
+
+An explicit local smoke configuration then started the real One X LAN listener.
+Eight physical checks passed: missing/incorrect tokens, foreign-origin rejection,
+file upload, listing, download, downloaded-byte hash, and traversal-name rejection.
+The owned test file and smoke configuration were deleted, and the desktop was
+restarted to stop the listener. The separate browser initialized Edge 150;
+initialization alone does not establish that a public page rendered correctly.
 
 Opt-in native integration smoke tests are requested only by a local
 `mihawk-native-smoke.json` file containing explicit `lan`/`browser` booleans.

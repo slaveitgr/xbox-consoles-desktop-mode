@@ -7,24 +7,22 @@
   'use strict';
 
   var pending = {}, requestNumber = 0, windows = [], nextWindow = 0, topZ = 10;
-  var roots = [], hostInfo = null, connected = false, connecting = false, wineAutoChecked = false;
+  var roots = [], hostInfo = null, connected = false, connecting = false;
   var desktop = document.getElementById('desktop-icons');
   var workspace = document.getElementById('windows');
   var startMenu = document.getElementById('start-menu');
   var startButton = document.getElementById('start-button');
-  var settings = { theme: 'light', accent: '#006fc1', wallpaper: true, UseWineDesktop: true };
+  var settings = { theme: 'light', accent: '#006fc1', wallpaper: true };
   try {
     var stored = JSON.parse(localStorage.getItem('mihawk-xbox-settings') || 'null');
     if (stored) {
       if (stored.theme === 'dark' || stored.theme === 'light') settings.theme = stored.theme;
       if (/^#[0-9a-f]{6}$/i.test(stored.accent)) settings.accent = stored.accent;
       if (typeof stored.wallpaper === 'boolean') settings.wallpaper = stored.wallpaper;
-      if (typeof stored.UseWineDesktop === 'boolean') settings.UseWineDesktop = stored.UseWineDesktop;
     }
   } catch (ignored) {}
 
   var apps = [
-    { id: 'wine', name: 'Wine Desktop', icon: 'app-explorer', glyph: '\u25a3', description: 'Open the full Wine desktop or check runtime setup' },
     { id: 'library', name: 'Game Library', icon: 'games', glyph: '\u25b6', description: 'Your saved Windows programs and launch settings' },
     { id: 'files', name: 'Xbox Files', icon: 'folder', glyph: '\u25a3', description: 'Browse native Xbox storage and USB folders' },
     { id: 'notepad', name: 'Notepad', icon: 'app-notepad', glyph: '\u270e', description: 'Open and save text files' },
@@ -128,27 +126,10 @@
       if (!info || !Array.isArray(info.roots)) throw new Error('The host returned an invalid workspace response.');
       hostInfo = info; roots = info.roots; setConnection(true, 'Xbox connected');
       for (var i = 0; i < windows.length; i++) if (windows[i].onConnected) windows[i].onConnected();
-      autoStartWine();
     }).catch(function (error) {
       setConnection(false, bridgeAvailable() ? 'Connection unavailable' : 'Browser preview');
       hostInfo = { platform: 'Native host unavailable', version: '', error: errorText(error) };
     }).then(function () { connecting = false; });
-  }
-
-  function autoStartWine() {
-    if (wineAutoChecked) return;
-    wineAutoChecked = true;
-    rpc('wineStatus', {}).then(function (status) {
-      if (!status || typeof status.installed !== 'boolean') throw new Error('The native host returned an invalid Wine runtime status.');
-      if (!settings.UseWineDesktop) return;
-      if (!status.installed) {
-        toast('Wine Desktop setup', status.message || 'Wine runtime files are missing. Open Wine Desktop to check setup.');
-        return;
-      }
-      return rpc('wineDesktop', {}, 120000).catch(function (error) {
-        toast('Wine Desktop', errorText(error) + ' Xbox tools remain available.');
-      });
-    }).catch(function (error) { toast('Wine Desktop status', errorText(error)); });
   }
 
   function applySettings() {
@@ -785,66 +766,10 @@
     return win;
   }
 
-  function openWine() {
-    var win = createWindow('wine', 'Wine Desktop', 680, 470), busy = false, runtime = null;
-    var panel = add(win.body, el('div', 'content-pad'));
-    add(panel, icon(appById('wine'))); add(panel, el('h1', '', 'Wine Desktop'));
-    add(panel, el('p', 'muted', 'Open the Wine workspace. Xbox tools remain available for storage, USB access and setup.'));
-    var status = add(panel, el('div', 'info-card'));
-    var heading = add(status, el('strong', '', 'Checking Wine runtime…'));
-    var guidance = add(status, el('span', '', 'Waiting for the native runtime status.'));
-    var missing = add(status, el('span', 'hidden'));
-    var actions = add(panel, el('div', 'transfer-actions'));
-    var launchDesktop = add(actions, button('Open Wine Desktop', function () { launch('wineDesktop'); }, 'primary'));
-    var launchExplorer = add(actions, button('Wine File Explorer', function () { launch('wineExplorer'); }));
-    add(actions, button('Check setup', loadStatus));
-    add(panel, button('Open Xbox Files', function () { openFiles(); }));
-    function render(value) {
-      if (!value || typeof value.installed !== 'boolean') throw new Error('The native host returned an invalid Wine runtime status.');
-      runtime = value;
-      heading.textContent = value.installed ? 'Wine runtime files are present' : 'Wine runtime setup is incomplete';
-      guidance.textContent = value.message || (value.installed ? 'Open the desktop to see its native startup result.' : 'Required runtime files are missing. Complete setup, then check again.');
-      missing.textContent = Array.isArray(value.missing) && value.missing.length ? 'Missing: ' + value.missing.join(', ') : '';
-      missing.classList.toggle('hidden', !missing.textContent);
-      launchDesktop.disabled = launchExplorer.disabled = busy || !value.installed || !connected;
-      setStatus(win, value.error || (value.installed ? 'Native Wine view available to open' : 'Runtime files are required before launch.'), !!value.error);
-    }
-    function loadStatus() {
-      if (busy || win.closed) return; busy = true;
-      launchDesktop.disabled = launchExplorer.disabled = true; setStatus(win, 'Checking runtime files…');
-      rpc('wineStatus', {}).then(function (value) { busy = false; render(value); }).catch(function (error) {
-        busy = false; runtime = null; heading.textContent = 'Wine runtime status unavailable'; guidance.textContent = errorText(error);
-        missing.classList.add('hidden'); launchDesktop.disabled = launchExplorer.disabled = true; setStatus(win, errorText(error), true);
-      });
-    }
-    function launch(method) {
-      if (busy) return; busy = true; launchDesktop.disabled = launchExplorer.disabled = true;
-      setStatus(win, 'Checking Wine setup before opening…');
-      rpc('wineStatus', {}).then(function (value) {
-        if (!value || typeof value.installed !== 'boolean') throw new Error('The native host returned an invalid Wine runtime status.');
-        if (!value.installed) { busy = false; render(value); return null; }
-        runtime = value; setStatus(win, method === 'wineDesktop' ? 'Opening Wine Desktop…' : 'Opening Wine File Explorer…');
-        return rpc(method, {}, 120000).then(function () {
-          setStatus(win, 'The native Wine view shows its startup result.');
-        });
-      }).catch(function (error) { setStatus(win, errorText(error), true); }).then(function () {
-        busy = false; launchDesktop.disabled = launchExplorer.disabled = !runtime || !runtime.installed || !connected;
-      });
-    }
-    win.onConnected = loadStatus; launchDesktop.disabled = launchExplorer.disabled = true; loadStatus(); return win;
-  }
-
   function openSettings() {
     var win = createWindow('settings', 'Personalization', 620, 445), panel = add(win.body, el('div', 'content-pad'));
     add(panel, el('h1', '', 'Make it yours')); add(panel, el('p', 'muted', 'These settings personalize your Mihawk desktop.'));
-    var row = add(panel, el('div', 'setting-row')); add(row, el('label', '', 'Primary workspace'));
-    var startup = add(row, el('select')); startup.setAttribute('aria-label', 'Primary workspace');
-    var wine = el('option', '', 'Wine Desktop'); wine.value = 'wine'; add(startup, wine);
-    var tools = el('option', '', 'Xbox Tools & Setup'); tools.value = 'tools'; add(startup, tools);
-    startup.value = settings.UseWineDesktop ? 'wine' : 'tools';
-    startup.addEventListener('change', function () { settings.UseWineDesktop = startup.value === 'wine'; applySettings(); });
-    add(panel, el('p', 'muted', 'Wine opens automatically when its runtime is present. This preference applies the next time Xbox tools start.'));
-    row = add(panel, el('div', 'setting-row')); add(row, el('label', '', 'Appearance'));
+    var row = add(panel, el('div', 'setting-row')); add(row, el('label', '', 'Appearance'));
     var theme = add(row, el('select')); theme.setAttribute('aria-label', 'Appearance');
     var light = el('option', '', 'Light'); light.value = 'light'; add(theme, light); var dark = el('option', '', 'Dark'); dark.value = 'dark'; add(theme, dark); theme.value = settings.theme;
     theme.addEventListener('change', function () { settings.theme = theme.value; applySettings(); });
@@ -883,18 +808,17 @@
     var win = createWindow('about', 'About Mihawk for Xbox', 650, 495), panel = add(win.body, el('div', 'content-pad'));
     var mark = add(panel, el('img')); mark.src = 'assets/start.svg'; mark.alt = 'Mihawk'; mark.width = 48; mark.height = 48; mark.style.marginBottom = '14px';
     add(panel, el('h1', '', 'Mihawk for Xbox'));
-    add(panel, el('p', 'muted', 'Wine Desktop is the primary workspace. These Xbox tools provide storage access and setup.'));
+    add(panel, el('p', 'muted', 'Your Xbox Tools desktop for files, saved programs, browsing and local transfers.'));
     function card(title, text) { var node = add(panel, el('div', 'info-card')); add(node, el('strong', '', title)); add(node, el('span', '', text)); }
     card('Native host', connected ? (hostInfo.platform || 'Xbox') + (hostInfo.version ? ' \u00b7 ' + hostInfo.version : '') : (hostInfo && hostInfo.error ? hostInfo.error : 'Not connected'));
-    card('Your files', 'Xbox Files and Notepad use native Xbox storage. Add a folder or USB location through the system picker. Wine File Explorer is opened separately from Wine Desktop.');
+    card('Your files', 'Xbox Files and Notepad use native Xbox storage. Add a folder or USB location through the system picker.');
     card('Game Library and transfers', 'Save programs with a cover, notes and input forwarding settings. LAN Transfer receives files into LAN Inbox from your paired phone or computer.');
-    card('Windows programs', 'Xbox Files and Game Library retain the experimental native .exe bridge. Wine Desktop has its own startup view. Runtime startup and program compatibility require their actual execution results.');
+    card('Windows programs', 'The experimental .exe bridge reports each program’s actual startup result. A native x64 Wine desktop is not implemented.');
     card('Credits and license', 'MihawkOS by mihawk-99; Xbox adaptation by SlaveIT contributors. Frontend source: GPL-3.0-or-later. Original icons, fonts and artwork retain their component licenses in the package.');
     add(panel, button('Reconnect native host', function () { connect().then(function () { toast('Native host', connected ? 'Connected to Xbox storage.' : 'The host is still unavailable.'); }); }));
     setStatus(win, 'Runs inside a UWP app; Xbox Home remains available.'); return win;
   }
   function openApp(id) {
-    if (id === 'wine') return openWine();
     if (id === 'library') return openLibrary(); if (id === 'transfer') return openTransfer();
     if (id === 'files') return openFiles(); if (id === 'notepad') return openNotepad();
     if (id === 'calculator') return openCalculator(); if (id === 'settings') return openSettings();
@@ -908,7 +832,6 @@
   }
   for (var i = 0; i < apps.length; i++) add(desktop, appButton(apps[i], 'desktop-icon'));
   var pinned = document.getElementById('pinned-apps');
-  add(pinned, appButton(appById('wine'), 'taskbar-button'));
   add(pinned, appButton(appById('library'), 'taskbar-button'));
   add(pinned, appButton(appById('files'), 'taskbar-button')); add(pinned, appButton(appById('notepad'), 'taskbar-button')); add(pinned, appButton(appById('browser'), 'taskbar-button'));
   startButton.addEventListener('click', function () { showStart(); });
