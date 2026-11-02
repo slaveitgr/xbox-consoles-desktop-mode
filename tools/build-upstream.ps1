@@ -57,9 +57,9 @@ if ($FullShell) {
         New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
         Copy-Item (Join-Path $upstream 'Win32Bridge') $sourceRoot -Recurse
         $patch = Join-Path $repoRoot 'patches\Win32Bridge-x86-startup.patch'
-        & git -C $repoRoot apply "--directory=$relativeSource" --check $patch
+        & git -C $repoRoot apply --ignore-space-change "--directory=$relativeSource" --check $patch
         if ($LASTEXITCODE -ne 0) { throw 'The x86 bridge overlay does not apply to the pinned source.' }
-        & git -C $repoRoot apply "--directory=$relativeSource" $patch
+        & git -C $repoRoot apply --ignore-space-change "--directory=$relativeSource" $patch
         if ($LASTEXITCODE -ne 0) { throw 'Applying the x86 bridge overlay failed.' }
         $project = Join-Path $sourceRoot 'Win32Bridge\Win32Bridge.vcxproj'
         [xml]$projectXml = Get-Content -Raw $project
