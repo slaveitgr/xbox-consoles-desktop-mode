@@ -99,7 +99,7 @@ namespace
                 if (auto self = weak.get()) self->resizePending = true;
             });
             check_hresult(D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, d2d.put()));
-            check_hresult(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), write.put_void()));
+            check_hresult(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory), reinterpret_cast<IUnknown**>(write.put())));
             check_hresult(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_SEMI_BOLD,
                 DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, 32, L"en-US", title.put()));
             check_hresult(write->CreateTextFormat(L"Segoe UI", nullptr, DWRITE_FONT_WEIGHT_NORMAL,
@@ -139,7 +139,7 @@ namespace
             desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
             desc.BufferCount = 2;
             desc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-            check_hresult(factory->CreateSwapChainForCoreWindow(device.get(), get_unknown(window),
+            check_hresult(factory->CreateSwapChainForCoreWindow(device.get(), winrt::get_unknown(window),
                 &desc, nullptr, swapChain.put()));
             CreateRenderTarget();
             resizePending = false;

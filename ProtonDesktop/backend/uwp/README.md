@@ -1,6 +1,6 @@
 # UWP data-memory adapter
 
-This is a small, real Windows API port, not a replacement guest kernel or a working Wine backend. It implements the eight memory methods of `Platform` from Boxedwine64 revision `58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4` using UWP-available memory APIs:
+This is a small, real Windows API port, not a replacement guest kernel or a working Wine backend. It implements a data-memory adapter and a host-service subset. The memory adapter supplies the eight memory methods of `Platform` from Boxedwine64 revision `58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4` using UWP-available memory APIs:
 
 - `alloc64kBlock` and `reserveNativeMemory64k`: checked 64 KiB block sizes and `VirtualAllocFromApp`.
 - `allocateNativeMemory` and `commitNativeMemoryPage`: commit existing reservations with `VirtualAllocFromApp`.
@@ -50,3 +50,26 @@ The root project may register these tests using `add_subdirectory(backend/uwp)` 
 - [VirtualAllocFromApp](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualallocfromapp): reserve/commit, no executable allocations.
 - [VirtualProtectFromApp](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualprotectfromapp): change committed-page protection.
 - [VirtualFree](https://learn.microsoft.com/en-us/windows/win32/api/memoryapi/nf-memoryapi-virtualfree): full reservation release requires the original base and size zero.
+
+## Host clocks, timer, CPU count and directory enumeration
+
+`UwpHostServices.h/.cpp` adds actual host services; `UwpPlatformHost.cpp` supplies the corresponding pinned upstream definitions:
+
+- `Platform::init` / `startMicroCounter` / `getMicroCounter`: QPC frequency, an atomic epoch and overflow-checked integer conversion to microseconds. Unsupported frequency/conversion ranges fail explicitly.
+- `getSystemTimeAsMicroSeconds`: real FILETIME converted to Unix microseconds, with checked epoch subtraction.
+- `nanoSleep`: a private relative waitable timer in 100 ns units, rounded upward without overflow; zero duration yields with `Sleep(0)`. It does not spin or truncate the request into a DWORD millisecond timeout. Actual precision depends on the host scheduler/hardware.
+- `getCpuCount`: real `GetSystemInfo` count, with no invented fallback processor.
+- `listNodes`: strict UTF-8/UTF-16 conversion, `GetFileAttributesExFromAppW`, `FindFirstFileExFromAppW`, `FindNextFileW` and `FindClose`. Filenames and directory attributes come from the OS. Missing/inaccessible paths and invalid UTF-8 fail explicitly. Caller wildcards and extended-length `\\?\` paths are deliberately rejected pending a path-normalization policy. Native enumeration results replace the temporary snapshot only on success; the upstream wrapper appends that snapshot to its caller's results.
+
+The `protondesktop_uwp_host_services` target compiles and links the Windows API implementation with `WINAPI_FAMILY_APP`. `protondesktop_uwp_platform_host` is an additional **object-only** compile target against the pinned declarations, and intentionally does not define remaining Platform methods. Do not link either adapter beside duplicate original Windows Platform definitions.
+
+`protondesktop_uwp_host_tests` contains portable FILETIME/QPC/relative-timer boundary assertions. On Windows it additionally runs QPC/wallclock/timer/CPU APIs, checks strict Unicode conversion, creates its own temporary directory/files via app-aware APIs, enumerates an actual Greek filename, and tests missing/file/wildcard failures without partial listing results. The scratch parent is passed by CTest. A successful desktop test remains a Windows host result, not an app-container or Xbox result.
+
+These are **not** rootfs file read/write/stat implementations or guest filesystem permission semantics. The rest of the existing Windows platform, CRT filesystem, socket/process emulation and rendering still need separate work. In particular, native socket pairs, `/proc/stat`, CPU-frequency telemetry, desktop file launching, JIT code/cache functions and thread-affinity policies have no replacement definitions here. The waitable timer is synchronous and has no backend-stop cancellation integration yet; it must not be placed on the UI thread. No complete UWP interpreter or Wine Desktop is claimed.
+
+Additional API references:
+
+- [FindFirstFileExFromAppW](https://learn.microsoft.com/en-us/windows/win32/api/fileapifromapp/nf-fileapifromapp-findfirstfileexfromappw)
+- [QueryPerformanceCounter](https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter)
+- [CreateWaitableTimerExW](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createwaitabletimerexw)
+- [SetWaitableTimerEx](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimerex)

@@ -62,6 +62,10 @@ selecting an audio converter without its intrinsic declarations. The local
 header overlay also undefines SSE3 in that same branch, keeping SDL's actual
 scalar converter. This changes SDL host conversion selection only; it does not
 replace guest instruction emulation. The corrected build/run remains pending.
+The following compiler pass also showed that this old clang-cl branch skipped
+`intrin.h`, hiding `__cpuid` and `_xgetbv` declarations from SDL's real CPU probe.
+The overlay includes the compiler's genuine intrinsic header before preserving
+the scalar SIMD selection; it does not replace CPU feature detection.
 
 UWP memory adaptation has its own independent `backend/uwp` target. It cannot
 be linked with the unmodified desktop `platform/windows/platform.cpp`, which

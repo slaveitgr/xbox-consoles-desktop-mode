@@ -33,7 +33,9 @@ endif()]=])
   set(original_intrinsics [=[#undef __MMX__
 #undef __SSE__
 #undef __SSE2__]=])
-  set(replacement_intrinsics [=[#undef __MMX__
+  set(replacement_intrinsics [=[/* ProtonDesktop clang-cl build: declare actual CPUID/XGETBV intrinsics. */
+#include <intrin.h>
+#undef __MMX__
 #undef __SSE__
 #undef __SSE2__
 /* ProtonDesktop clang-cl build: match SDL's scalar SSE/SSE2 fallback. */

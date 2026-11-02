@@ -13,6 +13,10 @@ if(WIN32)
   target_link_libraries(protondesktop_uwp_memory PUBLIC protondesktop_uwp_memory_policy WindowsApp)
   target_compile_definitions(protondesktop_uwp_memory PUBLIC
     WINAPI_FAMILY=WINAPI_FAMILY_APP _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_library(protondesktop_uwp_host_services STATIC UwpHostServices.cpp)
+  target_link_libraries(protondesktop_uwp_host_services PUBLIC protondesktop_uwp_memory_policy WindowsApp)
+  target_compile_definitions(protondesktop_uwp_host_services PUBLIC
+    WINAPI_FAMILY=WINAPI_FAMILY_APP _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
   # Optional compile proof against the actual pinned upstream declarations.
   # This is an OBJECT target: full UWP core linkage needs the other Platform
   # services and must exclude upstream's duplicate desktop memory definitions.
@@ -33,6 +37,14 @@ if(WIN32)
       message(FATAL_ERROR "Compile against pristine pinned Boxedwine64 headers")
     endif()
     add_library(protondesktop_uwp_platform_memory OBJECT UwpPlatformMemory.cpp)
+    add_library(protondesktop_uwp_platform_host OBJECT UwpPlatformHost.cpp)
+    target_link_libraries(protondesktop_uwp_platform_host PRIVATE protondesktop_uwp_host_services)
+    target_compile_features(protondesktop_uwp_platform_host PRIVATE cxx_std_20)
+    target_compile_definitions(protondesktop_uwp_platform_host PRIVATE
+      BOXEDWINE_MSVC BOXEDWINE_64 BOXEDWINE_GUEST_X64 BOXEDWINE_MULTI_THREADED BOXEDWINE_DISABLE_UI SDL2=1)
+    target_include_directories(protondesktop_uwp_platform_host PRIVATE
+      "${BOXEDWINE_SOURCE}/include" "${BOXEDWINE_SOURCE}/lib/sdl2/include"
+      "${BOXEDWINE_SOURCE}/lib/simde")
     target_link_libraries(protondesktop_uwp_platform_memory PRIVATE protondesktop_uwp_memory)
     target_compile_features(protondesktop_uwp_platform_memory PRIVATE cxx_std_20)
     target_compile_definitions(protondesktop_uwp_platform_memory PRIVATE
@@ -49,4 +61,10 @@ if(BUILD_TESTING)
     target_link_libraries(protondesktop_uwp_memory_tests PRIVATE protondesktop_uwp_memory)
   endif()
   add_test(NAME protondesktop_uwp_memory COMMAND protondesktop_uwp_memory_tests)
+  add_executable(protondesktop_uwp_host_tests "${PROTONDESKTOP_ROOT}/tests/UwpPlatformHostTests.cpp")
+  target_link_libraries(protondesktop_uwp_host_tests PRIVATE protondesktop_uwp_memory_policy)
+  if(WIN32)
+    target_link_libraries(protondesktop_uwp_host_tests PRIVATE protondesktop_uwp_host_services)
+  endif()
+  add_test(NAME protondesktop_uwp_host_services COMMAND protondesktop_uwp_host_tests "${CMAKE_CURRENT_BINARY_DIR}")
 endif()
