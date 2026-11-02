@@ -60,6 +60,8 @@ if(BUILD_TESTING)
         ${CMAKE_CURRENT_SOURCE_DIR}/tests/OwnedWorkersOverlayTests.py --source "${BOXEDWINE_SOURCE}")
       add_test(NAME protondesktop_wine_session_overlay COMMAND ${Python3_EXECUTABLE}
         ${CMAKE_CURRENT_SOURCE_DIR}/tools/runtime/test_wine_session_overlay.py --source "${BOXEDWINE_SOURCE}")
+      add_test(NAME protondesktop_thread_stop_overlay COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/ThreadStopOverlayTests.py --source "${BOXEDWINE_SOURCE}")
     endif()
     add_test(NAME protondesktop_python_gates COMMAND ${Python3_EXECUTABLE}
       -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}/tests -p test_*.py -v)

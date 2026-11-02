@@ -36,6 +36,7 @@
 #endif
 
 void protonSetSdlOwnerThread(bool value);
+void protonConfigureXWireDesktop(unsigned width, unsigned height);
 U32 getNextTimer();
 void runTimers();
 bool flipFB();
@@ -307,6 +308,9 @@ namespace protondesktop::runtime
             workers = true;
             activeSession = &state;
             protonSetSdlOwnerThread(true);
+            // Configure root-coordinate composition before X11 connections or
+            // Wine windows exist. The legacy host keeps its single-app mode.
+            protonConfigureXWireDesktop(request.width, request.height);
             Platform::init();
             Require(KNativeSystem::init(VIDEO_NORMAL, false), "SDL/WinRT video initialization failed");
             sdl = true;

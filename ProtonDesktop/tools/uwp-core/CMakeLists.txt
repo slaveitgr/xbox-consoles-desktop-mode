@@ -165,6 +165,12 @@ if(PROTON_ENABLE_WINE_SESSION)
   list(APPEND core_sources ${wine_session_sources}
     "${PROTONDESKTOP_ROOT}/backend/runtime/WineSession.cpp"
     "${PROTONDESKTOP_ROOT}/backend/uwp/UwpGuestWorkers.cpp")
+  include("${PROTONDESKTOP_ROOT}/tools/runtime/prepare_xwire_desktop.cmake")
+  proton_prepare_xwire_desktop("${BOXEDWINE_SOURCE}" "${profile_overlay}" wine_desktop_sources)
+  list(APPEND core_sources ${wine_desktop_sources})
+  include("${PROTONDESKTOP_ROOT}/tools/runtime/prepare_thread_stop.cmake")
+  proton_prepare_thread_stop("${BOXEDWINE_SOURCE}" "${profile_overlay}" thread_stop_sources)
+  list(APPEND core_sources ${thread_stop_sources})
   add_subdirectory("${PROTONDESKTOP_ROOT}/backend/archive" "${CMAKE_CURRENT_BINARY_DIR}/archive")
 endif()
 add_library(proton-uwp-core-objects OBJECT ${core_sources} ${platform_sources} ${softfloat_sources})

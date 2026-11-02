@@ -12,16 +12,20 @@ the actual rootfs `wine64 --version` through the interpreter, printing
 `wine-8.0 (Debian 8.0~repack-4)` and reaching guest exit 0. That test used no
 graphics and does not qualify UWP execution. A later Linux test reached actual
 `wineboot --init` exit 0 after fixing shared server-clock mappings and inherited
-shared memory. Clean wineserver shutdown and prefix finalization remain under
-test; this is not a working Explorer desktop or Xbox Wine result.
+shared memory. A complete, consistently built ZIP-enabled Linux runtime then
+rendered the real Wine Explorer folder view and taskbar on a 1280×720 canvas;
+an actual SDL mouse event opened Wine's Start menu. This is Linux software-video
+evidence. Clean wineserver shutdown, prefix finalization and Xbox Wine execution
+remain unqualified.
 
 The new opt-in native Wine application uses existing SDL/WinRT and the real
 pinned kernel/VFS, targeting Wine → wineboot → Explorer in one owned session.
 Its complete Windows/UWP build, retained kernel link, native SDL WinRT library
 and unsigned package succeeded in
-[run 41507830698](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41507830698).
-That package predates the shared-memory fixes and has not been deployed.
-The corrected package and device execution are being qualified separately.
+[run 41512425674](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41512425674).
+That build includes the shared-memory, file-lock and process-ID fixes; it has
+not been deployed. Complete desktop composition, cross-client input and
+cancellation fixes are being integrated into the next package.
 The earlier default host's backend factory remains unavailable.
 
 The pinned interpreter compiled from 252 translation units. Its CPU64 tests
@@ -110,8 +114,8 @@ and Wine execution await the new application.
 
 ## Next native milestone
 
-Build the application with the corrected shared-memory and x64 file-lock
-marshalling, then update the installed app to the native SDL/WinRT Wine session. Observe actual
+Build the complete desktop/input/cancellation application with Windows/UWP,
+then update the installed app to the native SDL/WinRT Wine session. Observe actual
 Wine version, wineboot and Explorer outcomes on One X and verify real desktop
 pixels and interaction. Windows 11-inspired theming follows a working desktop.
 Wine desktop performance on One X is unmeasured.

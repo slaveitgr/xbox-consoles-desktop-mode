@@ -1,0 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Real scene compositor regression; no Wine, host UI, or rootfs executes.
+#include "xwireserver.h"
+#include "xwirepresent.h"
+#include <cstdio>
+#include <cstring>
+#include <vector>
+#include <cstdint>
+void protonConfigureXWireDesktop(unsigned,unsigned);
+bool protonQueryXWireDesktop(unsigned&,unsigned&);
+void protonXWireSetBackground(uint32_t,uint32_t);
+void protonXWireClearArea(uint32_t,int,int,unsigned,unsigned);
+struct Sink: XWirePresentSink{unsigned w=0,h=0,frames=0;std::vector<uint32_t>pixels;void submitFrame(uint32_t,uint16_t x,uint16_t y,const uint8_t*p,uint32_t pitch)override{w=x;h=y;++frames;pixels.resize((size_t)w*h);for(unsigned r=0;r<h;++r)std::memcpy(pixels.data()+(size_t)r*w,p+(size_t)r*pitch,w*4);}void onWindowMapped(uint32_t,uint16_t,uint16_t)override{}bool nextInputEvent(XWireInputEvent&)override{return false;}bool hasInput()const override{return false;}void lastPointer(int&,int&,uint32_t&)const override{}void tickMainThread()override{}};
+XWirePresentSink*g_xwirePresentSink=nullptr;
+int main(){int failed=0,passed=0;auto check=[&](bool v,const char*n){std::printf("%s: %s\n",v?"PASS":"FAIL",n);v?++passed:++failed;};unsigned w,h;check(!protonQueryXWireDesktop(w,h),"legacy profile remains default");protonConfigureXWireDesktop(640,480);auto&srv=XWireServer::instance();Sink sink;g_xwirePresentSink=&sink;
+auto add=[&](unsigned id,unsigned parent,int x,int y,unsigned ww,unsigned hh,uint32_t color,unsigned serial,bool mapped=true){auto&v=srv.windows[id];v.parent=parent;v.x=x;v.y=y;v.width=ww;v.height=hh;v.fbW=ww;v.fbH=hh;v.mapSerial=serial;v.mapped=mapped;v.fb.resize((size_t)ww*hh*4);for(size_t i=0;i<(size_t)ww*hh;++i)((uint32_t*)v.fb.data())[i]=color;};auto&root=srv.windows[0x260];root.isRoot=true;root.mapped=true;root.width=640;root.height=480;
+add(1,0x260,10,20,20,20,0xffff0000,1);add(2,0x260,0,460,640,20,0xffffffff,2);add(3,1,15,15,20,20,0xff00ff00,100);add(4,0x260,100,100,20,20,0xff0000ff,3,false);add(5,4,0,0,20,20,0xffffffff,4);add(6,0x260,-5,-5,10,10,0xff0000ff,5);srv.composeAndPresent();auto at=[&](unsigned x,unsigned y){return sink.pixels[(size_t)y*sink.w+x];};check(sink.w==640&&sink.h==480,"fixed desktop extent independent of taskbar");check(at(15,25)==0xffff0000,"real parent framebuffer copied");check(at(25,35)==0xff00ff00,"child coordinates resolve through parent");check(at(30,35)==0,"child clipped at ancestor right edge");check(at(25,40)==0,"child clipped at ancestor bottom edge");check(at(105,105)==0,"unmapped ancestor suppresses descendants");check(at(1,1)==0xff0000ff,"negative origin clipped safely");check(at(5,1)==0,"negative origin does not spill");check(at(639,479)==0xffffffff,"taskbar remains at bottom desktop coordinates");add(7,0x260,25,35,5,5,0xffffff00,6);srv.composeAndPresent();check(at(25,35)==0xffffff00,"later root sibling covers prior child subtree");protonXWireSetBackground(0x260,0x00112233);protonXWireClearArea(0x260,0,0,0,0);srv.composeAndPresent();check(at(200,200)==0xff112233,"real X11 requested root background is honored");check(at(15,25)==0xffff0000,"root clear preserves child layer");protonXWireSetBackground(1,0x00332211);protonXWireClearArea(1,0,0,0,0);srv.composeAndPresent();check(at(15,25)==0xff332211,"ClearArea uses target guest background");check(at(200,200)==0xff112233,"window clear stays inside target geometry");g_xwirePresentSink=nullptr;std::printf("scene probe: %d passed, %d failed\n",passed,failed);return failed?1:0;}

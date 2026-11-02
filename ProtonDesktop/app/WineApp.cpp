@@ -229,6 +229,16 @@ namespace
         return "unknown";
     }
 
+    std::string AppMemoryStatus()
+    {
+        try
+        {
+            return "appMemoryUsedBytes=" + std::to_string(Windows::System::MemoryManager::AppMemoryUsage) +
+                "; appMemoryLimitBytes=" + std::to_string(Windows::System::MemoryManager::AppMemoryUsageLimit);
+        }
+        catch (...) { return "App memory counters unavailable"; }
+    }
+
     int RunDesktop()
     {
         const auto local = NativePath(Windows::Storage::ApplicationData::Current->LocalFolder->Path);
@@ -241,6 +251,7 @@ namespace
             log.Line("Native SDL/WinRT session entry; no replacement desktop or second CoreApplication.");
             log.Line("Package=" + Utf8(installed));
             log.Line("LocalState=" + Utf8(local));
+            log.Line(AppMemoryStatus());
             const auto runtimeDirectory = local + L"\\Runtimes";
             const auto glibcPath = runtimeDirectory + L"\\glibc-rootfs64.zip";
             const auto winePath = runtimeDirectory + L"\\wine64.zip";
@@ -274,7 +285,11 @@ namespace
             WriteResult(resultPath, "running", nullptr, "");
             const auto result = RunWineSession(request, [&](SessionPhase phase, const std::string& message) noexcept
             {
-                try { log.Line(std::string(PhaseName(phase)) + ": " + message); }
+                try
+                {
+                    log.Line(std::string(PhaseName(phase)) + ": " + message);
+                    log.Line(AppMemoryStatus());
+                }
                 catch (...) { evidenceFailed = true; stop->store(true); OutputDebugStringW(L"Wine session evidence failed; stop requested.\n"); }
             }, stop);
             const auto error = evidenceFailed ? std::string("Session evidence failed; shutdown was requested") : result.error;
