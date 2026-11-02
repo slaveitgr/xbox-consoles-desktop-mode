@@ -1,0 +1,102 @@
+name: ProtonDesktop Windows port
+
+on:
+  push:
+    branches: ['codex/protondesktop']
+    paths: ['ProtonDesktop/**', '.github/workflows/protondesktop.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-host:
+    name: Compile native UWP host
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ProtonDesktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: andrewnakas/Boxedwine64
+          ref: 58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4
+          path: ProtonDesktop/external/Boxedwine64-full
+          persist-credentials: false
+          sparse-checkout: |
+            include
+            lib/sdl2/include
+            lib/simde
+            lib/softfloat
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate original package assets
+        run: python tools/generate_assets.py
+      - name: Build and test portable contracts
+        run: |
+          cmake -S . -B build/windows-contracts -A x64
+          if ($LASTEXITCODE -ne 0) { throw 'Contract configure failed.' }
+          cmake --build build/windows-contracts --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Contract build failed.' }
+          ctest --test-dir build/windows-contracts -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Contract tests failed.' }
+      - name: Compile unsigned UWP host
+        run: ./tools/ci/build_windows_host.ps1
+      - name: Build and check UWP non-executable memory adapter
+        if: ${{ !cancelled() }}
+        run: |
+          $source = (Resolve-Path external/Boxedwine64-full).Path
+          cmake -S backend/uwp -B build/uwp-memory -A x64 "-DBOXEDWINE_SOURCE=$source"
+          if ($LASTEXITCODE -ne 0) { throw 'Memory adapter configure failed.' }
+          cmake --build build/uwp-memory --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Memory adapter build failed.' }
+          ctest --test-dir build/uwp-memory -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Memory adapter tests failed.' }
+      - name: Upload compile evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protondesktop-uwp-host-compile
+          path: |
+            ProtonDesktop/artifacts/windows-host/
+            ProtonDesktop/build/windows-contracts/Testing/Temporary/LastTest.log
+            ProtonDesktop/build/uwp-memory/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  windows-core:
+    name: Build and run actual x64 interpreter on Windows
+    runs-on: windows-2022
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ProtonDesktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: andrewnakas/Boxedwine64
+          ref: 58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4
+          path: ProtonDesktop/external/Boxedwine64-full
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Configure and build pinned Windows core
+        run: ./tools/ci/build_windows_core.ps1
+      - name: Run real interpreter diagnostics
+        run: python tools/ci/run_windows_core.py --executable build/windows-core/boxedwine64-windows.exe --output artifacts/windows-core
+      - name: Upload core evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protondesktop-windows-x64-core
+          path: |
+            ProtonDesktop/artifacts/windows-core/
+            ProtonDesktop/build/windows-core/compile_commands.json
+            ProtonDesktop/build/windows-core/CMakeCache.txt
+          if-no-files-found: warn

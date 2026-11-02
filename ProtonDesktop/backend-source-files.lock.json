@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/andrewnakas/Boxedwine64",
+  "commit": "58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4",
+  "scope": "Pinned Git source inventory, not a complete link closure",
+  "normalization": "None; SHA256 covers raw Git blob bytes at the locked commit",
+  "files": [
+    {
+      "path": "source/emulation/cpu/cpu64.cpp",
+      "upstream_git_blob": "f8d6017f18555728974a665ab391b6b0dbbd922e",
+      "snapshot_sha256": "4a217d5429ca02c981da6b51a7721a9ad75373ce91cc77616aea17a3393dd289"
+    },
+    {
+      "path": "source/emulation/cpu/cpu64RunElf.cpp",
+      "upstream_git_blob": "7fc08c620fe90302c842b61380131af2c3d674f7",
+      "snapshot_sha256": "5fc23ab952d1d5b8728e2c59f6aa75898a63d7d1c8d49f2a312297ddf621b120"
+    },
+    {
+      "path": "source/emulation/cpu/cpu64SelfTest.cpp",
+      "upstream_git_blob": "869ed56b9935c91b258bab7e8dff3bd47a399b2d",
+      "snapshot_sha256": "723a9167ed54e3d67e24f77151728f2f96d939b504e3efe96d9300ac72688fa0"
+    },
+    {
+      "path": "source/emulation/cpu/normal/ripSampler.cpp",
+      "upstream_git_blob": "35a83de882f90da3c68179d674ddf1166a903064",
+      "snapshot_sha256": "e8e3acaff13b74fc0e2d996680503b842a7e36609750bf1626f184b09378f187"
+    },
+    {
+      "path": "source/kernel/kmemory64.cpp",
+      "upstream_git_blob": "b4f0ffa19b00b274d2b848b806d4f0e06554538c",
+      "snapshot_sha256": "2aba2467d74b6c5381706055cf79d0020d2fb53251313f9a4af8073a59b3f394"
+    },
+    {
+      "path": "source/kernel/syscall64.cpp",
+      "upstream_git_blob": "11cae741acf675368c8dcdf82dedfaef38b3dd5a",
+      "snapshot_sha256": "e83904ea34b2770bbc0db71e602c92386e2237a41bd1dd054c230b4c8072fc65"
+    },
+    {
+      "path": "source/kernel/loader/loader64.cpp",
+      "upstream_git_blob": "2c5445dfaa39e9a1af25bf51ba7f1edf5277a550",
+      "snapshot_sha256": "6e0ccf86d833a772c19a429b57c0dae32828627bcd95c426a7dde0bc2259a2ac"
+    },
+    {
+      "path": "source/x11wire/xwireconnection.cpp",
+      "upstream_git_blob": "9a445f2905d84c4c45442b3fe778145900eb7bd9",
+      "snapshot_sha256": "694fa46a437879fab22745a2e1c03b188575a1db4b49395b5707d909d19cf060"
+    },
+    {
+      "path": "source/x11wire/xwireserver.cpp",
+      "upstream_git_blob": "71aef6f22857ae847cb90bef60399f7151c35095",
+      "snapshot_sha256": "e7c6c74405f8c3fe508514e10b9336846b194590df262033f8cf70863018b6c0"
+    },
+    {
+      "path": "source/x11wire/xwirepresentSDL.cpp",
+      "upstream_git_blob": "7fb8b56ec69ff907493666197edb60ed6e266f8c",
+      "snapshot_sha256": "1d6a224b40bc28438810a4d87290e02aa9e19b1a924d04627a8e6c01ab10c784"
+    },
+    {
+      "path": "source/opengl/gl64bridge.cpp",
+      "upstream_git_blob": "d57d4fd3c286e2f685471a6317b8b78123e52a10",
+      "snapshot_sha256": "14342502a20aee6fbe2c4055aa41d40c5cfc23d106183e2970fb9b2f6bc2e002"
+    },
+    {
+      "path": "platform/windows/platform.cpp",
+      "upstream_git_blob": "15f75274dbcdbe53b87c79b632c34e430a2a9a8d",
+      "snapshot_sha256": "8bdb1bba33f8574f07e106d413bafbf89fdbf5041049b622988e206315e9c216"
+    },
+    {
+      "path": "project/msvc/BoxedWine/BoxedWine/BoxedWine.vcxproj",
+      "upstream_git_blob": "1f7382df4ae0ce24273156ae5a5cf1cf20ebd518",
+      "snapshot_sha256": "ecd0d00ecf9b274e6f3f4d75cb817185dd2ac5f99b46968f3409c9695a0d9d94"
+    },
+    {
+      "path": "project/linux/makefile",
+      "upstream_git_blob": "c27766c07458c5bbcf08499458ba8bef7ff731b1",
+      "snapshot_sha256": "ecee5d74538de7a8122d142efac6ba9c65ecb6bc9bc1d51235f8642155b38234"
+    },
+    {
+      "path": "license.txt",
+      "upstream_git_blob": "d60c31a97a544b53039088d14fe9114583c0efc3",
+      "snapshot_sha256": "32b1062f7da84967e7019d01ab805935caa7ab7321a7ced0e30ebe75e5df1670"
+    }
+  ]
+}

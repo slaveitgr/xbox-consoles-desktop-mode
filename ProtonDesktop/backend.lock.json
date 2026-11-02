@@ -1,0 +1,48 @@
+{
+  "schema": 1,
+  "product": "ProtonDesktop",
+  "target": "Xbox One X / Windows x64 UWP",
+  "host_execution": "native C++",
+  "guest_execution": "x86_64 interpreter plus emulated Linux kernel",
+  "wasm": false,
+  "boxedwine64": {
+    "repository": "https://github.com/andrewnakas/Boxedwine64",
+    "commit": "58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4",
+    "license": "GPL-2.0; inspect component notices before redistribution",
+    "source_flag": "BOXEDWINE_GUEST_X64",
+    "uwp_backend_linked": false,
+    "wine_explorer_upstream_status": "experimental"
+  },
+  "older_uwp_reference": {
+    "repository": "https://github.com/worleydl/Boxedwine-uwp",
+    "commit": "e08c29a79375cf8695e794131bf0acd23451319d",
+    "finding": "32-bit guest baseline; no emulator AppContainer target found in this source tree"
+  },
+  "rootfs": {
+    "bundled": false,
+    "upstream_recipe": "tools/rootfs64/build-wine64-zip.sh",
+    "observed_guest": "Debian bookworm Wine 8.0 x86_64",
+    "accepted_artifact_sha256": null,
+    "package_version_manifest": null,
+    "redistribution_qualified": false
+  },
+  "gates": {
+    "guest_x64_windows_compile": false,
+    "uwp_api_partition": false,
+    "uwp_pixel_presenter": false,
+    "elf64_selftests_on_uwp": false,
+    "licensed_rootfs_manifest": false,
+    "wine64_application_window_on_xbox": false,
+    "wine_explorer_desktop_on_xbox": false
+  },
+  "linux_diagnostic_evidence": {
+    "compiled_translation_units": 252,
+    "upstream_cpu64_checks_passed": 907,
+    "self_authored_elf64_smoke_passed": true,
+    "negative_guest_exit_control_passed": true,
+    "source_overlay": "tools/headless-core/gcc-packed-log.patch",
+    "report": "artifacts/headless-core-result.json",
+    "qualifies_windows_or_uwp": false,
+    "wine_executed": false
+  }
+}

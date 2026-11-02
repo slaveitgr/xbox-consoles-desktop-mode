@@ -1,0 +1,13 @@
+/build/
+/artifacts/
+/external/
+/data/
+/.vs/
+__pycache__/
+*.pyc
+*.user
+*.pfx
+*.msix
+*.appx
+*.appxbundle
+*.msixbundle

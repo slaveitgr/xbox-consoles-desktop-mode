@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">
+  <defs>
+    <linearGradient id="base" x2="1" y2="1"><stop stop-color="#061329"/><stop offset="1" stop-color="#123f81"/></linearGradient>
+    <linearGradient id="fold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#56b7fc"/><stop offset=".45" stop-color="#216dd6"/><stop offset="1" stop-color="#122b65"/></linearGradient>
+  </defs>
+  <path fill="url(#base)" d="M0 0h1920v1080H0z"/>
+  <path fill="url(#fold)" opacity=".85" d="M530 1080C180 600 990 520 1130 0h410c-550 610 0 630-150 1080z"/>
+  <path fill="#529cf4" opacity=".22" d="M960 1080C1490 700 640 610 1450 0h220c-850 610 20 760-300 1080z"/>
+</svg>

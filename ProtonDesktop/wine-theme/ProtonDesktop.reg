@@ -1,0 +1,23 @@
+REGEDIT4
+
+; Original ProtonDesktop palette. Import into the guest Wine prefix only.
+; This does not install Microsoft themes, fonts or Windows shell code.
+[HKEY_CURRENT_USER\Control Panel\Colors]
+"ActiveTitle"="243 246 252"
+"InactiveTitle"="239 242 248"
+"TitleText"="28 34 45"
+"InactiveTitleText"="105 113 128"
+"Background"="11 36 74"
+"Window"="250 251 254"
+"WindowText"="28 34 45"
+"Menu"="247 249 253"
+"MenuText"="28 34 45"
+"Hilight"="36 105 213"
+"HilightText"="255 255 255"
+"ButtonFace"="242 245 251"
+"ButtonText"="28 34 45"
+"GrayText"="115 123 139"
+"Scrollbar"="231 236 245"
+
+[HKEY_CURRENT_USER\Software\Wine\Explorer\Desktops]
+"ProtonDesktop"="1920x1080"

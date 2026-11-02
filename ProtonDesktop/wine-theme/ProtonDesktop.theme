@@ -1,0 +1,21 @@
+; Original palette-only theme source. No .msstyles or Microsoft assets.
+[Theme]
+DisplayName=ProtonDesktop Light
+
+[Control Panel\Colors]
+ActiveTitle=243 246 252
+InactiveTitle=239 242 248
+TitleText=28 34 45
+Window=250 251 254
+WindowText=28 34 45
+Menu=247 249 253
+MenuText=28 34 45
+Hilight=36 105 213
+HilightText=255 255 255
+ButtonFace=242 245 251
+ButtonText=28 34 45
+Background=11 36 74
+
+[Control Panel\Desktop]
+TileWallpaper=0
+WallpaperStyle=10

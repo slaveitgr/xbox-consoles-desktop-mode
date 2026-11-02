@@ -1,0 +1,9 @@
+--- loader64.cpp
++++ loader64.cpp
+@@ -64,5 +64,5 @@
+     }
+     if (ehdr.e_machine != k_EM_X86_64) {
+-        klog_fmt("ElfLoader64::parseBuffer: unsupported e_machine 0x%x (only x86-64 is supported in v1)", ehdr.e_machine);
++        klog_fmt("ElfLoader64::parseBuffer: unsupported e_machine 0x%x (only x86-64 is supported in v1)", static_cast<U16>(ehdr.e_machine));
+         return result;
+     }
