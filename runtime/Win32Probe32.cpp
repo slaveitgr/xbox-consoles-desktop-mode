@@ -308,6 +308,10 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
     for (const auto& call : guest.calls) report << "  " << call << '\n';
     if (!guest.failure.empty()) report << "Host-call failure: " << guest.failure << '\n';
     if (startupTrace) {
+        if (guest.image.certificateSize)
+            report << "SECURITY certificate table: file offset " << Hex(guest.image.certificateFileOffset)
+                   << ", size " << guest.image.certificateSize << ", records " << guest.image.certificateCount
+                   << "; structural revision 0x200/type 0x2 checks only. Certificate bytes are not mapped; Authenticode signature/trust is not verified.\n";
         report << "Mapped sections:\n";
         for (const auto& section : guest.image.sections)
             report << "  " << Hex(guest.image.base + section.rva) << " size " << section.size << " "

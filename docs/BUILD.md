@@ -101,7 +101,7 @@ Windows build machine:
   -SourcePackage C:\input\DesktopMode_1.0.46.0_x64.msix `
   -BridgeDirectory artifacts\upstream-bridge-x86\Release `
   -OutputDirectory artifacts\patched-desktop `
-  -Version 1.0.46.4 `
+  -Version 1.0.46.5 `
   -ExpectedSourceSha256 4691181e07f68f8d8c58e96ad44d4a01a9d2ccf1381669fd3ffa61d1e492beea
 ```
 

@@ -15,6 +15,17 @@ std::string HexRva(std::uint64_t value) {
     text << "0x" << std::hex << value;
     return text.str();
 }
+std::string DirectoryDescription(std::uint32_t index, std::uint32_t address,
+                                 std::uint32_t size) {
+    static constexpr const char* names[] = {
+        "EXPORT", "IMPORT", "RESOURCE", "EXCEPTION", "SECURITY", "BASERELOC",
+        "DEBUG", "ARCHITECTURE", "GLOBALPTR", "TLS", "LOAD_CONFIG",
+        "BOUND_IMPORT", "IAT", "DELAY_IMPORT", "CLR", "RESERVED"
+    };
+    return "PE32 " + std::string(names[index]) + " directory " + std::to_string(index) +
+        " (" + (index == 4 ? "file offset " : "RVA ") + HexRva(address) +
+        ", size " + HexRva(size) + ")";
+}
 bool Range(std::size_t at, std::size_t length, std::size_t total) {
     return at <= total && length <= total - at;
 }
@@ -215,12 +226,23 @@ Pe32Image Map(const std::uint8_t* data, std::size_t size, Pe32Profile profile) {
         const auto rva = file.U32(optional + 96 + n * 8);
         const auto length = file.U32(optional + 100 + n * 8);
         if (!rva && !length) continue;
-        if (!rva || !length) Fail("Inconsistent PE32 directory address and size.");
+        if (!rva || !length)
+            Fail(DirectoryDescription(n, rva, length) + ": inconsistent address and size.");
+        if (n == 4 && profile == Pe32Profile::StartupTrace) {
+            // Unlike the other data directories, SECURITY refers to input
+            // file bytes, never an RVA. Validate after section raw ranges are
+            // known; do not apply SizeOfImage or copy this table into memory.
+            image.certificateFileOffset = rva;
+            image.certificateSize = length;
+            continue;
+        }
         if (n == 1) { importRva = rva; importSize = length; }
         else if (n == 13 && profile == Pe32Profile::StartupTrace) { delayRva = rva; delaySize = length; }
         else if (n != 2 && n != 6 && n != 12)
-            Fail("PE32 directory is unsupported by this initial loader (including TLS, relocations and delay imports).");
-        if (!Range(rva, length, imageSize)) Fail("PE32 directory exceeds SizeOfImage.");
+            Fail(DirectoryDescription(n, rva, length) + ": unsupported by the " +
+                 (profile == Pe32Profile::Fixture ? "strict fixture" : "startup trace") + " profile.");
+        if (!Range(rva, length, imageSize))
+            Fail(DirectoryDescription(n, rva, length) + ": range exceeds SizeOfImage.");
     }
     struct Raw { std::uint32_t at, size; };
     std::vector<Raw> raw;
@@ -254,6 +276,50 @@ Pe32Image Map(const std::uint8_t* data, std::size_t size, Pe32Profile profile) {
         }
         image.sections.push_back(section);
         raw.push_back({rawAt, rawSize});
+    }
+    if (image.certificateSize) {
+        const auto certificateAt = image.certificateFileOffset;
+        const auto certificateSize = image.certificateSize;
+        const auto description = DirectoryDescription(4, certificateAt, certificateSize);
+        if ((certificateAt & 7U) || (certificateSize & 7U))
+            Fail(description + ": file offset and size must be 8-byte aligned.");
+        if (!Range(certificateAt, certificateSize, size))
+            Fail(description + ": certificate file range exceeds the input file.");
+        if (certificateAt < image.headerSize)
+            Fail(description + ": certificate table overlaps PE headers.");
+        const auto certificateEnd = static_cast<std::uint64_t>(certificateAt) + certificateSize;
+        for (std::size_t n = 0; n < raw.size(); ++n) {
+            if (raw[n].size && certificateAt < static_cast<std::uint64_t>(raw[n].at) + raw[n].size &&
+                raw[n].at < certificateEnd)
+                Fail(description + ": certificate table overlaps raw section " + std::to_string(n) +
+                     " at file offset " + HexRva(raw[n].at) + ", size " + HexRva(raw[n].size) + ".");
+        }
+        std::size_t consumed = 0;
+        while (consumed < certificateSize) {
+            if (image.certificateCount == 256)
+                Fail(description + ": certificate record count exceeds the 256-record limit.");
+            const auto at = static_cast<std::size_t>(certificateAt) + consumed;
+            const auto record = description + " record at file offset " + HexRva(at);
+            if (!Range(consumed, 8, certificateSize))
+                Fail(record + ": truncated WIN_CERTIFICATE header.");
+            const auto length = file.U32(at);
+            if (length < 8)
+                Fail(record + ": WIN_CERTIFICATE dwLength must be at least 8 bytes.");
+            const auto rounded = (static_cast<std::uint64_t>(length) + 7U) & ~std::uint64_t{7};
+            if (rounded > certificateSize - consumed)
+                Fail(record + ": rounded WIN_CERTIFICATE length exceeds the certificate table.");
+            const auto revision = file.U16(at + 4), type = file.U16(at + 6);
+            if (revision != 0x0200 || type != 0x0002)
+                Fail(record + ": unsupported certificate revision " + HexRva(revision) +
+                     " or type " + HexRva(type) + "; this structural profile accepts revision 0x200/type 0x2 only.");
+            // The payload is deliberately opaque: this is a structural file
+            // check, not PKCS#7 parsing, signature verification or trust.
+            for (std::size_t n = length; n < rounded; ++n)
+                if (data[at + n] != 0)
+                    Fail(record + ": WIN_CERTIFICATE alignment padding must be zero.");
+            consumed += static_cast<std::size_t>(rounded);
+            ++image.certificateCount;
+        }
     }
     bool executableEntry = false;
     for (const auto& section : image.sections)

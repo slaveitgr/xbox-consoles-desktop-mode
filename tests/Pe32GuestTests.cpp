@@ -5,8 +5,10 @@
 #include <algorithm>
 #include <cstdint>
 #include <iostream>
+#include <initializer_list>
 #include <limits>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -437,6 +439,136 @@ void ReadOnlyStartupIats() {
           "oversized IAT RVA is diagnosed before guest byte access");
 }
 
+Bytes WithCertificates(Bytes bytes, std::uint32_t offset, std::initializer_list<std::uint32_t> lengths) {
+    Bytes table;
+    for (const auto length : lengths) {
+        const auto start = table.size();
+        const auto padded = (length + 7U) & ~7U;
+        table.resize(start + padded, 0);
+        Put32(table, start, length); Put16(table, start + 4, 0x200); Put16(table, start + 6, 2);
+        // Deliberately opaque bytes, not a valid PKCS7 document. Structural
+        // acceptance must never be mistaken for signature verification.
+        std::fill(table.begin() + start + 8, table.begin() + start + length, 0xa5);
+    }
+    bytes.resize(std::max(bytes.size(), static_cast<std::size_t>(offset) + table.size()), 0);
+    std::copy(table.begin(), table.end(), bytes.begin() + offset);
+    Directory(bytes, 4, offset, static_cast<std::uint32_t>(table.size()));
+    return bytes;
+}
+Bytes CertificateFixture(std::uint32_t offset = 0x800, std::initializer_list<std::uint32_t> lengths = {16}) {
+    return WithCertificates(Fixture(), offset, lengths);
+}
+void RejectsCertificate(const Bytes& bytes, const std::string& label) {
+    const auto result = LoadStartup(bytes);
+    Check(!result.ok && result.image.bytes.empty(), label + " rejects without exposing a partial image");
+    Check(Has(result.message, "PE32 SECURITY directory 4"), label + " identifies the certificate directory");
+}
+void StartupCertificates() {
+    const auto plain = LoadStartup(Fixture());
+    Check(plain.ok && plain.image.certificateFileOffset == 0 && plain.image.certificateSize == 0 &&
+          plain.image.certificateCount == 0, "absent certificate directory has no invented metadata");
+    const auto bytes = CertificateFixture();
+    const auto mapped = LoadStartup(bytes);
+    Check(mapped.ok, "startup accepts an aligned bounded PKCS_SIGNED_DATA certificate structure without verifying its opaque payload");
+    Check(!Load(bytes).ok, "strict fixture profile still rejects a valid certificate directory");
+    if (mapped.ok) {
+        Check(mapped.image.certificateFileOffset == 0x800 && mapped.image.certificateSize == 16 &&
+              mapped.image.certificateCount == 1, "certificate file offset, table size and record count remain explicit metadata");
+        if (plain.ok) {
+            auto expected = plain.image.bytes;
+            std::copy_n(bytes.begin() + Optional + 96 + 4 * 8, 8, expected.begin() + Optional + 96 + 4 * 8);
+            Check(mapped.image.bytes == expected, "certificate overlay changes only its header directory and is never copied into mapped image bytes");
+        }
+        Check(mapped.image.bytes.size() == 0x4000 && mapped.image.imports.size() == 4,
+              "certificate metadata neither enlarges virtual memory nor changes imports");
+    }
+    const auto executed = xcdm::runtime::TraceWin32Startup32(bytes.data(), bytes.size());
+    Check(executed.passed && Has(executed.report, "x86 Win32 host calls passed"),
+          "self-authored startup still executes through its real imports with a certificate overlay");
+    Check(Has(executed.report, "Certificate bytes are not mapped; Authenticode signature/trust is not verified."),
+          "startup report explicitly distinguishes structural certificate acceptance from signature trust");
+
+    const auto chained = LoadStartup(CertificateFixture(0x800, {17, 8}));
+    Check(chained.ok && chained.image.certificateSize == 32 && chained.image.certificateCount == 2,
+          "WIN_CERTIFICATE records use dwLength plus zero alignment padding, including a minimal eight-byte record");
+    auto trailing = bytes; trailing.resize(trailing.size() + 8, 0x5a);
+    Check(LoadStartup(trailing).ok, "bounded certificate table need not occupy the final file bytes");
+
+    const auto beyondImage = LoadStartup(CertificateFixture(0x5000));
+    Check(beyondImage.ok && beyondImage.image.certificateFileOffset == 0x5000 &&
+          beyondImage.image.bytes.size() == 0x4000,
+          "SECURITY address is checked against file size and may lie beyond SizeOfImage");
+    const auto sameAsRva = LoadStartup(CertificateFixture(0x3000));
+    const std::string message = "x86 Win32 host calls passed";
+    Check(sameAsRva.ok && std::equal(message.begin(), message.end(), sameAsRva.image.bytes.begin() + 0x3000),
+          "a certificate file offset numerically equal to a section RVA does not overwrite that guest section");
+    auto gap = bytes;
+    gap.resize(0xc00, 0);
+    std::copy_n(gap.begin() + MessageFile, 0x200, gap.begin() + 0xa00);
+    Put32(gap, Sections + 80 + 20, 0xa00);
+    std::copy_n(bytes.begin() + 0x800, 16, gap.begin() + MessageFile);
+    Directory(gap, 4, MessageFile, 16);
+    Check(LoadStartup(gap).ok, "certificate table may occupy an unmapped file gap before a later raw section");
+
+    Bytes readCode{0xa1}; Append32(readCode, Base + 0x800); AppendExit(readCode);
+    const auto readImage = WithCertificates(Program(readCode), 0x800, {16});
+    const auto refused = xcdm::runtime::TraceWin32Startup32(readImage.data(), readImage.size());
+    Check(!refused.passed && Has(refused.report, "Guest data memory access was refused"),
+          "a certificate overlay grants no readable guest mapping at its file offset");
+
+    for (const auto pair : {std::pair<std::uint32_t, std::uint32_t>{0, 16}, {0x800, 0}}) {
+        auto invalid = bytes; Directory(invalid, 4, pair.first, pair.second);
+        RejectsCertificate(invalid, "inconsistent certificate address/size pair");
+    }
+    for (const auto pair : {std::pair<std::uint32_t, std::uint32_t>{0x801, 16}, {0x800, 15},
+                            {0xfffffff8U, 16}, {0x800, 0xfffffff8U}, {0x810, 8}, {0x808, 16}}) {
+        auto invalid = bytes; Directory(invalid, 4, pair.first, pair.second);
+        RejectsCertificate(invalid, "misaligned, overflowing or out-of-file certificate range");
+    }
+    auto invalid = bytes; invalid.pop_back();
+    RejectsCertificate(invalid, "certificate table truncated in the input file");
+    for (const auto offset : {0x40U, 0x1f8U, 0x200U, 0x400U, 0x600U, 0x7f8U}) {
+        invalid = bytes;
+        std::copy_n(bytes.begin() + 0x800, 16, invalid.begin() + offset);
+        Directory(invalid, 4, offset, 16);
+        RejectsCertificate(invalid, "certificate table overlaps mapped headers or a section raw range");
+    }
+    for (const auto length : {0U, 1U, 7U, 17U, 0xffffffffU}) {
+        invalid = bytes; Put32(invalid, 0x800, length);
+        RejectsCertificate(invalid, "WIN_CERTIFICATE length is too short, overlong or overflows alignment");
+    }
+    invalid = CertificateFixture(0x800, {9}); invalid[0x809] = 1;
+    RejectsCertificate(invalid, "WIN_CERTIFICATE external alignment padding is nonzero");
+    invalid = CertificateFixture(0x800, {16, 16}); Put32(invalid, 0x810, 0);
+    RejectsCertificate(invalid, "a later malformed record cannot hide behind an earlier valid certificate");
+    for (const auto revision : {0U, 0x100U, 0x201U}) {
+        invalid = bytes; Put16(invalid, 0x804, static_cast<std::uint16_t>(revision));
+        RejectsCertificate(invalid, "unsupported certificate revision");
+    }
+    for (const auto type : {0U, 1U, 3U, 4U, 0xffffU}) {
+        invalid = bytes; Put16(invalid, 0x806, static_cast<std::uint16_t>(type));
+        RejectsCertificate(invalid, "unsupported certificate type");
+    }
+    auto many = bytes;
+    many.resize(0x800 + 257 * 8, 0);
+    for (unsigned n = 0; n < 257; ++n) {
+        Put32(many, 0x800 + n * 8, 8); Put16(many, 0x804 + n * 8, 0x200); Put16(many, 0x806 + n * 8, 2);
+    }
+    Directory(many, 4, 0x800, 256 * 8);
+    const auto limit = LoadStartup(many);
+    Check(limit.ok && limit.image.certificateCount == 256, "certificate record count accepts its exact bounded maximum");
+    Directory(many, 4, 0x800, 257 * 8);
+    RejectsCertificate(many, "certificate record count exceeds its bounded maximum");
+
+    for (const auto index : {5U, 9U, 14U}) {
+        invalid = bytes; Directory(invalid, index, 0x2000, 32);
+        const auto result = LoadStartup(invalid);
+        Check(!result.ok && result.image.bytes.empty() && Has(result.message, "directory " + std::to_string(index)) &&
+              Has(result.message, "0x2000"),
+              "certificate support does not enable TLS/relocation/CLR and reports the exact unsupported directory index and RVA");
+    }
+}
+
 void SharedStartupLimits() {
     const auto libraries = [](unsigned normal, unsigned delay) {
         auto bytes = LargeImportImage();
@@ -534,6 +666,7 @@ int main() {
     SuccessfulAndFailedCalls();
     StartupDelayImports();
     ReadOnlyStartupIats();
+    StartupCertificates();
     SharedStartupLimits();
     RuntimeMemoryPermissions();
     std::cout << checks << " PE32 loader and Win32 execution checks; " << failures << " failures\n";

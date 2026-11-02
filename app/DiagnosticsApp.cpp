@@ -87,6 +87,8 @@ constexpr std::array<D2D1_RECT_F, 5> GameButtons{{
     {1476.0f, 755.0f, 1796.0f, 817.0f}
 }};
 constexpr wchar_t GameFolderToken[] = L"GamePreflightFolder";
+constexpr wchar_t StartupTargetFile[] = L"startup-target.txt";
+constexpr std::uint32_t MaxStartupTargetBytes = 256;
 constexpr std::uint64_t MaxGameImageBytes = 64ULL * 1024 * 1024;
 constexpr std::uint32_t MaxGameFolderEntries = 256;
 enum class Page { Game, Runtime, Controllers };
@@ -179,6 +181,31 @@ std::wstring GamepadButtonNames(GamepadButtons buttons) {
 std::wstring Wide(std::string const& text) {
     auto value = to_hstring(text);
     return std::wstring(value.c_str(), value.size());
+}
+
+bool ParseStartupTarget(std::vector<std::uint8_t> const& bytes, std::wstring& filename) {
+    std::size_t first = 0, last = bytes.size();
+    // Permit a UTF-8 BOM and one ordinary line ending, not embedded controls.
+    if (last >= 3 && bytes[0] == 0xef && bytes[1] == 0xbb && bytes[2] == 0xbf) first = 3;
+    if (last > first && bytes[last - 1] == '\n') --last;
+    if (last > first && bytes[last - 1] == '\r') --last;
+    if (last - first < 5 || last - first > 128) return false;
+    std::wstring candidate;
+    candidate.reserve(last - first);
+    for (auto index = first; index < last; ++index) {
+        const auto value = bytes[index];
+        if (!((value >= 'a' && value <= 'z') || (value >= 'A' && value <= 'Z') ||
+              (value >= '0' && value <= '9') || value == '_' || value == '-' || value == '.'))
+            return false;
+        candidate += static_cast<wchar_t>(value);
+    }
+    const auto extension = candidate.size() - 4;
+    if (candidate.find(L"..") != std::wstring::npos || candidate[extension] != L'.' ||
+        std::towlower(candidate[extension + 1]) != L'e' ||
+        std::towlower(candidate[extension + 2]) != L'x' ||
+        std::towlower(candidate[extension + 3]) != L'e') return false;
+    filename = std::move(candidate);
+    return true;
 }
 
 std::wstring UtcNow() {
@@ -733,22 +760,63 @@ private:
         auto lifetime = get_strong();
         m_traceBusy = true;
         m_traceComplete = false;
-        m_traceSummary = L"Opening the selected game folder for a bounded startup trace...";
+        m_traceSummary = L"Resolving the executable target for a bounded startup trace...";
         m_traceStatus = L"No folder picker is needed for a saved folder grant.";
         StorageFolder folder = m_gameFolder;
+        std::wstring targetName{L"gta_sa.exe"};
+        std::wstring targetSelection{L"Default; LocalState/startup-target.txt is absent"};
         std::wstring sourcePath;
         std::wstring failure;
         try {
+            StorageFile configuration{nullptr};
+            try {
+                configuration = co_await ApplicationData::Current().LocalFolder().GetFileAsync(StartupTargetFile);
+            } catch (hresult_error const& error) {
+                // Only a genuinely missing override selects the GTA default.
+                if (error.code().value != HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)) throw;
+            }
+            if (configuration) {
+                targetSelection = L"LocalState/startup-target.txt override";
+                const auto stream = co_await configuration.OpenReadAsync();
+                const auto size = stream.Size();
+                if (size == 0 || size > MaxStartupTargetBytes) {
+                    failure = L"Startup target rejected: startup-target.txt must contain 1 to 256 bytes.";
+                } else {
+                    Windows::Storage::Streams::DataReader reader(stream.GetInputStreamAt(0));
+                    const auto wanted = static_cast<std::uint32_t>(size);
+                    const auto loaded = co_await reader.LoadAsync(wanted);
+                    if (loaded != wanted || stream.Size() != size) {
+                        failure = L"Startup target rejected: startup-target.txt could not be read completely.";
+                    } else {
+                        std::vector<std::uint8_t> bytes(wanted);
+                        reader.ReadBytes(bytes);
+                        if (!ParseStartupTarget(bytes, targetName))
+                            failure = L"Startup target rejected: use one ASCII .exe basename of at most 128 characters, without paths or '..'.";
+                    }
+                }
+            }
+        } catch (hresult_error const& error) {
+            failure = ApiError(L"Startup target configuration could not be read", error);
+        } catch (...) {
+            failure = L"Startup target configuration could not be read. No executable was selected.";
+        }
+        if (!failure.empty()) {
+            targetName.clear();
+            targetSelection = L"Rejected LocalState/startup-target.txt; no default fallback";
+        }
+        if (m_closed) { m_traceBusy = false; co_return; }
+        m_traceTarget = targetName.empty() ? L"No target selected" : targetName;
+        try {
             // Resolve the stored grant on the UI thread; never reopen the picker
             // or stage a copy of the game just to repeat the startup trace.
-            if (!folder) {
+            if (failure.empty() && !folder) {
                 const auto grants = Windows::Storage::AccessCache::StorageApplicationPermissions::FutureAccessList();
                 if (grants.ContainsItem(GameFolderToken))
                     folder = co_await grants.GetFolderAsync(GameFolderToken);
                 else failure = L"Choose game folder first. No saved folder grant is available.";
             }
             if (m_closed) { m_traceBusy = false; co_return; }
-            if (folder) {
+            if (failure.empty() && folder) {
                 sourcePath = folder.Path().c_str();
                 if (!m_gameFolder || m_gameFolder == folder) {
                     m_gameFolder = folder;
@@ -768,14 +836,14 @@ private:
         std::uint64_t fileSize = 0;
         std::wstring fingerprint;
         if (failure.empty()) {
-            m_traceSummary = L"Reading gta_sa.exe and executing at most 50,000 guest instructions...";
+            m_traceSummary = L"Reading " + targetName + L" and executing at most 50,000 guest instructions...";
             try {
                 co_await resume_background();
-                const auto file = folder.GetFileAsync(L"gta_sa.exe").get();
+                const auto file = folder.GetFileAsync(targetName).get();
                 const auto stream = file.OpenReadAsync().get();
                 fileSize = stream.Size();
                 if (fileSize == 0 || fileSize > MaxGameImageBytes) {
-                    failure = L"Startup trace skipped: gta_sa.exe must be between 1 byte and 64 MiB.";
+                    failure = L"Startup trace skipped: " + targetName + L" must be between 1 byte and 64 MiB.";
                 } else {
                     Windows::Storage::Streams::DataReader reader(stream.GetInputStreamAt(0));
                     const auto wanted = static_cast<std::uint32_t>(fileSize);
@@ -813,17 +881,18 @@ private:
         m_traceTime = UtcNow();
         m_traceSummary = failure.empty() ? Wide(result.summary) : failure;
         std::wostringstream report;
-        report << L"Xbox Desktop Mode / bounded game startup trace\n"
+        report << L"Xbox Desktop Mode / bounded executable startup trace\n"
                << L"Trace completed: " << m_traceTime << L"\n"
                << L"Device family: " << m_deviceFamily << L"\nOS version: " << m_osVersion << L"\n"
                << L"Application architecture: x64\nGuest architecture: x86 / PE32\n"
-               << L"Source folder: " << sourcePath << L"\nFile: gta_sa.exe\n"
+               << L"Target selection: " << targetSelection << L"\n"
+               << L"Source folder: " << sourcePath << L"\nFile: " << m_traceTarget << L"\n"
                << L"File size: " << fileSize << L" bytes\nSHA-256: " << fingerprint << L"\n"
                << L"Instruction budget: 50000\nRunner invoked: " << (runnerInvoked ? L"yes" : L"no") << L"\n"
                << L"Guest explicitly exited zero: " << (runnerInvoked && failure.empty() && result.passed ? L"yes" : L"no") << L"\n"
                << L"Stop summary: " << m_traceSummary << L"\n\n" << Wide(result.report) << L"\n"
                << L"Guest execution is bounded and stops at missing Win32 APIs or unsupported instructions.\n"
-               << L"This is a startup trace, not a gameplay or compatibility pass. The D3D9 game runtime is not implemented.\n";
+               << L"This is a bounded startup trace, not proof of installer, application or game compatibility.\n";
         try {
             const auto version = Package::Current().Id().Version();
             report << L"Package version: " << version.Major << L'.' << version.Minor << L'.'
@@ -1489,20 +1558,20 @@ private:
              m_x86Complete ? (m_x86Passed ? 0x8CEB67 : 0xFF9292) : 0xF1C875);
         Text(m_x86Summary.substr(0, 120), {124, 604, 720, 660}, m_small.get(), 0xD1DCD5);
         Text(m_x86Status, {124, 666, 720, 719}, m_small.get(), 0x9FB0A4);
-        Text(L"Executable inspection", {806, 277, 1768, 324}, m_heading.get(), 0xF0F5F1);
+        Text(L"GTA preflight: gta_sa.exe", {806, 277, 1768, 324}, m_heading.get(), 0xF0F5F1);
         Text(m_gameSummary, {806, 338, 1768, 418}, m_body.get(),
              m_gameMetadataRecognized ? 0xD1DCD5 : 0xF1C875);
         Fill({806, 431, 1768, 433}, 0x2B3C30);
-        Text(L"Game startup trace", {806, 445, 1768, 488}, m_heading.get(), 0xF1C875);
-        Text(L"Trace: " + m_traceTime, {806, 493, 1768, 522}, m_small.get(), 0x9FB0A4);
+        Text(L"Executable startup trace", {806, 445, 1768, 488}, m_heading.get(), 0xF1C875);
+        Text(m_traceTarget + L" / " + m_traceTime, {806, 493, 1768, 522}, m_small.get(), 0x9FB0A4);
         Text(m_traceSummary.substr(0, 240), {806, 529, 1768, 616}, m_small.get(), 0xF1C875);
         Text(m_traceStatus, {806, 624, 1768, 677}, m_small.get(), 0x9FB0A4);
-        Text(L"Startup trace only. D3D9 gameplay is not implemented.", {806, 685, 1768, 714}, m_small.get(), 0xF1C875);
+        Text(L"Startup trace only; this does not establish application compatibility.", {806, 685, 1768, 714}, m_small.get(), 0xF1C875);
         const std::array<std::wstring, 5> labels{{
             m_gameBusy ? L"Inspecting..." : L"Choose game folder",
-            L"Rescan folder",
+            L"Inspect GTA",
             m_x86Busy ? L"Running x86 test..." : L"Run x86 test",
-            m_traceBusy ? L"Tracing startup..." : L"Trace game startup",
+            m_traceBusy ? L"Tracing startup..." : L"Trace executable",
             m_gameSaving || m_x86Saving || m_traceSaving ? L"Saving..." : L"Save reports"
         }};
         for (std::size_t index = 0; index < GameButtons.size(); ++index) {
@@ -1525,7 +1594,7 @@ private:
              {124, 909, 1768, 937}, m_small.get(), 0x9FB0A4);
         Text(L"D-pad  Select action     A  Activate     X  Save reports     Y  Runtime checks",
              {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
-        Text(L"Keyboard: O folder  |  R inspect  |  T self-test  |  G trace game  |  S save  |  arrows / Tab select  |  Enter activate  |  C page",
+        Text(L"Keyboard: O folder  |  R inspect GTA  |  T self-test  |  G trace exe  |  S save  |  arrows / Tab select  |  Enter activate  |  C page",
              {96, 1006, 1796, 1043}, m_small.get(), 0x9FB0A4);
     }
 
@@ -1664,7 +1733,8 @@ private:
     std::wstring m_x86Status{L"The test starts automatically. T runs it again."};
     std::wstring m_x86TestTime{L"Not run"}, m_x86Report;
     bool m_traceBusy{false}, m_traceSaving{false}, m_traceComplete{false};
-    std::wstring m_traceSummary{L"Use the selected USB game folder for a bounded x86 startup trace."};
+    std::wstring m_traceTarget{L"gta_sa.exe"};
+    std::wstring m_traceSummary{L"Trace gta_sa.exe, or the basename selected by LocalState/startup-target.txt, in the saved USB folder."};
     std::wstring m_traceStatus{L"The saved folder is tried automatically. G repeats the trace."};
     std::wstring m_traceTime{L"Not run"}, m_traceReport;
     bool m_rawApiOkay{false}, m_gamepadApiOkay{false}, m_associationWarning{false};

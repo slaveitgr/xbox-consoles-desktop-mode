@@ -135,6 +135,44 @@ adapter, not a complete module registry or Windows loader.
 
 Primary API reference: [GetModuleHandleA](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlea).
 
+## Selecting an executable for the startup diagnostic
+
+The companion defaults to `gta_sa.exe` in the previously granted USB folder.
+For a different local test image, place a `startup-target.txt` file in the
+companion's LocalState containing one simple ASCII `.exe` basename, such as
+`SteamSetup.exe`. This selects the file only for the bounded startup trace;
+the separately labeled GTA metadata preflight still inspects `gta_sa.exe`.
+
+The control file is limited to 256 bytes and the name to 128 characters, using
+letters, digits, underscore, hyphen and dot. Paths, `..`, embedded controls and
+non-ASCII names are rejected. A UTF-8 BOM and one trailing line ending are
+accepted. A missing control file selects the default; a present malformed or
+unreadable file stops explicitly without running a fallback executable.
+
+The saved folder grant, 64-MiB input limit and 50,000-instruction budget still
+apply. The report retains the name `game-startup.txt` and records the actual
+target, selection source and whether the packaged runner was invoked. No
+installer or game is bundled. Remove the override to restore the GTA default.
+
+## File-only certificate metadata, version 0.10
+
+The startup profile accepts a bounded PE SECURITY directory (index 4). Unlike
+other directories, its address is a **file offset**, not an image RVA; the
+certificate payload is never copied into guest memory or exposed as executable
+code. The table must be 8-byte aligned and entirely inside the input file,
+without overlapping PE headers or any section's raw file bytes.
+
+The structural profile walks at most 256 WIN_CERTIFICATE records. Each has at
+least its 8-byte header, revision 0x0200/type 0x0002, and an extent rounded to an
+8-byte boundary; the extents must exactly cover the table and external padding
+must be zero. Other revisions/types stop explicitly. Certificate contents are
+opaque: this does **not** verify PKCS#7, Authenticode signatures or trust. The
+strict fixture profile continues to reject certificate directories. TLS,
+relocations, CLR and other unsupported execution-affecting directories remain
+rejected, with the directory name/index/address/size included in diagnostics.
+
+Primary format reference: [Microsoft PE certificate table](https://learn.microsoft.com/en-us/windows/win32/debug/pe-format#the-attribute-certificate-table-image-only).
+
 ## Build and desktop integration
 
 `tools/build-upstream.ps1 -WithX86Backend` applies the checked-in overlay to a
