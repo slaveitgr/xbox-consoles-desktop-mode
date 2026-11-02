@@ -15,6 +15,7 @@ function(proton_prepare_wine_session source_root profile_root result_variable)
     "${profile_root}/source/emulation/cpu/normal/normalPlatformMultiThreaded.cpp")
   set(replaced_core "${core_sources}")
   list(REMOVE_ITEM replaced_core "${source_root}/source/kernel/kprocess.cpp"
+    "${source_root}/source/kernel/kmemory64.cpp"
     "${source_root}/source/sdl/multiThreaded/threadedMainloop.cpp"
     "${source_root}/source/x11wire/xwirepresentSDL.cpp")
   set(core_sources "${replaced_core}" PARENT_SCOPE)
@@ -24,6 +25,7 @@ function(proton_prepare_wine_session source_root profile_root result_variable)
   set(${result_variable}
     "${profile_root}/source/sdl/startupArgs.cpp"
     "${profile_root}/source/kernel/kprocess.cpp"
+    "${profile_root}/source/kernel/kmemory64.cpp"
     "${profile_root}/source/sdl/multiThreaded/threadedMainloop.cpp"
     "${profile_root}/source/x11wire/xwirepresentSDL.cpp"
     "${profile_root}/platform/sdl/knativeinputSDL.cpp" PARENT_SCOPE)

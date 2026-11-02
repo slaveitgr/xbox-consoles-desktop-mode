@@ -76,6 +76,7 @@ int main(int argc, char** argv)
         Check(unzClose(reader) == UNZ_OK, "close archive");
         std::ifstream input(original, std::ios::binary);
         std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(input)), {});
+        input.close(); // Windows cannot remove the fixture while this stream owns it.
         Check(bytes.size() > 64, "complete self-authored archive");
         {
             std::ofstream output(truncated, std::ios::binary);

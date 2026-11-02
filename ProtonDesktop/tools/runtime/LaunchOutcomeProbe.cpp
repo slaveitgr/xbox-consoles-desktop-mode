@@ -3,6 +3,7 @@
 // No Wine runs. Rejected launches create no guest worker; the two successful
 // controls execute ONLY our self-authored static ELF instruction sequences.
 #include "boxedwine.h"
+#include "kmemory64.h"
 #include "knativesystem.h"
 #include "backend/uwp/UwpGuestWorkers.h"
 #include <cstdio>
@@ -25,6 +26,23 @@ int main(int argc, char** argv)
         std::printf("%s: %s\n", condition ? "PASS" : "FAIL", label);
         if (!condition) ++failed;
     };
+    {
+        KMemory64 parent(nullptr), child(nullptr);
+        const U64 inherited = parent.mmapReserveAndMap(8192, 3);
+        parent.writeq(inherited, 0x1122334455667788ULL);
+        const U64 reserved = parent.mmapReserveAndMap(8192, 0);
+        child.cloneFrom(&parent);
+        check(child.readq(inherited) == 0x1122334455667788ULL,
+              "fork inherits committed guest bytes");
+        const U64 next = child.mmapReserveAndMap(4096, 3);
+        check(next >= reserved + 8192,
+              "child mmap preserves committed and untouched PROT_NONE reservations");
+        check(child.readq(inherited) == 0x1122334455667788ULL,
+              "child mmap does not overwrite inherited dynamic-linker data");
+        child.writeq(inherited, 0x8877665544332211ULL);
+        check(parent.readq(inherited) == 0x1122334455667788ULL,
+              "private fork writes leave the parent address space unchanged");
+    }
     for (const char* path : {"/missing.elf", "/not-elf", "/missing-interpreter.elf", "/valid-static.elf"})
     {
         auto process = KProcess::create();

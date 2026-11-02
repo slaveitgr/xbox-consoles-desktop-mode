@@ -131,12 +131,48 @@ namespace
         Require(workers.Spawn([gate] { threadExit.gate = gate; }, 77, pin, error), "launch entry with blocking real TLS destructor");
         pin.reset();
         entered.wait();
-        Require(workers.Snapshot().finished == 0 && workers.ProcessActive(77) && !retained.expired(),
-                "function return cannot advertise completion before TLS destruction");
-        auto reaper = std::async(std::launch::async, [&] { std::string local; return workers.ReapCompleted(local); });
-        const bool nonblocking = reaper.wait_for(std::chrono::milliseconds(200)) == std::future_status::ready;
+        const auto beforeReap = workers.Snapshot();
+        const bool retainedDuringTls = beforeReap.finished == 0 && workers.ProcessActive(77) && !retained.expired();
+        struct ReapResult { bool success = false; std::string error; };
+        std::promise<void> reaperEntered;
+        auto reaperStarted = reaperEntered.get_future();
+        std::promise<ReapResult> reapCompleted;
+        auto reapResult = reapCompleted.get_future();
+        // A dedicated thread avoids measuring std::async's implementation or
+        // thread startup against the nonblocking registry operation deadline.
+        std::thread reaper;
+        try
+        {
+            reaper = std::thread([&] {
+                reaperEntered.set_value();
+                ReapResult result;
+                try { result.success = workers.ReapCompleted(result.error); }
+                catch (const std::exception& failure) { result.error = failure.what(); }
+                catch (...) { result.error = "nonstandard reaper exception"; }
+                reapCompleted.set_value(std::move(result));
+            });
+        }
+        catch (...) { gate->release.set_value(); throw; }
+        const bool started = reaperStarted.wait_for(std::chrono::seconds(5)) == std::future_status::ready;
+        const bool nonblocking = started &&
+            reapResult.wait_for(std::chrono::milliseconds(200)) == std::future_status::ready;
+        // Release the real TLS destructor before any assertion/diagnostic that
+        // might throw, and join the test helper before inspecting its result.
         gate->release.set_value();
-        Require(reaper.get() && nonblocking, "reap does not join a worker still running TLS destructors");
+        reaper.join();
+        const auto reaped = reapResult.get();
+        const auto afterReap = workers.Snapshot();
+        const std::string diagnostic = "reap does not join a worker still running TLS destructors: started=" +
+            std::to_string(started) + " nonblocking=" + std::to_string(nonblocking) +
+            " reap_success=" + std::to_string(reaped.success) + " reap_error=" + reaped.error +
+            " before_finished=" + std::to_string(beforeReap.finished) +
+            " after_finished=" + std::to_string(afterReap.finished) +
+            " after_joined=" + std::to_string(afterReap.joined) +
+            " after_running=" + std::to_string(afterReap.running) +
+            " registry_failed=" + std::to_string(afterReap.failed) +
+            " registry_error=" + afterReap.error;
+        Require(retainedDuringTls, "function return cannot advertise completion before TLS destruction");
+        Require(reaped.success && nonblocking, diagnostic.c_str());
         workers.CloseAdmission();
         Require(workers.Join(error), "final OS thread join waits for full TLS completion");
         Require(gate->finished && retained.expired() && !early, "process pin releases only after final cleanup and join");

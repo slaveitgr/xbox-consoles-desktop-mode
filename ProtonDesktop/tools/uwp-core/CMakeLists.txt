@@ -175,6 +175,7 @@ target_compile_definitions(proton-uwp-core-objects PRIVATE
   PROTONDESKTOP_UWP_PROFILE=1)
 if(PROTON_ENABLE_WINE_SESSION)
   target_compile_definitions(proton-uwp-core-objects PRIVATE BOXEDWINE_ZLIB=1 PROTONDESKTOP_OWNED_GUEST_WORKERS=1)
+  target_link_libraries(proton-uwp-core-objects PRIVATE protondesktop_zip)
   target_include_directories(proton-uwp-core-objects BEFORE PRIVATE "${profile_overlay}/include" "${profile_overlay}/source/sdl")
 else()
   target_compile_definitions(proton-uwp-core-objects PRIVATE USING_GENERATED_CONFIG_H)

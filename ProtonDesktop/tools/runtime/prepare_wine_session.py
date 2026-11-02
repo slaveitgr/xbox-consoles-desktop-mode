@@ -169,6 +169,22 @@ def kernel(cpp, header):
     return cpp, header
 
 
+def memory(cpp, header):
+    # Fork snapshots must retain the allocator's address-space reservations as
+    # well as committed bytes. Otherwise the first child mmap(NULL) starts at
+    # the base again and zeroes inherited dynamic-linker data.
+    header = once(header, "    BOXEDWINE_MUTEX mmapMutex;", "    mutable BOXEDWINE_MUTEX mmapMutex;")
+    cpp = once(cpp,
+        "    std::lock_guard<std::recursive_mutex> lockFrom(from->pagesMutex);",
+        "    std::lock_guard<std::recursive_mutex> lockMmapFrom(from->mmapMutex);\n"
+        "    std::lock_guard<std::recursive_mutex> lockMmapThis(mmapMutex);\n"
+        "    std::lock_guard<std::recursive_mutex> lockFrom(from->pagesMutex);")
+    cpp = once(cpp, "#endif\n    pages.clear();\n    pages.reserve(from->pages.size());",
+        "#endif\n    ranges = from->ranges;\n    mmapNext = from->mmapNext;\n"
+        "    pages.clear();\n    pages.reserve(from->pages.size());")
+    return cpp, header
+
+
 def prepare(source, profile, output):
     def read(relative, profiled=False):
         origin = profile / relative if profiled and (profile / relative).exists() else source / relative
@@ -184,6 +200,9 @@ def prepare(source, profile, output):
     cpp, header = kernel(read("source/kernel/ksystem.cpp", True), read("include/ksystem.h"))
     write("source/kernel/ksystem.cpp", cpp)
     write("include/ksystem.h", header)
+    cpp, header = memory(read("source/kernel/kmemory64.cpp"), read("include/kmemory64.h"))
+    write("source/kernel/kmemory64.cpp", cpp)
+    write("include/kmemory64.h", header)
     loop = read("source/sdl/multiThreaded/threadedMainloop.cpp")
     loop = once(loop, "static thread_local bool isMainThread;", "static thread_local bool isMainThread;\nvoid protonSetSdlOwnerThread(bool value) { isMainThread = value; }")
     write("source/sdl/multiThreaded/threadedMainloop.cpp", loop)

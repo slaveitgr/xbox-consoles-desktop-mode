@@ -263,7 +263,11 @@ namespace
                 "WINESERVER=/usr/lib/wine/wineserver64", "WINEDLLPATH=/usr/lib/x86_64-linux-gnu/wine",
                 "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/wine/x86_64-unix:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu",
                 "DISPLAY=:0", "WINEDLLOVERRIDES=mscoree,mshtml="};
-            request.argv = {"/usr/lib/wine/wine64", "explorer.exe", "/desktop=ProtonDesktop,1920x1080"};
+            // Wine 8 enables its real taskbar/Start shell by default for the
+            // special desktop name "shell". The trailing command opens its
+            // actual file manager inside that desktop.
+            request.argv = {"/usr/lib/wine/wine64", "explorer.exe",
+                "/desktop=shell,1920x1080", "explorer.exe", "C:\\"};
             const auto stop = std::make_shared<std::atomic<bool>>(false);
             bool evidenceFailed = false;
             WriteResult(resultPath, "running", nullptr, "");

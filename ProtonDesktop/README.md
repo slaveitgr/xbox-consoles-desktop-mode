@@ -7,7 +7,10 @@ through a UWP graphics surface. No HTML desktop and no WebAssembly are used.
 **Current milestone: the packaged x64 interpreter has executed on Xbox One X.**
 Its actual app-owned report passed 907 CPU64 checks and both self-authored ELF
 controls (guest exits 0 and 9). This qualifies those diagnostics, not sustained
-app stability or Wine. No Wine executable or rootfs has run yet.
+app stability or Wine on the console. A separate Linux-host test has now run
+the actual rootfs `wine64 --version` through the interpreter, printing
+`wine-8.0 (Debian 8.0~repack-4)` and reaching guest exit 0. That test used no
+graphics and does not qualify wineboot, Explorer or UWP execution.
 
 The new opt-in native Wine application uses existing SDL/WinRT and the real
 pinned kernel/VFS, targeting Wine → wineboot → Explorer in one owned session.
@@ -18,7 +21,7 @@ The pinned interpreter compiled from 252 translation units. Its CPU64 tests
 passed **907/907**, and our own static ELF64 passed arithmetic, memory, branch,
 write and exit checks through the actual upstream loader and syscall dispatcher.
 A deliberately failing arithmetic control reached guest exit 9. This is Linux
-host evidence; Wine and the UWP backend have not run. The Windows build then
+host evidence for the interpreter. The Windows build then
 passed the same **907/907 CPU64 checks** and both generated ELF64 controls.
 See [the Linux proof](docs/HEADLESS_CORE_PROOF.md) and
 [the Windows proof](docs/WINDOWS_PORT_PROGRESS.md).
@@ -89,15 +92,19 @@ The diagnostic0.1.0.0 package was locally developer-signed and installed on One 
 No public release or Wine desktop result exists. Two unqualified
 rootfs ZIP candidates have now been assembled locally from verified Debian
 packages; see `rootfs/README.md` for hashes, limitations and RAM-only storage.
-Executed diagnostics use only self-authored ELF64 and upstream CPU tests; the
-One X result was retrieved from the installed app, with separate phase logs not
-yet downloaded.
-No Wine executable has run in this project.
+The One X diagnostics used self-authored ELF64 and upstream CPU tests; their
+result was retrieved from the installed app, with separate phase logs not yet
+downloaded. The later Linux Wine-version test mounted the two real candidate
+ZIPs in one managed kernel, ran control ELFs with exits 0/9, then ran the genuine
+Wine loader with exit 0 and joined all guest workers before cleanup.
+Both runtime ZIPs have also been privately uploaded to this app's `LocalState`
+on One X; directory sizes were checked, while on-device SHA-256 verification
+and Wine execution await the new application.
 
 ## Next native milestone
 
-Port the Windows-proven guest-x64 interpreter into the UWP API partition, adapt
-its remaining host calls and X11 pixel presenter, then repeat ELF64 checks on UWP.
-Only after that, import a provenance-checked, licensed Wine64 rootfs and prove a
-real Wine application window. Explorer desktop boot and Windows 11-inspired Wine
-theming follow that result. One X performance is unmeasured.
+Complete the full Wine application's Windows/UWP compile and link checks, then
+update the installed app to the native SDL/WinRT Wine session. Observe actual
+Wine version, wineboot and Explorer outcomes on One X and verify real desktop
+pixels and interaction. Windows 11-inspired theming follows a working desktop.
+Wine desktop performance on One X is unmeasured.

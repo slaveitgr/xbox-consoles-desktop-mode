@@ -59,7 +59,21 @@ requests Explorer within the same guest kernel. Neither a loaded process nor a
 successful build is evidence of desktop pixels or a stable running app. Read
 the actual phase log/result and validate presentation separately.
 
-References: [Wine 8 loader module search](https://github.com/wine-mirror/wine/blob/wine-8.0/loader/main.c#L117),
+The initial stock Wine command is:
+
+```text
+/usr/lib/wine/wine64 explorer.exe /desktop=shell,1920x1080 explorer.exe C:\
+```
+
+Wine 8's special desktop name `shell` enables its built-in taskbar/Start menu
+without a prior registry edit. An arbitrary desktop name defaults that shell
+off. The trailing explicit `explorer.exe C:\` opens the real file manager;
+the desktop argument by itself opens no folder. This is Wine's own shell;
+Windows 11-inspired theming remains a later step.
+
+References: [Wine 8 desktop shell defaults](https://github.com/wine-mirror/wine/blob/wine-8.0/programs/explorer/desktop.c#L793-L814),
+[Wine desktop child command and message loop](https://github.com/wine-mirror/wine/blob/wine-8.0/programs/explorer/desktop.c#L1051-L1078),
+[Wine 8 loader module search](https://github.com/wine-mirror/wine/blob/wine-8.0/loader/main.c#L117),
 [Wine module paths](https://github.com/wine-mirror/wine/blob/wine-8.0/dlls/ntdll/unix/loader.c#L509),
 [glibc 2.36 ELF lookup](https://github.com/bminor/glibc/blob/glibc-2.36/elf/dl-load.c#L1814).
 Local byte/provenance evidence is recorded in
