@@ -18,6 +18,11 @@ passed the same **907/907 CPU64 checks** and both generated ELF64 controls.
 See [the Linux proof](docs/HEADLESS_CORE_PROOF.md) and
 [the Windows proof](docs/WINDOWS_PORT_PROGRESS.md).
 
+The separate UWP compile diagnostic now reaches final linking: 360 object-build
+steps completed without compiler errors, then 11 unresolved host/profile helpers
+stopped the link. The native UWP host and its boot/platform tests pass on Windows,
+but there is still no linked UWP interpreter or Wine execution.
+
 Boxedwine64 has substantive x64 guest support and upstream reports Wine64 GUI
 applications on native macOS. Its Windows desktop project does not include the
 new guest-x64 source files, and there is no emulator UWP project at the pinned

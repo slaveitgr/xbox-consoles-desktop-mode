@@ -46,3 +46,21 @@ remaining port task, never a reason to add an empty implementation.
 run them, start Wine, create a package, sign, install or deploy. Even a successful
 link is only APP-family source/import evidence: actual AppContainer and Xbox
 execution still require a genuine CoreApplication integration and runtime tests.
+
+## Closure boundary
+
+The executable retains `runX64SelfTest` and `runX64RunElf`. Function/data sections
+and `/OPT:REF` discard unused portions of the compiled source, so a passing link
+would qualify the diagnostic's retained call graph only. It does not qualify
+all guest `KProcess`, VFS, socket or Wine startup paths. The full backend remains
+unavailable until those paths are actually linked, their APIs audited, and
+AppContainer execution succeeds.
+
+At the pinned source, the selected platform definitions still lack these
+methods (source inventory, not a final-link error report): `nativeSocketPair`,
+`getCpuFreqMHz`, `getCpuCurScalingFreqMHz`, `getCpuMaxScalingFreqMHz`,
+`openFileLocation`, `getResourceFilePath`, `setCurrentThreadPriorityHigh`,
+`writeCodeToMemory`, `clearInstructionCache`, `procStat`, `getL1CacheSize`,
+`setCpuAffinityForThread`. Some relate only to disabled UI/JIT paths. Real
+process/socket/procfs users must be resolved with implementations or an explicit
+supported-profile policy before the Wine backend is considered available.

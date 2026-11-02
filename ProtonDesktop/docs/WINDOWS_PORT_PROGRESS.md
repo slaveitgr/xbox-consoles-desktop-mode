@@ -96,13 +96,45 @@ not a successful UWP core link. The next diagnostic uses SDL's own WinRT build
 mode and bypasses only the unused desktop launcher, retaining the actual
 interpreter and ELF test entry points.
 
+The second attempt,
+[run 41477416523](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41477416523),
+source `3fd0fd1c56da03af14ab3fac5de2116c4a1cabe6`, reached the final executable
+link with **360 object-build steps and zero compilation errors**. The link failed
+with these 11 unresolved definitions:
+
+| Definitions | Referencing functionality |
+| --- | --- |
+| `nativeSocketPair` | Native socket polling/wakeup thread |
+| `setCpuAffinityForThread`, `setCurrentThreadPriorityHigh` | Guest thread/process scheduling |
+| `getCpuFreqMHz`, `getCpuCurScalingFreqMHz`, `getCpuMaxScalingFreqMHz`, `procStat` | Guest proc/sys CPU information |
+| `getPixelFormats` | Kernel display-format initialization |
+| `writeCodeToMemory` | Shared native code-heap branch; JIT is disabled and must remain rejected |
+| `platform_strcasestr` | Case-insensitive string search |
+| `initWindowsAudio` | Windows-specific audio initialization, outside the intended initial audio-disabled profile |
+
+`Platform::` prefixes are omitted in the table. This is an actual linker report,
+not a source-only estimate. No successful UWP core executable or import audit
+exists. The artifact ZIP digest was verified as
+`2c09a426c20eddf0dcafbc1e135f5f9f1c00ae15b8754ba72a6dacf235fb6b69`;
+local extracted logs are in `artifacts/uwp-core-attempt2/`.
+
+The same run again compiled the native UWP host. Its four CTest suites passed:
+**63 boot assertions, seven Python fixtures, 49 memory checks and 47 host-service
+checks**. These ran as desktop Windows test executables. Neither the UWP host
+nor the interpreter was activated in AppContainer or on Xbox.
+
+Even a future successful diagnostic link qualifies its retained call graph
+only; function/data dead stripping can remove other guest kernel paths. The
+full Wine process/VFS/socket graph and software pixel presenter must be linked
+and qualified separately. See the closure boundary in `tools/uwp-core/README.md`.
+
 ## Wine filesystem and first boot
 
 `rootfs/` now records Wine 8.0~repack-4 and glibc 2.36-9+deb12u14 with signed
 Debian metadata and source provenance. No package/rootfs binaries were fetched
 or assembled. The boot contract has a separate two-base-layer prefix-initialization
 mode; the existing desktop mode still requires a prepared third layer. Its 63
-portable assertions pass locally. A request description does not verify a real
+portable assertions pass both locally and on desktop Windows. A request description does not verify a real
 empty app-owned overlay or execute Wine. Prefix completion also needs an explicit
 persistent-wineserver shutdown policy and bounded waits, then validation of
 registry files, directories and drive links before declaring it prepared.

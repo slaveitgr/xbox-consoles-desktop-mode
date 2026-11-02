@@ -24,7 +24,9 @@
     "observed_guest": "Debian bookworm Wine 8.0 x86_64",
     "accepted_artifact_sha256": null,
     "package_version_manifest": null,
-    "redistribution_qualified": false
+    "redistribution_qualified": false,
+    "metadata_package_lock": "rootfs/debian-bookworm.lock.json",
+    "assembly_plan": "rootfs/assembly-plan.json"
   },
   "gates": {
     "guest_x64_windows_compile": true,
@@ -70,6 +72,37 @@
     "negative_guest_exit": 9,
     "executable_sha256": "1cb9378ddd9fabaab565de58d3457f6e8882cb557c9126b6254493bd018c0096",
     "artifact_sha256": "5eaa5533bf6c23d89fa697f1f69a8854327c46ffd703170f13ec8f62ab4d53a6",
+    "uwp_executed": false,
+    "wine_executed": false,
+    "xbox_tested": false
+  },
+  "uwp_core_compile_evidence": {
+    "source_commit": "3fd0fd1c56da03af14ab3fac5de2116c4a1cabe6",
+    "run_id": 41477416523,
+    "api_family": "WINAPI_FAMILY_APP",
+    "system_name": "WindowsStore",
+    "compiled_object_build_steps": 360,
+    "compilation_errors": 0,
+    "executable_linked": false,
+    "unresolved_symbols": [
+      "Platform::setCpuAffinityForThread",
+      "Platform::nativeSocketPair",
+      "Platform::setCurrentThreadPriorityHigh",
+      "getPixelFormats",
+      "Platform::getCpuFreqMHz",
+      "Platform::procStat",
+      "Platform::getCpuCurScalingFreqMHz",
+      "Platform::getCpuMaxScalingFreqMHz",
+      "Platform::writeCodeToMemory",
+      "platform_strcasestr",
+      "initWindowsAudio"
+    ],
+    "artifact_sha256": "2c09a426c20eddf0dcafbc1e135f5f9f1c00ae15b8754ba72a6dacf235fb6b69",
+    "boot_contract_checks_on_windows": 63,
+    "memory_checks_on_windows": 49,
+    "host_service_checks_on_windows": 47,
+    "full_wine_kernel_closure_qualified": false,
+    "imports_audited": false,
     "uwp_executed": false,
     "wine_executed": false,
     "xbox_tested": false
