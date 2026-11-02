@@ -1,0 +1,64 @@
+diff --git a/dlls/ntdll/ntdll.spec b/dlls/ntdll/ntdll.spec
+index 32b1d5e..1f343f0 100644
+--- a/dlls/ntdll/ntdll.spec
++++ b/dlls/ntdll/ntdll.spec
+@@ -205,6 +205,7 @@
+ @ stdcall -syscall NtCreateUserProcess(ptr ptr long long ptr ptr long long ptr ptr ptr)
+ # @ stub NtCreateWaitablePort
+ @ stdcall -arch=i386 NtCurrentTeb()
++@ stdcall -arch=x86_64 NtCurrentTeb() xcdm_NtCurrentTeb
+ @ stdcall -syscall NtDebugActiveProcess(long long)
+ @ stdcall -syscall NtDebugContinue(long ptr long)
+ @ stdcall -syscall=0x0034 NtDelayExecution(long ptr)
+diff --git a/dlls/ntdll/thread.c b/dlls/ntdll/thread.c
+index 0869b3b..6174c46 100644
+--- a/dlls/ntdll/thread.c
++++ b/dlls/ntdll/thread.c
+@@ -85,6 +85,20 @@ static int append_output( struct debug_info *info, const char *str, size_t len )
+     return len;
+ }
+ 
++#ifdef __x86_64__
++/***********************************************************************
++ *		NtCurrentTeb   (NTDLL.@)
++ *
++ * x86_64 export used by modules built with XCDM_GUEST. On a normal Wine
++ * prefix it returns the native TEB; the Xbox bridge's ntdll seam replaces
++ * this module and returns its guest TEB instead.
++ */
++TEB * WINAPI xcdm_NtCurrentTeb(void)
++{
++    return NtCurrentTeb();
++}
++#endif
++
+ /***********************************************************************
+  *		__wine_dbg_get_channel_flags  (NTDLL.@)
+  *
+diff --git a/include/winnt.h b/include/winnt.h
+index bdc86af..4021058 100644
+--- a/include/winnt.h
++++ b/include/winnt.h
+@@ -2499,7 +2499,21 @@ typedef struct _NT_TIB
+ 
+ struct _TEB;
+ 
+-#ifdef WINE_UNIX_LIB
++#if defined(XCDM_GUEST) && !defined(WINE_UNIX_LIB) && !defined(_NTSYSTEM_)
++/* Xbox Desktop Mode guest build: modules run inside a UWP host process whose
++ * gs:[0x30] is the host thread's TEB. Guest code must use the bridge-owned
++ * guest TEB instead, so every access goes through ntdll!NtCurrentTeb, which
++ * the bridge's ntdll seam implements. ntdll itself (_NTSYSTEM_) and Unix
++ * libraries keep the native forms below. */
++# if !defined(__x86_64__) || defined(__arm64ec__)
++#  error "XCDM_GUEST supports x86_64 PE modules only"
++# endif
++# ifdef __GNUC__
++NTSYSAPI struct _TEB * WINAPI NtCurrentTeb(void) __attribute__((pure));
++# else
++NTSYSAPI struct _TEB * WINAPI NtCurrentTeb(void);
++# endif
++#elif defined(WINE_UNIX_LIB)
+ # ifdef __GNUC__
+ NTSYSAPI struct _TEB * WINAPI NtCurrentTeb(void) __attribute__((pure));
+ # else

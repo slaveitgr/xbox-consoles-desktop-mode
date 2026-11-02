@@ -113,22 +113,28 @@ cmake --build desktop/wine-explorer/build/host-checks
 ctest --test-dir desktop/wine-explorer/build/host-checks --output-on-failure
 ```
 
-## Build the coherent stock PE dependency set
+## Build the coherent PE dependency set
 
 The separate [PE build driver](pe-build/README.md) compiles the full pinned
 Wine source on Linux without running any guest code. A fresh build and
 incremental replay produced **61 AMD64 PE files**, with zero missing file
 dependencies among ordinary imports, native PE delay imports and exported
 forwarders. This is different from the standalone file-window source unit
-above. It still requires a Wine-to-UWP backend and the collaborator's guest
-TEB/PEB/header work before any execution can be considered.
+above. It still requires a Wine-to-UWP backend and qualified integration of
+the collaborator's guest TEB/PEB/header work before execution.
 
 The compiled set is marked **NOT SAFE TO EXECUTE**. It is not bundled or
 deployed. The driver records source/tool hashes and commands; a metadata
 inventory retains named/ordinal/delay imports and forwarders. The dynamic
-runtime module closure and API semantics remain unknown. The collaborator
-owns the separate GS/TLS audit, guest header/runtime patches and registry
-seeding; this driver applies no guest header patch.
+runtime module closure and API semantics remain unknown. Stock remains the
+driver's default. Its separate `--variant xcdm` tree applies the pinned guest
+accessor patch and also builds 61 AMD64 PEs with verified compiler-SEH flags.
+The corrected binary audit covered 53 files: no GS findings or TLS directories,
+51 without reported problems, and two CRT files with undecodable bytes marked
+inconclusive. Its exit status remains failed; no execution qualification is claimed. See
+[`../../docs/WINE_XCDM_BUILD.md`](../../docs/WINE_XCDM_BUILD.md) for the exact
+evidence and remaining limits. The separate guest environment is implemented as a
+portable model; it is not yet wired into the bridge's Wine execution lifecycle.
 
 The [loader ownership foundation](../../docs/WINE_LOADER_OWNERSHIP.md) routes
 experimental strict modules to one provider and blocks executable Wine loads

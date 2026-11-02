@@ -1,7 +1,8 @@
-# Stock Wine PE build evidence
+# Wine PE build evidence
 
-**NOT SAFE TO EXECUTE.** These are unmodified Wine AMD64 PE audit artifacts.
-They have no qualified Xbox guest TEB/PEB accessor or native backend. Building
+**NOT SAFE TO EXECUTE.** The default build produces stock Wine AMD64 PE audit
+artifacts. The optional XCDM variant applies the pinned guest-accessor patch.
+Neither variant has a qualified Xbox native backend. Building
 Explorer and its DLLs does not establish that DLL initialization, Explorer, a
 game, or Steam can run in our bridge. Do not deploy or load these outputs.
 
@@ -64,6 +65,54 @@ not rehashed against the archive/package, so reuse is explicitly recorded as
 unverified. Use a new empty build root for fresh stock-source provenance.
 This is a repeatable build recipe,
 not a claim of bit-for-bit reproducibility across hosts.
+
+## XCDM variant
+
+Stock remains the default. To build the collaborator's guest-accessor variant
+in a separate source/object tree, add `--variant xcdm` and use
+`--build-root artifacts/xcdm-wine-pe-build`. The default output directory also
+changes to that location when this variant is selected. A stock tree cannot be
+reused as an XCDM tree, or vice versa.
+
+The driver verifies the SHA-256 of
+`patches/wine/0001-xcdm-guest-ntcurrentteb-redirect.patch` against
+`source-lock.json`, dry-runs it with zero fuzz on the freshly extracted source,
+then applies it. Patch application logs and hashes of its three modified source
+files are retained. On reuse, both patch identity and those modified files are
+rechecked; other reused source/tool bytes remain explicitly unverified.
+
+Only PE compilation receives `-DXCDM_GUEST`. The configured compiler is clang
+with explicit `-target x86_64-windows -fuse-ld=lld --no-default-config`.
+`compiler-seh-proof.json` records the effective Makefile flags and preprocesses
+the pinned `excpt.h` with those flags to require clang >=19, `_MSC_VER`,
+`XCDM_GUEST=1`, `USE_COMPILER_EXCEPTIONS` and `-fasync-exceptions`. This checks
+compiler/header selection without executing the generated code.
+
+After compiling the full file dependency set, the driver invokes the
+collaborator-owned `tools/audit_wine_guest.py binary` with the patched source
+and build directory. Its implementation is not changed here. The audit input
+excludes the built stock `ntdll.dll` and `win32u.dll` providers and the six
+Unix-side modules `bcrypt`, `crypt32`, `dnsapi`, `netapi32`, `secur32` and
+`ws2_32`. Their presence in the compilation inventory does not admit them as
+guests: the native bridge/replacement implementations remain requirements.
+This audit input is a superset, not a guest admission list. It deliberately
+includes the built Wine `kernel32.dll` and `kernelbase.dll` for static comparison;
+the strict loader profile assigns both modules to the bridge. Strict module
+ownership remains authoritative, regardless of this audit's result.
+The built Wine ntdll's x64 `NtCurrentTeb` export provides the link library only;
+that provider retains native TEB assumptions and must never execute here.
+
+`guest-selection.json` records `audit_candidate_pe` paths and excluded provider
+reasons. Its historical filename does not mean those candidates may execute.
+`guest-admission-audit.json` is the tool's raw report;
+`guest-admission-summary.json` additionally preserves its return code and
+expected/reported module coverage. Missing coverage cannot count as a passing
+gate. A successful compiler or static audit does not qualify the native seam,
+initialization, registry, rendering, exception runtime or Xbox execution.
+All execution gates remain blocked in the metadata. The driver's exit status
+describes compilation/file closure; inspect the separate static-admission
+summary for the audit outcome; neither list nor summary overrides loader
+ownership or execution gates.
 
 ## Evidence
 

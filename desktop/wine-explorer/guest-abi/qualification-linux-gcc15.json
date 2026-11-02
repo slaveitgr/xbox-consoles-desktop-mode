@@ -1,0 +1,59 @@
+{
+  "schema": "xcdm-wine-guest-abi/1",
+  "status": "qualified_layout",
+  "source_commit": "1c78596625336a73dbfc035dbbcf0dbdd95b06eb",
+  "source_archive_sha256": "c5e9d053b4edec0507d0e1cd8acf19d2ed0bba982417d67f7dcfa6122b53b0be",
+  "headers": {
+    "files": 1103,
+    "bytes": 19619030,
+    "pinned_headers": {
+      "include/winternl.h": "43be9c4f35922df762a9883bbc39cd70308c4c8a038e1bbb0fca2a3a160ec13d",
+      "include/winnt.h": "86883f056cc21989cb42926f3003445e7972d45244f802ee965d8158dc46874f",
+      "include/ntgdi.h": "a3fa1b56ce051d20a852985d7b0cb8b200920a6e1a4fc80af97977cd4a691098"
+    }
+  },
+  "model_header_sha256": "cd6fea5557bd2b1d704b0ae9658786b4ff55a96ad48f4c08a434f64069775880",
+  "qualification_tool_sha256": "9a10938949e71f61dbdbcab755fb39aa4f4aa64bb5c2ff18c2fc34c3c6a08c67",
+  "layout_mapping_sha256": "0507472687ca284dc2834e47ba06995d6e7f66ad70cf0bd35f55375e07cdfea6",
+  "translation_unit_sha256": "50833d18613a240a05075a4ea2031f57efb8b8190cde128d66229f861b807e02",
+  "compiler": {
+    "path": "/usr/bin/x86_64-linux-gnu-g++-15",
+    "sha256": "938bf01003e39bb273db5fd6293d639344429931616adf69749f4c43f804f887",
+    "version": "x86_64-linux-gnu-g++-15 (Ubuntu 15.3.0-4ubuntu1) 15.3.0",
+    "argv": [
+      "/usr/bin/x86_64-linux-gnu-g++-15",
+      "-std=c++17",
+      "-m64",
+      "-fshort-wchar",
+      "-DWINE_UNIX_LIB",
+      "-D_WIN64",
+      "-fmax-errors=10",
+      "-I",
+      "/tmp/xcdm-guest-abi-w92e39yz/include",
+      "-fsyntax-only",
+      "/tmp/xwindows-guest-abi-qualification/qualification.cpp"
+    ],
+    "returncode": 0
+  },
+  "negative_control": {
+    "one_byte_offset_mismatch_rejected": true,
+    "returncode": 1
+  },
+  "checks": {
+    "record_types_size_align_standard_layout": 15,
+    "teb_peb_addressable_fields_offset_and_size": 187,
+    "support_fields_offset_and_size": 82,
+    "peb_bitfield_storage_boundaries_only": 3,
+    "static_assertions": 596
+  },
+  "scope": "Compiler-calculated record layout only, using actual immutable Wine header declarations, not their comments.",
+  "limitations": [
+    "The three PEB bitfields are not addressable with offsetof; only surrounding storage boundaries/width are checked, not bit order.",
+    "Linux GCC with Wine's Windows-width types is not an MSVC/UWP compiler or Xbox hardware qualification.",
+    "No pointer ownership, heap/NLS behavior, loader, callback lifetime, syscall, TLS/FLS, SEH or guest execution admission is established."
+  ],
+  "wine_code_executed": false,
+  "linked": false,
+  "guest_execution_admitted": false,
+  "safety": "NOT SAFE TO EXECUTE"
+}

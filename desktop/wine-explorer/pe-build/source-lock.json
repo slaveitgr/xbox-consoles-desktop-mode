@@ -24,6 +24,22 @@
       "lld": "c041439a76fd714e5343eb10d962ed90f2028244cb954076ad3a2560f8f7459b"
     }
   },
+  "xcdm": {
+    "patch": "patches/wine/0001-xcdm-guest-ntcurrentteb-redirect.patch",
+    "patch_sha256": "068188f1fbc2222dd616d59c98b97676819ffc28b3c69a083620efa67d582157",
+    "patched_files": ["dlls/ntdll/ntdll.spec", "dlls/ntdll/thread.c", "include/winnt.h"],
+    "cross_cflags": "-g -O2 -DXCDM_GUEST",
+    "excluded_guest_providers": {
+      "ntdll.dll": "Bridge-owned seam; this built Wine provider retains native TEB/Unix assumptions and must never execute",
+      "win32u.dll": "Bridge-owned native window/GDI backend; stock Wine provider must never execute",
+      "bcrypt.dll": "Wine UNIXLIB requires a bridge provider or replacement implementation",
+      "crypt32.dll": "Wine UNIXLIB requires a bridge provider or replacement implementation",
+      "dnsapi.dll": "Wine UNIXLIB requires a bridge provider or replacement implementation",
+      "netapi32.dll": "Wine UNIXLIB requires a bridge provider or replacement implementation",
+      "secur32.dll": "Wine UNIXLIB requires a bridge provider or replacement implementation",
+      "ws2_32.dll": "Wine UNIXLIB requires a bridge provider or replacement implementation"
+    }
+  },
   "seeds": [
     "programs/explorer/x86_64-windows/explorer.exe",
     "dlls/shell32/x86_64-windows/shell32.dll",

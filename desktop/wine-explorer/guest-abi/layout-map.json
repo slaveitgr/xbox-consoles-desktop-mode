@@ -1,0 +1,1708 @@
+{
+  "schema": 1,
+  "source_commit": "1c78596625336a73dbfc035dbbcf0dbdd95b06eb",
+  "types": [
+    {
+      "model": "Teb64",
+      "wine": "TEB"
+    },
+    {
+      "model": "Peb64",
+      "wine": "PEB"
+    },
+    {
+      "model": "NtTib64",
+      "wine": "NT_TIB"
+    },
+    {
+      "model": "ListEntry64",
+      "wine": "LIST_ENTRY"
+    },
+    {
+      "model": "UnicodeString64",
+      "wine": "UNICODE_STRING"
+    },
+    {
+      "model": "ClientId64",
+      "wine": "CLIENT_ID"
+    },
+    {
+      "model": "Guid",
+      "wine": "GUID"
+    },
+    {
+      "model": "RtlBitmap64",
+      "wine": "RTL_BITMAP"
+    },
+    {
+      "model": "ActivationContextStack64",
+      "wine": "ACTIVATION_CONTEXT_STACK"
+    },
+    {
+      "model": "GdiTebBatch64",
+      "wine": "GDI_TEB_BATCH"
+    },
+    {
+      "model": "CurDir64",
+      "wine": "CURDIR"
+    },
+    {
+      "model": "DriveLetterCurDir64",
+      "wine": "RTL_DRIVE_LETTER_CURDIR"
+    },
+    {
+      "model": "ProcessParameters64",
+      "wine": "RTL_USER_PROCESS_PARAMETERS"
+    },
+    {
+      "model": "PebLdrData64",
+      "wine": "PEB_LDR_DATA"
+    },
+    {
+      "model": "GdiHandleEntry64",
+      "wine": "GDI_HANDLE_ENTRY"
+    }
+  ],
+  "fields": [
+    {
+      "model": "Teb64",
+      "field": "Tib.StackBase",
+      "wine": "TEB",
+      "wine_field": "Tib.StackBase"
+    },
+    {
+      "model": "Teb64",
+      "field": "Tib.StackLimit",
+      "wine": "TEB",
+      "wine_field": "Tib.StackLimit"
+    },
+    {
+      "model": "Teb64",
+      "field": "Tib.FiberData",
+      "wine": "TEB",
+      "wine_field": "Tib.FiberData"
+    },
+    {
+      "model": "Teb64",
+      "field": "Tib.Self",
+      "wine": "TEB",
+      "wine_field": "Tib.Self"
+    },
+    {
+      "model": "Teb64",
+      "field": "EnvironmentPointer",
+      "wine": "TEB",
+      "wine_field": "EnvironmentPointer"
+    },
+    {
+      "model": "Teb64",
+      "field": "ClientId",
+      "wine": "TEB",
+      "wine_field": "ClientId"
+    },
+    {
+      "model": "Teb64",
+      "field": "ActiveRpcHandle",
+      "wine": "TEB",
+      "wine_field": "ActiveRpcHandle"
+    },
+    {
+      "model": "Teb64",
+      "field": "ThreadLocalStoragePointer",
+      "wine": "TEB",
+      "wine_field": "ThreadLocalStoragePointer"
+    },
+    {
+      "model": "Teb64",
+      "field": "Peb",
+      "wine": "TEB",
+      "wine_field": "Peb"
+    },
+    {
+      "model": "Teb64",
+      "field": "LastErrorValue",
+      "wine": "TEB",
+      "wine_field": "LastErrorValue"
+    },
+    {
+      "model": "Teb64",
+      "field": "CountOfOwnedCriticalSections",
+      "wine": "TEB",
+      "wine_field": "CountOfOwnedCriticalSections"
+    },
+    {
+      "model": "Teb64",
+      "field": "CsrClientThread",
+      "wine": "TEB",
+      "wine_field": "CsrClientThread"
+    },
+    {
+      "model": "Teb64",
+      "field": "Win32ThreadInfo",
+      "wine": "TEB",
+      "wine_field": "Win32ThreadInfo"
+    },
+    {
+      "model": "Teb64",
+      "field": "User32Reserved",
+      "wine": "TEB",
+      "wine_field": "User32Reserved"
+    },
+    {
+      "model": "Teb64",
+      "field": "UserReserved",
+      "wine": "TEB",
+      "wine_field": "UserReserved"
+    },
+    {
+      "model": "Teb64",
+      "field": "WOW32Reserved",
+      "wine": "TEB",
+      "wine_field": "WOW32Reserved"
+    },
+    {
+      "model": "Teb64",
+      "field": "CurrentLocale",
+      "wine": "TEB",
+      "wine_field": "CurrentLocale"
+    },
+    {
+      "model": "Teb64",
+      "field": "FpSoftwareStatusRegister",
+      "wine": "TEB",
+      "wine_field": "FpSoftwareStatusRegister"
+    },
+    {
+      "model": "Teb64",
+      "field": "ReservedForDebuggerInstrumentation",
+      "wine": "TEB",
+      "wine_field": "ReservedForDebuggerInstrumentation"
+    },
+    {
+      "model": "Teb64",
+      "field": "SystemReserved1",
+      "wine": "TEB",
+      "wine_field": "SystemReserved1"
+    },
+    {
+      "model": "Teb64",
+      "field": "PlaceholderCompatibilityMode",
+      "wine": "TEB",
+      "wine_field": "PlaceholderCompatibilityMode"
+    },
+    {
+      "model": "Teb64",
+      "field": "PlaceholderHydrationAlwaysExplicit",
+      "wine": "TEB",
+      "wine_field": "PlaceholderHydrationAlwaysExplicit"
+    },
+    {
+      "model": "Teb64",
+      "field": "PlaceholderReserved",
+      "wine": "TEB",
+      "wine_field": "PlaceholderReserved"
+    },
+    {
+      "model": "Teb64",
+      "field": "ProxiedProcessId",
+      "wine": "TEB",
+      "wine_field": "ProxiedProcessId"
+    },
+    {
+      "model": "Teb64",
+      "field": "ActivationContextStack",
+      "wine": "TEB",
+      "wine_field": "ActivationContextStack"
+    },
+    {
+      "model": "Teb64",
+      "field": "WorkingOnBehalfOfTicket",
+      "wine": "TEB",
+      "wine_field": "WorkingOnBehalfOfTicket"
+    },
+    {
+      "model": "Teb64",
+      "field": "ExceptionCode",
+      "wine": "TEB",
+      "wine_field": "ExceptionCode"
+    },
+    {
+      "model": "Teb64",
+      "field": "ActivationContextStackPointer",
+      "wine": "TEB",
+      "wine_field": "ActivationContextStackPointer"
+    },
+    {
+      "model": "Teb64",
+      "field": "InstrumentationCallbackSp",
+      "wine": "TEB",
+      "wine_field": "InstrumentationCallbackSp"
+    },
+    {
+      "model": "Teb64",
+      "field": "InstrumentationCallbackPreviousPc",
+      "wine": "TEB",
+      "wine_field": "InstrumentationCallbackPreviousPc"
+    },
+    {
+      "model": "Teb64",
+      "field": "InstrumentationCallbackPreviousSp",
+      "wine": "TEB",
+      "wine_field": "InstrumentationCallbackPreviousSp"
+    },
+    {
+      "model": "Teb64",
+      "field": "TxFsContext",
+      "wine": "TEB",
+      "wine_field": "TxFsContext"
+    },
+    {
+      "model": "Teb64",
+      "field": "InstrumentationCallbackDisabled",
+      "wine": "TEB",
+      "wine_field": "InstrumentationCallbackDisabled"
+    },
+    {
+      "model": "Teb64",
+      "field": "UnalignedLoadStoreExceptions",
+      "wine": "TEB",
+      "wine_field": "UnalignedLoadStoreExceptions"
+    },
+    {
+      "model": "Teb64",
+      "field": "GdiTebBatch",
+      "wine": "TEB",
+      "wine_field": "GdiTebBatch"
+    },
+    {
+      "model": "Teb64",
+      "field": "RealClientId",
+      "wine": "TEB",
+      "wine_field": "RealClientId"
+    },
+    {
+      "model": "Teb64",
+      "field": "GdiCachedProcessHandle",
+      "wine": "TEB",
+      "wine_field": "GdiCachedProcessHandle"
+    },
+    {
+      "model": "Teb64",
+      "field": "GdiClientPID",
+      "wine": "TEB",
+      "wine_field": "GdiClientPID"
+    },
+    {
+      "model": "Teb64",
+      "field": "GdiClientTID",
+      "wine": "TEB",
+      "wine_field": "GdiClientTID"
+    },
+    {
+      "model": "Teb64",
+      "field": "GdiThreadLocaleInfo",
+      "wine": "TEB",
+      "wine_field": "GdiThreadLocaleInfo"
+    },
+    {
+      "model": "Teb64",
+      "field": "Win32ClientInfo",
+      "wine": "TEB",
+      "wine_field": "Win32ClientInfo"
+    },
+    {
+      "model": "Teb64",
+      "field": "glDispatchTable",
+      "wine": "TEB",
+      "wine_field": "glDispatchTable"
+    },
+    {
+      "model": "Teb64",
+      "field": "glReserved1",
+      "wine": "TEB",
+      "wine_field": "glReserved1"
+    },
+    {
+      "model": "Teb64",
+      "field": "glReserved2",
+      "wine": "TEB",
+      "wine_field": "glReserved2"
+    },
+    {
+      "model": "Teb64",
+      "field": "glSectionInfo",
+      "wine": "TEB",
+      "wine_field": "glSectionInfo"
+    },
+    {
+      "model": "Teb64",
+      "field": "glSection",
+      "wine": "TEB",
+      "wine_field": "glSection"
+    },
+    {
+      "model": "Teb64",
+      "field": "glTable",
+      "wine": "TEB",
+      "wine_field": "glTable"
+    },
+    {
+      "model": "Teb64",
+      "field": "glCurrentRC",
+      "wine": "TEB",
+      "wine_field": "glCurrentRC"
+    },
+    {
+      "model": "Teb64",
+      "field": "glContext",
+      "wine": "TEB",
+      "wine_field": "glContext"
+    },
+    {
+      "model": "Teb64",
+      "field": "LastStatusValue",
+      "wine": "TEB",
+      "wine_field": "LastStatusValue"
+    },
+    {
+      "model": "Teb64",
+      "field": "StaticUnicodeString",
+      "wine": "TEB",
+      "wine_field": "StaticUnicodeString"
+    },
+    {
+      "model": "Teb64",
+      "field": "StaticUnicodeBuffer",
+      "wine": "TEB",
+      "wine_field": "StaticUnicodeBuffer"
+    },
+    {
+      "model": "Teb64",
+      "field": "DeallocationStack",
+      "wine": "TEB",
+      "wine_field": "DeallocationStack"
+    },
+    {
+      "model": "Teb64",
+      "field": "TlsSlots",
+      "wine": "TEB",
+      "wine_field": "TlsSlots"
+    },
+    {
+      "model": "Teb64",
+      "field": "TlsLinks",
+      "wine": "TEB",
+      "wine_field": "TlsLinks"
+    },
+    {
+      "model": "Teb64",
+      "field": "Vdm",
+      "wine": "TEB",
+      "wine_field": "Vdm"
+    },
+    {
+      "model": "Teb64",
+      "field": "ReservedForNtRpc",
+      "wine": "TEB",
+      "wine_field": "ReservedForNtRpc"
+    },
+    {
+      "model": "Teb64",
+      "field": "DbgSsReserved",
+      "wine": "TEB",
+      "wine_field": "DbgSsReserved"
+    },
+    {
+      "model": "Teb64",
+      "field": "HardErrorMode",
+      "wine": "TEB",
+      "wine_field": "HardErrorMode"
+    },
+    {
+      "model": "Teb64",
+      "field": "Instrumentation",
+      "wine": "TEB",
+      "wine_field": "Instrumentation"
+    },
+    {
+      "model": "Teb64",
+      "field": "ActivityId",
+      "wine": "TEB",
+      "wine_field": "ActivityId"
+    },
+    {
+      "model": "Teb64",
+      "field": "SubProcessTag",
+      "wine": "TEB",
+      "wine_field": "SubProcessTag"
+    },
+    {
+      "model": "Teb64",
+      "field": "PerflibData",
+      "wine": "TEB",
+      "wine_field": "PerflibData"
+    },
+    {
+      "model": "Teb64",
+      "field": "EtwTraceData",
+      "wine": "TEB",
+      "wine_field": "EtwTraceData"
+    },
+    {
+      "model": "Teb64",
+      "field": "WinSockData",
+      "wine": "TEB",
+      "wine_field": "WinSockData"
+    },
+    {
+      "model": "Teb64",
+      "field": "GdiBatchCount",
+      "wine": "TEB",
+      "wine_field": "GdiBatchCount"
+    },
+    {
+      "model": "Teb64",
+      "field": "IdealProcessorValue",
+      "wine": "TEB",
+      "wine_field": "IdealProcessorValue"
+    },
+    {
+      "model": "Teb64",
+      "field": "GuaranteedStackBytes",
+      "wine": "TEB",
+      "wine_field": "GuaranteedStackBytes"
+    },
+    {
+      "model": "Teb64",
+      "field": "ReservedForPerf",
+      "wine": "TEB",
+      "wine_field": "ReservedForPerf"
+    },
+    {
+      "model": "Teb64",
+      "field": "ReservedForOle",
+      "wine": "TEB",
+      "wine_field": "ReservedForOle"
+    },
+    {
+      "model": "Teb64",
+      "field": "WaitingOnLoaderLock",
+      "wine": "TEB",
+      "wine_field": "WaitingOnLoaderLock"
+    },
+    {
+      "model": "Teb64",
+      "field": "SavedPriorityState",
+      "wine": "TEB",
+      "wine_field": "SavedPriorityState"
+    },
+    {
+      "model": "Teb64",
+      "field": "ReservedForCodeCoverage",
+      "wine": "TEB",
+      "wine_field": "ReservedForCodeCoverage"
+    },
+    {
+      "model": "Teb64",
+      "field": "ThreadPoolData",
+      "wine": "TEB",
+      "wine_field": "ThreadPoolData"
+    },
+    {
+      "model": "Teb64",
+      "field": "TlsExpansionSlots",
+      "wine": "TEB",
+      "wine_field": "TlsExpansionSlots"
+    },
+    {
+      "model": "Teb64",
+      "field": "DeallocationBStore",
+      "wine": "TEB",
+      "wine_field": "DeallocationBStore"
+    },
+    {
+      "model": "Teb64",
+      "field": "BStoreLimit",
+      "wine": "TEB",
+      "wine_field": "BStoreLimit"
+    },
+    {
+      "model": "Teb64",
+      "field": "MuiGeneration",
+      "wine": "TEB",
+      "wine_field": "MuiGeneration"
+    },
+    {
+      "model": "Teb64",
+      "field": "IsImpersonating",
+      "wine": "TEB",
+      "wine_field": "IsImpersonating"
+    },
+    {
+      "model": "Teb64",
+      "field": "NlsCache",
+      "wine": "TEB",
+      "wine_field": "NlsCache"
+    },
+    {
+      "model": "Teb64",
+      "field": "ShimData",
+      "wine": "TEB",
+      "wine_field": "ShimData"
+    },
+    {
+      "model": "Teb64",
+      "field": "HeapVirtualAffinity",
+      "wine": "TEB",
+      "wine_field": "HeapVirtualAffinity"
+    },
+    {
+      "model": "Teb64",
+      "field": "CurrentTransactionHandle",
+      "wine": "TEB",
+      "wine_field": "CurrentTransactionHandle"
+    },
+    {
+      "model": "Teb64",
+      "field": "ActiveFrame",
+      "wine": "TEB",
+      "wine_field": "ActiveFrame"
+    },
+    {
+      "model": "Teb64",
+      "field": "FlsSlots",
+      "wine": "TEB",
+      "wine_field": "FlsSlots"
+    },
+    {
+      "model": "Teb64",
+      "field": "PreferredLanguages",
+      "wine": "TEB",
+      "wine_field": "PreferredLanguages"
+    },
+    {
+      "model": "Teb64",
+      "field": "UserPrefLanguages",
+      "wine": "TEB",
+      "wine_field": "UserPrefLanguages"
+    },
+    {
+      "model": "Teb64",
+      "field": "MergedPrefLanguages",
+      "wine": "TEB",
+      "wine_field": "MergedPrefLanguages"
+    },
+    {
+      "model": "Teb64",
+      "field": "MuiImpersonation",
+      "wine": "TEB",
+      "wine_field": "MuiImpersonation"
+    },
+    {
+      "model": "Teb64",
+      "field": "CrossTebFlags",
+      "wine": "TEB",
+      "wine_field": "CrossTebFlags"
+    },
+    {
+      "model": "Teb64",
+      "field": "SameTebFlags",
+      "wine": "TEB",
+      "wine_field": "SameTebFlags"
+    },
+    {
+      "model": "Teb64",
+      "field": "TxnScopeEnterCallback",
+      "wine": "TEB",
+      "wine_field": "TxnScopeEnterCallback"
+    },
+    {
+      "model": "Teb64",
+      "field": "TxnScopeExitCallback",
+      "wine": "TEB",
+      "wine_field": "TxnScopeExitCallback"
+    },
+    {
+      "model": "Teb64",
+      "field": "TxnScopeContext",
+      "wine": "TEB",
+      "wine_field": "TxnScopeContext"
+    },
+    {
+      "model": "Teb64",
+      "field": "LockCount",
+      "wine": "TEB",
+      "wine_field": "LockCount"
+    },
+    {
+      "model": "Teb64",
+      "field": "WowTebOffset",
+      "wine": "TEB",
+      "wine_field": "WowTebOffset"
+    },
+    {
+      "model": "Teb64",
+      "field": "ResourceRetValue",
+      "wine": "TEB",
+      "wine_field": "ResourceRetValue"
+    },
+    {
+      "model": "Teb64",
+      "field": "ReservedForWdf",
+      "wine": "TEB",
+      "wine_field": "ReservedForWdf"
+    },
+    {
+      "model": "Teb64",
+      "field": "ReservedForCrt",
+      "wine": "TEB",
+      "wine_field": "ReservedForCrt"
+    },
+    {
+      "model": "Teb64",
+      "field": "EffectiveContainerId",
+      "wine": "TEB",
+      "wine_field": "EffectiveContainerId"
+    },
+    {
+      "model": "Peb64",
+      "field": "InheritedAddressSpace",
+      "wine": "PEB",
+      "wine_field": "InheritedAddressSpace"
+    },
+    {
+      "model": "Peb64",
+      "field": "ReadImageFileExecOptions",
+      "wine": "PEB",
+      "wine_field": "ReadImageFileExecOptions"
+    },
+    {
+      "model": "Peb64",
+      "field": "BeingDebugged",
+      "wine": "PEB",
+      "wine_field": "BeingDebugged"
+    },
+    {
+      "model": "Peb64",
+      "field": "Mutant",
+      "wine": "PEB",
+      "wine_field": "Mutant"
+    },
+    {
+      "model": "Peb64",
+      "field": "ImageBaseAddress",
+      "wine": "PEB",
+      "wine_field": "ImageBaseAddress"
+    },
+    {
+      "model": "Peb64",
+      "field": "LdrData",
+      "wine": "PEB",
+      "wine_field": "LdrData"
+    },
+    {
+      "model": "Peb64",
+      "field": "ProcessParameters",
+      "wine": "PEB",
+      "wine_field": "ProcessParameters"
+    },
+    {
+      "model": "Peb64",
+      "field": "SubSystemData",
+      "wine": "PEB",
+      "wine_field": "SubSystemData"
+    },
+    {
+      "model": "Peb64",
+      "field": "ProcessHeap",
+      "wine": "PEB",
+      "wine_field": "ProcessHeap"
+    },
+    {
+      "model": "Peb64",
+      "field": "FastPebLock",
+      "wine": "PEB",
+      "wine_field": "FastPebLock"
+    },
+    {
+      "model": "Peb64",
+      "field": "AtlThunkSListPtr",
+      "wine": "PEB",
+      "wine_field": "AtlThunkSListPtr"
+    },
+    {
+      "model": "Peb64",
+      "field": "IFEOKey",
+      "wine": "PEB",
+      "wine_field": "IFEOKey"
+    },
+    {
+      "model": "Peb64",
+      "field": "KernelCallbackTable",
+      "wine": "PEB",
+      "wine_field": "KernelCallbackTable"
+    },
+    {
+      "model": "Peb64",
+      "field": "Reserved",
+      "wine": "PEB",
+      "wine_field": "Reserved"
+    },
+    {
+      "model": "Peb64",
+      "field": "AtlThunkSListPtr32",
+      "wine": "PEB",
+      "wine_field": "AtlThunkSListPtr32"
+    },
+    {
+      "model": "Peb64",
+      "field": "ApiSetMap",
+      "wine": "PEB",
+      "wine_field": "ApiSetMap"
+    },
+    {
+      "model": "Peb64",
+      "field": "TlsExpansionCounter",
+      "wine": "PEB",
+      "wine_field": "TlsExpansionCounter"
+    },
+    {
+      "model": "Peb64",
+      "field": "TlsBitmap",
+      "wine": "PEB",
+      "wine_field": "TlsBitmap"
+    },
+    {
+      "model": "Peb64",
+      "field": "TlsBitmapBits",
+      "wine": "PEB",
+      "wine_field": "TlsBitmapBits"
+    },
+    {
+      "model": "Peb64",
+      "field": "ReadOnlySharedMemoryBase",
+      "wine": "PEB",
+      "wine_field": "ReadOnlySharedMemoryBase"
+    },
+    {
+      "model": "Peb64",
+      "field": "SharedData",
+      "wine": "PEB",
+      "wine_field": "SharedData"
+    },
+    {
+      "model": "Peb64",
+      "field": "ReadOnlyStaticServerData",
+      "wine": "PEB",
+      "wine_field": "ReadOnlyStaticServerData"
+    },
+    {
+      "model": "Peb64",
+      "field": "AnsiCodePageData",
+      "wine": "PEB",
+      "wine_field": "AnsiCodePageData"
+    },
+    {
+      "model": "Peb64",
+      "field": "OemCodePageData",
+      "wine": "PEB",
+      "wine_field": "OemCodePageData"
+    },
+    {
+      "model": "Peb64",
+      "field": "UnicodeCaseTableData",
+      "wine": "PEB",
+      "wine_field": "UnicodeCaseTableData"
+    },
+    {
+      "model": "Peb64",
+      "field": "NumberOfProcessors",
+      "wine": "PEB",
+      "wine_field": "NumberOfProcessors"
+    },
+    {
+      "model": "Peb64",
+      "field": "NtGlobalFlag",
+      "wine": "PEB",
+      "wine_field": "NtGlobalFlag"
+    },
+    {
+      "model": "Peb64",
+      "field": "CriticalSectionTimeout",
+      "wine": "PEB",
+      "wine_field": "CriticalSectionTimeout"
+    },
+    {
+      "model": "Peb64",
+      "field": "HeapSegmentReserve",
+      "wine": "PEB",
+      "wine_field": "HeapSegmentReserve"
+    },
+    {
+      "model": "Peb64",
+      "field": "HeapSegmentCommit",
+      "wine": "PEB",
+      "wine_field": "HeapSegmentCommit"
+    },
+    {
+      "model": "Peb64",
+      "field": "HeapDeCommitTotalFreeThreshold",
+      "wine": "PEB",
+      "wine_field": "HeapDeCommitTotalFreeThreshold"
+    },
+    {
+      "model": "Peb64",
+      "field": "HeapDeCommitFreeBlockThreshold",
+      "wine": "PEB",
+      "wine_field": "HeapDeCommitFreeBlockThreshold"
+    },
+    {
+      "model": "Peb64",
+      "field": "NumberOfHeaps",
+      "wine": "PEB",
+      "wine_field": "NumberOfHeaps"
+    },
+    {
+      "model": "Peb64",
+      "field": "MaximumNumberOfHeaps",
+      "wine": "PEB",
+      "wine_field": "MaximumNumberOfHeaps"
+    },
+    {
+      "model": "Peb64",
+      "field": "ProcessHeaps",
+      "wine": "PEB",
+      "wine_field": "ProcessHeaps"
+    },
+    {
+      "model": "Peb64",
+      "field": "GdiSharedHandleTable",
+      "wine": "PEB",
+      "wine_field": "GdiSharedHandleTable"
+    },
+    {
+      "model": "Peb64",
+      "field": "ProcessStarterHelper",
+      "wine": "PEB",
+      "wine_field": "ProcessStarterHelper"
+    },
+    {
+      "model": "Peb64",
+      "field": "GdiDCAttributeList",
+      "wine": "PEB",
+      "wine_field": "GdiDCAttributeList"
+    },
+    {
+      "model": "Peb64",
+      "field": "LoaderLock",
+      "wine": "PEB",
+      "wine_field": "LoaderLock"
+    },
+    {
+      "model": "Peb64",
+      "field": "OSMajorVersion",
+      "wine": "PEB",
+      "wine_field": "OSMajorVersion"
+    },
+    {
+      "model": "Peb64",
+      "field": "OSMinorVersion",
+      "wine": "PEB",
+      "wine_field": "OSMinorVersion"
+    },
+    {
+      "model": "Peb64",
+      "field": "OSBuildNumber",
+      "wine": "PEB",
+      "wine_field": "OSBuildNumber"
+    },
+    {
+      "model": "Peb64",
+      "field": "OSPlatformId",
+      "wine": "PEB",
+      "wine_field": "OSPlatformId"
+    },
+    {
+      "model": "Peb64",
+      "field": "ImageSubSystem",
+      "wine": "PEB",
+      "wine_field": "ImageSubSystem"
+    },
+    {
+      "model": "Peb64",
+      "field": "ImageSubSystemMajorVersion",
+      "wine": "PEB",
+      "wine_field": "ImageSubSystemMajorVersion"
+    },
+    {
+      "model": "Peb64",
+      "field": "ImageSubSystemMinorVersion",
+      "wine": "PEB",
+      "wine_field": "ImageSubSystemMinorVersion"
+    },
+    {
+      "model": "Peb64",
+      "field": "ActiveProcessAffinityMask",
+      "wine": "PEB",
+      "wine_field": "ActiveProcessAffinityMask"
+    },
+    {
+      "model": "Peb64",
+      "field": "GdiHandleBuffer",
+      "wine": "PEB",
+      "wine_field": "GdiHandleBuffer"
+    },
+    {
+      "model": "Peb64",
+      "field": "PostProcessInitRoutine",
+      "wine": "PEB",
+      "wine_field": "PostProcessInitRoutine"
+    },
+    {
+      "model": "Peb64",
+      "field": "TlsExpansionBitmap",
+      "wine": "PEB",
+      "wine_field": "TlsExpansionBitmap"
+    },
+    {
+      "model": "Peb64",
+      "field": "TlsExpansionBitmapBits",
+      "wine": "PEB",
+      "wine_field": "TlsExpansionBitmapBits"
+    },
+    {
+      "model": "Peb64",
+      "field": "SessionId",
+      "wine": "PEB",
+      "wine_field": "SessionId"
+    },
+    {
+      "model": "Peb64",
+      "field": "AppCompatFlags",
+      "wine": "PEB",
+      "wine_field": "AppCompatFlags"
+    },
+    {
+      "model": "Peb64",
+      "field": "AppCompatFlagsUser",
+      "wine": "PEB",
+      "wine_field": "AppCompatFlagsUser"
+    },
+    {
+      "model": "Peb64",
+      "field": "ShimData",
+      "wine": "PEB",
+      "wine_field": "ShimData"
+    },
+    {
+      "model": "Peb64",
+      "field": "AppCompatInfo",
+      "wine": "PEB",
+      "wine_field": "AppCompatInfo"
+    },
+    {
+      "model": "Peb64",
+      "field": "CSDVersion",
+      "wine": "PEB",
+      "wine_field": "CSDVersion"
+    },
+    {
+      "model": "Peb64",
+      "field": "ActivationContextData",
+      "wine": "PEB",
+      "wine_field": "ActivationContextData"
+    },
+    {
+      "model": "Peb64",
+      "field": "ProcessAssemblyStorageMap",
+      "wine": "PEB",
+      "wine_field": "ProcessAssemblyStorageMap"
+    },
+    {
+      "model": "Peb64",
+      "field": "SystemDefaultActivationData",
+      "wine": "PEB",
+      "wine_field": "SystemDefaultActivationData"
+    },
+    {
+      "model": "Peb64",
+      "field": "SystemAssemblyStorageMap",
+      "wine": "PEB",
+      "wine_field": "SystemAssemblyStorageMap"
+    },
+    {
+      "model": "Peb64",
+      "field": "MinimumStackCommit",
+      "wine": "PEB",
+      "wine_field": "MinimumStackCommit"
+    },
+    {
+      "model": "Peb64",
+      "field": "SparePointers",
+      "wine": "PEB",
+      "wine_field": "SparePointers"
+    },
+    {
+      "model": "Peb64",
+      "field": "PatchLoaderData",
+      "wine": "PEB",
+      "wine_field": "PatchLoaderData"
+    },
+    {
+      "model": "Peb64",
+      "field": "ChpeV2ProcessInfo",
+      "wine": "PEB",
+      "wine_field": "ChpeV2ProcessInfo"
+    },
+    {
+      "model": "Peb64",
+      "field": "AppModelFeatureState",
+      "wine": "PEB",
+      "wine_field": "AppModelFeatureState"
+    },
+    {
+      "model": "Peb64",
+      "field": "SpareUlongs",
+      "wine": "PEB",
+      "wine_field": "SpareUlongs"
+    },
+    {
+      "model": "Peb64",
+      "field": "ActiveCodePage",
+      "wine": "PEB",
+      "wine_field": "ActiveCodePage"
+    },
+    {
+      "model": "Peb64",
+      "field": "OemCodePage",
+      "wine": "PEB",
+      "wine_field": "OemCodePage"
+    },
+    {
+      "model": "Peb64",
+      "field": "UseCaseMapping",
+      "wine": "PEB",
+      "wine_field": "UseCaseMapping"
+    },
+    {
+      "model": "Peb64",
+      "field": "UnusedNlsField",
+      "wine": "PEB",
+      "wine_field": "UnusedNlsField"
+    },
+    {
+      "model": "Peb64",
+      "field": "WerRegistrationData",
+      "wine": "PEB",
+      "wine_field": "WerRegistrationData"
+    },
+    {
+      "model": "Peb64",
+      "field": "WerShipAssertPtr",
+      "wine": "PEB",
+      "wine_field": "WerShipAssertPtr"
+    },
+    {
+      "model": "Peb64",
+      "field": "EcCodeBitMap",
+      "wine": "PEB",
+      "wine_field": "EcCodeBitMap"
+    },
+    {
+      "model": "Peb64",
+      "field": "pImageHeaderHash",
+      "wine": "PEB",
+      "wine_field": "pImageHeaderHash"
+    },
+    {
+      "model": "Peb64",
+      "field": "CsrServerReadOnlySharedMemoryBase",
+      "wine": "PEB",
+      "wine_field": "CsrServerReadOnlySharedMemoryBase"
+    },
+    {
+      "model": "Peb64",
+      "field": "TppWorkerpListLock",
+      "wine": "PEB",
+      "wine_field": "TppWorkerpListLock"
+    },
+    {
+      "model": "Peb64",
+      "field": "TppWorkerpList",
+      "wine": "PEB",
+      "wine_field": "TppWorkerpList"
+    },
+    {
+      "model": "Peb64",
+      "field": "WaitOnAddressHashTable",
+      "wine": "PEB",
+      "wine_field": "WaitOnAddressHashTable"
+    },
+    {
+      "model": "Peb64",
+      "field": "TelemetryCoverageHeader",
+      "wine": "PEB",
+      "wine_field": "TelemetryCoverageHeader"
+    },
+    {
+      "model": "Peb64",
+      "field": "CloudFileFlags",
+      "wine": "PEB",
+      "wine_field": "CloudFileFlags"
+    },
+    {
+      "model": "Peb64",
+      "field": "CloudFileDiagFlags",
+      "wine": "PEB",
+      "wine_field": "CloudFileDiagFlags"
+    },
+    {
+      "model": "Peb64",
+      "field": "PlaceholderCompatibilityMode",
+      "wine": "PEB",
+      "wine_field": "PlaceholderCompatibilityMode"
+    },
+    {
+      "model": "Peb64",
+      "field": "PlaceholderCompatibilityModeReserved",
+      "wine": "PEB",
+      "wine_field": "PlaceholderCompatibilityModeReserved"
+    },
+    {
+      "model": "Peb64",
+      "field": "LeapSecondData",
+      "wine": "PEB",
+      "wine_field": "LeapSecondData"
+    },
+    {
+      "model": "Peb64",
+      "field": "LeapSecondFlags",
+      "wine": "PEB",
+      "wine_field": "LeapSecondFlags"
+    },
+    {
+      "model": "Peb64",
+      "field": "NtGlobalFlag2",
+      "wine": "PEB",
+      "wine_field": "NtGlobalFlag2"
+    },
+    {
+      "model": "NtTib64",
+      "field": "ExceptionList",
+      "wine": "NT_TIB",
+      "wine_field": "ExceptionList"
+    },
+    {
+      "model": "NtTib64",
+      "field": "StackBase",
+      "wine": "NT_TIB",
+      "wine_field": "StackBase"
+    },
+    {
+      "model": "NtTib64",
+      "field": "StackLimit",
+      "wine": "NT_TIB",
+      "wine_field": "StackLimit"
+    },
+    {
+      "model": "NtTib64",
+      "field": "SubSystemTib",
+      "wine": "NT_TIB",
+      "wine_field": "SubSystemTib"
+    },
+    {
+      "model": "NtTib64",
+      "field": "FiberData",
+      "wine": "NT_TIB",
+      "wine_field": "FiberData"
+    },
+    {
+      "model": "NtTib64",
+      "field": "ArbitraryUserPointer",
+      "wine": "NT_TIB",
+      "wine_field": "ArbitraryUserPointer"
+    },
+    {
+      "model": "NtTib64",
+      "field": "Self",
+      "wine": "NT_TIB",
+      "wine_field": "Self"
+    },
+    {
+      "model": "ListEntry64",
+      "field": "Flink",
+      "wine": "LIST_ENTRY",
+      "wine_field": "Flink"
+    },
+    {
+      "model": "ListEntry64",
+      "field": "Blink",
+      "wine": "LIST_ENTRY",
+      "wine_field": "Blink"
+    },
+    {
+      "model": "UnicodeString64",
+      "field": "Length",
+      "wine": "UNICODE_STRING",
+      "wine_field": "Length"
+    },
+    {
+      "model": "UnicodeString64",
+      "field": "MaximumLength",
+      "wine": "UNICODE_STRING",
+      "wine_field": "MaximumLength"
+    },
+    {
+      "model": "UnicodeString64",
+      "field": "Buffer",
+      "wine": "UNICODE_STRING",
+      "wine_field": "Buffer"
+    },
+    {
+      "model": "ClientId64",
+      "field": "UniqueProcess",
+      "wine": "CLIENT_ID",
+      "wine_field": "UniqueProcess"
+    },
+    {
+      "model": "ClientId64",
+      "field": "UniqueThread",
+      "wine": "CLIENT_ID",
+      "wine_field": "UniqueThread"
+    },
+    {
+      "model": "Guid",
+      "field": "Data1",
+      "wine": "GUID",
+      "wine_field": "Data1"
+    },
+    {
+      "model": "Guid",
+      "field": "Data2",
+      "wine": "GUID",
+      "wine_field": "Data2"
+    },
+    {
+      "model": "Guid",
+      "field": "Data3",
+      "wine": "GUID",
+      "wine_field": "Data3"
+    },
+    {
+      "model": "Guid",
+      "field": "Data4",
+      "wine": "GUID",
+      "wine_field": "Data4"
+    },
+    {
+      "model": "RtlBitmap64",
+      "field": "SizeOfBitMap",
+      "wine": "RTL_BITMAP",
+      "wine_field": "SizeOfBitMap"
+    },
+    {
+      "model": "RtlBitmap64",
+      "field": "Buffer",
+      "wine": "RTL_BITMAP",
+      "wine_field": "Buffer"
+    },
+    {
+      "model": "ActivationContextStack64",
+      "field": "ActiveFrame",
+      "wine": "ACTIVATION_CONTEXT_STACK",
+      "wine_field": "ActiveFrame"
+    },
+    {
+      "model": "ActivationContextStack64",
+      "field": "FrameListCache",
+      "wine": "ACTIVATION_CONTEXT_STACK",
+      "wine_field": "FrameListCache"
+    },
+    {
+      "model": "ActivationContextStack64",
+      "field": "Flags",
+      "wine": "ACTIVATION_CONTEXT_STACK",
+      "wine_field": "Flags"
+    },
+    {
+      "model": "ActivationContextStack64",
+      "field": "NextCookieSequenceNumber",
+      "wine": "ACTIVATION_CONTEXT_STACK",
+      "wine_field": "NextCookieSequenceNumber"
+    },
+    {
+      "model": "ActivationContextStack64",
+      "field": "StackId",
+      "wine": "ACTIVATION_CONTEXT_STACK",
+      "wine_field": "StackId"
+    },
+    {
+      "model": "GdiTebBatch64",
+      "field": "Offset",
+      "wine": "GDI_TEB_BATCH",
+      "wine_field": "Offset"
+    },
+    {
+      "model": "GdiTebBatch64",
+      "field": "HDC",
+      "wine": "GDI_TEB_BATCH",
+      "wine_field": "HDC"
+    },
+    {
+      "model": "GdiTebBatch64",
+      "field": "Buffer",
+      "wine": "GDI_TEB_BATCH",
+      "wine_field": "Buffer"
+    },
+    {
+      "model": "CurDir64",
+      "field": "DosPath",
+      "wine": "CURDIR",
+      "wine_field": "DosPath"
+    },
+    {
+      "model": "CurDir64",
+      "field": "Handle",
+      "wine": "CURDIR",
+      "wine_field": "Handle"
+    },
+    {
+      "model": "DriveLetterCurDir64",
+      "field": "Flags",
+      "wine": "RTL_DRIVE_LETTER_CURDIR",
+      "wine_field": "Flags"
+    },
+    {
+      "model": "DriveLetterCurDir64",
+      "field": "Length",
+      "wine": "RTL_DRIVE_LETTER_CURDIR",
+      "wine_field": "Length"
+    },
+    {
+      "model": "DriveLetterCurDir64",
+      "field": "TimeStamp",
+      "wine": "RTL_DRIVE_LETTER_CURDIR",
+      "wine_field": "TimeStamp"
+    },
+    {
+      "model": "DriveLetterCurDir64",
+      "field": "DosPath",
+      "wine": "RTL_DRIVE_LETTER_CURDIR",
+      "wine_field": "DosPath"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "AllocationSize",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "AllocationSize"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "Size",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "Size"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "Flags",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "Flags"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "DebugFlags",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "DebugFlags"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "ConsoleHandle",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "ConsoleHandle"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "ConsoleFlags",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "ConsoleFlags"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "hStdInput",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "hStdInput"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "hStdOutput",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "hStdOutput"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "hStdError",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "hStdError"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "CurrentDirectory",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "CurrentDirectory"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "DllPath",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "DllPath"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "ImagePathName",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "ImagePathName"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "CommandLine",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "CommandLine"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "Environment",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "Environment"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwX",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwX"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwY",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwY"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwXSize",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwXSize"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwYSize",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwYSize"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwXCountChars",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwXCountChars"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwYCountChars",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwYCountChars"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwFillAttribute",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwFillAttribute"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "dwFlags",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "dwFlags"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "wShowWindow",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "wShowWindow"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "WindowTitle",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "WindowTitle"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "Desktop",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "Desktop"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "ShellInfo",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "ShellInfo"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "RuntimeInfo",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "RuntimeInfo"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "DLCurrentDirectory",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "DLCurrentDirectory"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "EnvironmentSize",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "EnvironmentSize"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "EnvironmentVersion",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "EnvironmentVersion"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "PackageDependencyData",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "PackageDependencyData"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "ProcessGroupId",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "ProcessGroupId"
+    },
+    {
+      "model": "ProcessParameters64",
+      "field": "LoaderThreads",
+      "wine": "RTL_USER_PROCESS_PARAMETERS",
+      "wine_field": "LoaderThreads"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "Length",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "Length"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "Initialized",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "Initialized"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "SsHandle",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "SsHandle"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "InLoadOrderModuleList",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "InLoadOrderModuleList"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "InMemoryOrderModuleList",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "InMemoryOrderModuleList"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "InInitializationOrderModuleList",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "InInitializationOrderModuleList"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "EntryInProgress",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "EntryInProgress"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "ShutdownInProgress",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "ShutdownInProgress"
+    },
+    {
+      "model": "PebLdrData64",
+      "field": "ShutdownThreadId",
+      "wine": "PEB_LDR_DATA",
+      "wine_field": "ShutdownThreadId"
+    },
+    {
+      "model": "GdiHandleEntry64",
+      "field": "Object",
+      "wine": "GDI_HANDLE_ENTRY",
+      "wine_field": "Object"
+    },
+    {
+      "model": "GdiHandleEntry64",
+      "field": "Owner",
+      "wine": "GDI_HANDLE_ENTRY",
+      "wine_field": "Owner"
+    },
+    {
+      "model": "GdiHandleEntry64",
+      "field": "Unique",
+      "wine": "GDI_HANDLE_ENTRY",
+      "wine_field": "Unique"
+    },
+    {
+      "model": "GdiHandleEntry64",
+      "field": "Type",
+      "wine": "GDI_HANDLE_ENTRY",
+      "wine_field": "Type"
+    },
+    {
+      "model": "GdiHandleEntry64",
+      "field": "Flags",
+      "wine": "GDI_HANDLE_ENTRY",
+      "wine_field": "Flags"
+    },
+    {
+      "model": "GdiHandleEntry64",
+      "field": "UserPointer",
+      "wine": "GDI_HANDLE_ENTRY",
+      "wine_field": "UserPointer"
+    }
+  ],
+  "non_addressable_bitfields": [
+    {
+      "model": "Peb64",
+      "field": "BitField",
+      "wine": "PEB",
+      "previous": "BeingDebugged",
+      "next": "Mutant",
+      "storage_bytes": 1
+    },
+    {
+      "model": "Peb64",
+      "field": "CrossProcessFlags",
+      "wine": "PEB",
+      "previous": "IFEOKey",
+      "next": "KernelCallbackTable",
+      "storage_bytes": 4
+    },
+    {
+      "model": "Peb64",
+      "field": "TracingFlags",
+      "wine": "PEB",
+      "previous": "pImageHeaderHash",
+      "next": "CsrServerReadOnlySharedMemoryBase",
+      "storage_bytes": 4
+    }
+  ]
+}

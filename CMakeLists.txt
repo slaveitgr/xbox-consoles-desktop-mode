@@ -17,6 +17,7 @@ add_library(xcdm_runtime STATIC
     runtime/ModuleOwnership.cpp
     runtime/PeImage.cpp
     runtime/GamePreflight.cpp
+    runtime/GuestEnvironment.cpp
     runtime/Pe32Image.cpp
     runtime/LowAddressProbe.cpp
     runtime/PackagedBridgeProbe.cpp
@@ -78,4 +79,28 @@ if(BUILD_TESTING)
     add_executable(low_address_probe_tests tests/LowAddressProbeTests.cpp)
     target_link_libraries(low_address_probe_tests PRIVATE xcdm_runtime)
     add_test(NAME low_address_probe_contract COMMAND low_address_probe_tests)
+    add_executable(guest_environment_tests tests/GuestEnvironmentTests.cpp)
+    target_link_libraries(guest_environment_tests PRIVATE xcdm_runtime)
+    if(NOT MSVC)
+        find_package(Threads REQUIRED)
+        target_link_libraries(guest_environment_tests PRIVATE Threads::Threads)
+    endif()
+    add_test(NAME wine_guest_environment_contract COMMAND guest_environment_tests)
+
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+        add_test(NAME wine_registry_seed_contract
+                 COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tests/wine_registry_seed_test.py")
+        add_test(NAME wine_guest_audit_fixtures
+                 COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tests/audit_wine_guest_test.py")
+        set_tests_properties(wine_guest_audit_fixtures PROPERTIES SKIP_RETURN_CODE 77)
+        # Optional: check the modeled TEB/PEB against a pinned Wine checkout.
+        set(XCDM_WINE_SOURCE "" CACHE PATH "Pinned Wine source tree for guest layout checks")
+        if(XCDM_WINE_SOURCE)
+            add_test(NAME wine_guest_layout_matches_wine
+                     COMMAND Python3::Interpreter "${CMAKE_CURRENT_SOURCE_DIR}/tools/verify_guest_layout.py"
+                             --winternl "${XCDM_WINE_SOURCE}/include/winternl.h"
+                             --layout-exe $<TARGET_FILE:guest_environment_tests>)
+        endif()
+    endif()
 endif()

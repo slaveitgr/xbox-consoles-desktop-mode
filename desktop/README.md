@@ -82,8 +82,10 @@ desktop applications, native readiness and zero rejected messages; the LAN
 listener is stopped after the test. No Wine guest was executed on the console.
 
 Opt-in native integration smoke tests are requested only by a local
-`mihawk-native-smoke.json` file containing explicit `lan`/`browser` booleans, or `shellCapture: true` for a
-fixed five-second PNG capture of the original trusted desktop view.
+`mihawk-native-smoke.json` file containing explicit `lan`/`browser` booleans,
+`shellCapture: true` for a fixed five-second PNG capture of the original trusted
+desktop view, `windowChrome: true` for hosted-window state checks, or
+`runtimeReturn42: true` for the packaged self-authored native fixture.
 They are off by default and never triggered by a website. Remove the file
 after testing. Separate desktop, browser and smoke status JSON files under
 LocalState record actual results; a successful build is not hardware proof.
@@ -104,3 +106,13 @@ capture succeeded on the console. The temporary capture configuration was
 removed and ordinary startup revalidated. Existing personalization preferences
 are preserved; **Personalization → Background → XWindows Blue** selects the new
 wallpaper. See [`../docs/XWINDOWS_OS.md`](../docs/XWINDOWS_OS.md).
+
+Version **1.0.49.0** adds a native hosted window for EXE launches and the public
+browser: drag its title bar, resize from the lower-right grip, minimize to a
+restore button, maximize within the desktop workspace, or select fullscreen.
+F11 toggles fullscreen; Escape or the floating exit button leaves it. Minimized
+guest surfaces stop receiving input. This remains one active runtime/overlay.
+Physical One X tests passed seven layout/state transitions and the real
+`RunFile` path returned 42 from the packaged diagnostic EXE. Arbitrary EXE and
+Wine compatibility remain unproved; see the exact evidence in
+[`../docs/XWINDOWS_OS.md`](../docs/XWINDOWS_OS.md).

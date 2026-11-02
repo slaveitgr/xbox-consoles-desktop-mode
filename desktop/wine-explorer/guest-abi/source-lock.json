@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "repository": "https://github.com/ValveSoftware/wine",
+  "commit": "1c78596625336a73dbfc035dbbcf0dbdd95b06eb",
+  "archive_sha256": "c5e9d053b4edec0507d0e1cd8acf19d2ed0bba982417d67f7dcfa6122b53b0be",
+  "header_sha256": {
+    "include/winternl.h": "43be9c4f35922df762a9883bbc39cd70308c4c8a038e1bbb0fca2a3a160ec13d",
+    "include/winnt.h": "86883f056cc21989cb42926f3003445e7972d45244f802ee965d8158dc46874f",
+    "include/ntgdi.h": "a3fa1b56ce051d20a852985d7b0cb8b200920a6e1a4fc80af97977cd4a691098"
+  }
+}
