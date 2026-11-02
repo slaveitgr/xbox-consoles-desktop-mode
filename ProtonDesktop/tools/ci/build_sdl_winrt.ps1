@@ -32,7 +32,7 @@ function Save-Proof {
 Save-Proof
 foreach ($oldFile in @('build.log', 'build-diagnostic.log', 'build.binlog', 'headers.txt',
     'imports.txt', 'exports.txt', 'source-items.txt', 'msbuild-arguments.json',
-    'SDL-UWP.effective.vcxproj', 'AppPartitionGuard.cpp')) {
+    'SDL-UWP.effective.vcxproj', 'AppPartitionGuard.cpp', 'SDL_winrtgamebar.effective.cpp')) {
     Remove-Item -LiteralPath (Join-Path $artifacts $oldFile) -ErrorAction SilentlyContinue
 }
 try {
@@ -81,6 +81,45 @@ try {
         New-Item -ItemType Directory -Force $directory | Out-Null
     }
     Get-ChildItem -LiteralPath $sdlOriginal -Force | Copy-Item -Destination $stagedSdl -Recurse -Force
+
+    # Marked build-local compatibility change, retaining SDL's license and all
+    # Game Bar activation/subscription/dispatch/removal code. Current SDKs put
+    # the EventHandler<IInspectable*> ABI specialization in the owning Gaming
+    # header, rather than making it available from Foundation alone. Use that
+    # real SDK declaration; do not recreate its type or disable the events.
+    $gameBarRelative = 'src/video/winrt/SDL_winrtgamebar.cpp'
+    $gameBarOriginal = Join-Path $sdlOriginal $gameBarRelative
+    $gameBarStaged = Join-Path $stagedSdl $gameBarRelative
+    $gameBarSource = [System.IO.File]::ReadAllText($gameBarStaged)
+    $foundationInclude = '#include <windows.foundation.h>'
+    if ([regex]::Matches($gameBarSource, '(?m)^#include <windows\.foundation\.h>\r?$').Count -ne 1 -or
+        [regex]::Matches($gameBarSource, '\b__FIEventHandler_1_IInspectable\b').Count -ne 4 -or
+        $gameBarSource.Contains('#include <windows.gaming.ui.h>')) {
+        throw 'Pinned Game Bar include/event inventory changed; inspect before applying the SDK compatibility overlay.'
+    }
+    $gamingHeader = Join-Path $env:WindowsSdkDir "Include/$SdkVersion/winrt/windows.gaming.ui.h"
+    if (-not (Test-Path $gamingHeader) -or
+        -not ([System.IO.File]::ReadAllText($gamingHeader).Contains('DEF___FIEventHandler_1_IInspectable_USE'))) {
+        throw 'The selected SDK must supply the real Game Bar EventHandler<IInspectable*> ABI specialization.'
+    }
+    $gameBarNewline = if ($gameBarSource.Contains("`r`n")) { "`r`n" } else { "`n" }
+    $gameBarReplacement = $foundationInclude + $gameBarNewline +
+        '/* ProtonDesktop staging overlay: use the owning SDK Game Bar event ABI declaration. */' + $gameBarNewline +
+        '#include <windows.gaming.ui.h>'
+    [System.IO.File]::WriteAllText($gameBarStaged,
+        $gameBarSource.Replace($foundationInclude, $gameBarReplacement), [System.Text.UTF8Encoding]::new($false))
+    Copy-Item $gameBarStaged (Join-Path $artifacts 'SDL_winrtgamebar.effective.cpp')
+    $proof['gameBarSdkIncludeOverlay'] = [ordered]@{
+        source = $gameBarRelative
+        originalSha256 = (Get-FileHash $gameBarOriginal -Algorithm SHA256).Hash.ToLowerInvariant()
+        effectiveSha256 = (Get-FileHash $gameBarStaged -Algorithm SHA256).Hash.ToLowerInvariant()
+        sdkHeader = $gamingHeader
+        sdkHeaderSha256 = (Get-FileHash $gamingHeader -Algorithm SHA256).Hash.ToLowerInvariant()
+        sdkDeclarationSource = 'https://github.com/microsoft/win32metadata/blob/main/generation/WinSDK/RecompiledIdlHeaders/winrt/windows.gaming.ui.h'
+        change = 'Include the owning SDK header only; original Game Bar event behavior retained.'
+    }
+    Save-Proof
+
     $projectPath = Join-Path $stagedSdl $relativeProject
     $project = [System.Xml.XmlDocument]::new()
     $project.PreserveWhitespace = $true
