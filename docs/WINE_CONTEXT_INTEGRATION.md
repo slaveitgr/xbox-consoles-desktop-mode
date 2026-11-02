@@ -64,6 +64,27 @@ wrong-thread destruction test aborts as required. Windows-specific fiber tests
 are part of the host suite; Windows compilation and Xbox diagnostic results
 must be recorded separately.
 
+At source `0372634c1bc4a2d3b664d897ca5c0ca7a79f25c3`:
+
+- Local Linux ASan/UBSan CTest passed 14/14 suites with the optional audit
+  dependencies available; internal MinGW/windres fixture cases remain skipped.
+- [Windows run 41460001220](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41460001220)
+  compiled the native/C++/CX integration and UWP package. Twelve host suites
+  executed and passed, including Windows-specific environment/scope tests;
+  the optional binary-audit fixture suite skipped (13 registered).
+- The verified 1.0.50.0 MSIX installed and launched on One X. Its actual bridge
+  integration diagnostic passed 34/34 checks, export status 0. This includes
+  nested entry, dynamic TEB resolution, missing-context faults, a joined worker
+  and the unconditional strict execution gate. No guest PE was executed by it.
+- The window-state regression passed and the separate Legacy return42 guest
+  returned 42. All opt-in smoke configuration was removed and normal desktop
+  startup revalidated. No Wine DLL was initialized or executed.
+
+Console reports are under `artifacts/local-xbox/xwindows-1.0.50.0/`, including
+`xwindows-guest-context-smoke.json`, `xwindows-window-smoke.json`,
+`xwindows-runtime-smoke.json` and `physical-validation.json`. The sampled host
+PEB pointer check does not establish that every host TEB field was unchanged.
+
 The following remain prerequisites before any Wine initialization:
 
 - Own the runtime, main image, resources and all DLL code for every worker,

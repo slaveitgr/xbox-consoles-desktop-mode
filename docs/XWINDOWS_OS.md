@@ -1,4 +1,4 @@
-# XWindows OS 1.0.49.0
+# XWindows OS 1.0.50.0
 
 The current desktop is named **XWindows OS** and uses a compact Windows 11
 inspired design: centered Start and taskbar, rounded windows, light/dark
@@ -11,6 +11,35 @@ available under **Personalization → Background → XWindows Blue**. The physic
 capture retained the previously saved dark theme and solid accent background.
 
 ## Current build and physical validation
+
+Version **1.0.50.0** was built at source
+`0372634c1bc4a2d3b664d897ca5c0ca7a79f25c3` in
+[Windows run 41460001220](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41460001220)
+and installed on the same One X. The MSIX SHA-256 is
+`afbdf5bb8410191f56f2685e842e560c87b8671af0bd223f067e46830a649baf`;
+artifact `13148549839` SHA-256 is
+`fef0cf0d9c0ad82258e3392660c7f1a3a9f48007f0b23b97031704b338240452`.
+All 91 payload hashes and blockmap files, source/version and bridge/host hashes
+were verified before deployment. Installation completed with code 0 and the
+new package launched.
+
+The actual packaged bridge context diagnostic passed **34/34 checks**, with
+zero failures: strict loader entry, nested scopes, joined worker ownership,
+direct/dynamic guest TEB access, guest last error, missing-context faults,
+blocked strict PE entry and blocked unqualified async launch. Its report keeps
+`wineExecuted`, `guestPeExecuted`, `heapNlsQualified` and
+`asyncImageLifetimeQualified` false. This validates scope wiring, not Wine
+initialization or full image lifetime. See
+[`WINE_CONTEXT_INTEGRATION.md`](WINE_CONTEXT_INTEGRATION.md).
+
+Window/fullscreen/minimize/restore checks passed again. The actual Legacy
+return42 launch returned 42 without error. Fresh reports were obtained after
+deleting old diagnostic reports. The temporary smoke configuration was removed
+and ordinary startup revalidated: native ready, two accepted messages, zero
+rejections/errors, 1920×1080 at DPR 1. Evidence is retained under
+`artifacts/local-xbox/xwindows-1.0.50.0/`.
+
+## Hosted-window validation, version 1.0.49.0
 
 Version **1.0.49.0** was built at source
 `546eda5351593fa17a958ea3b43d7a4063668417` in

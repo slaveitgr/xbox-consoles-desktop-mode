@@ -13,13 +13,13 @@ licensed reference code and theme components, with its credits preserved.
 
 | Component | Verified status |
 | --- | --- |
-| Native UWP desktop | Version 1.0.49.0 installed on One X; native RPC ready, zero rejected startup messages, 1920×1080 viewport at DPR 1 |
+| Native UWP desktop | Version 1.0.50.0 installed on One X; native RPC ready, zero rejected startup messages, 1920×1080 viewport at DPR 1 |
 | Hosted EXE window | Physical window/maximize/fullscreen/minimize/restore checks passed; packaged self-authored return42 guest returned 42 through the actual launch path |
 | Product and design | XWindows OS branding and a compact Windows 11-inspired desktop replace the previous product presentation |
 | Edge WebView2 | Trusted desktop runs on Edge 150.0.4078.112; separate public browser initialized on One X |
 | LAN transfer | Physical upload/download and content hash passed, with missing-token, wrong-token, foreign-origin and traversal-name rejection; listener stopped after testing |
 | Wine Explorer | Full pinned stock and XCDM builds produced 61 AMD64 PE files; corrected binary audit inspected 53, with two CRT scans inconclusive; no Wine guest execution |
-| Native Wine environment | Separate guest TEB/PEB model, header redirect and loader ownership foundation exist; native providers, lifecycle integration and hardware qualification remain incomplete |
+| Native Wine environment | Owned loader/thread scopes and four context imports passed 34 physical bridge checks; native providers and complete callback/image lifetime remain incomplete; no Wine DLL execution |
 | Experimental Win32Bridge | Retained from pinned DesktopMode UWP, with a bounded PE32 startup backend; not a general Windows compatibility guarantee |
 | Steam and commercial games | Installer/game startup traces only; no established Steam UI, game graphics or gameplay |
 

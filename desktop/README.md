@@ -90,6 +90,12 @@ They are off by default and never triggered by a website. Remove the file
 after testing. Separate desktop, browser and smoke status JSON files under
 LocalState record actual results; a successful build is not hardware proof.
 
+Version **1.0.50.0** adds an opt-in local `guestContext: true` diagnostic through
+the actual packaged bridge. Its loader/thread scopes passed 34/34 checks on
+One X. The native providers and complete async code lifetime remain incomplete;
+the strict Wine execution gate remains closed. Normal startup runs no such
+diagnostic. See [`../docs/WINE_CONTEXT_INTEGRATION.md`](../docs/WINE_CONTEXT_INTEGRATION.md).
+
 The product name is **XWindows OS**. The current frontend uses centered Start
 and taskbar controls, compact desktop spacing, rounded window frames and
 light/dark surfaces inspired by Windows 11. Original SVG branding lives in
