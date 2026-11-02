@@ -33,6 +33,12 @@ add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_APP SDL_BUILDING_WINRT=1 _WI
 # Do not inherit the desktop platform's broad default Win32 import list.
 set(CMAKE_C_STANDARD_LIBRARIES "WindowsApp.lib")
 set(CMAKE_CXX_STANDARD_LIBRARIES "WindowsApp.lib")
+set(PROTON_UWP_CRT_DIR "" CACHE PATH "VC x64 Store CRT library directory")
+if(NOT EXISTS "${PROTON_UWP_CRT_DIR}/msvcrt.lib" OR
+   NOT EXISTS "${PROTON_UWP_CRT_DIR}/msvcprt.lib")
+  message(FATAL_ERROR "Set PROTON_UWP_CRT_DIR to VCToolsInstallDir/lib/x64/store (Store CRT is required)")
+endif()
+link_directories(BEFORE "${PROTON_UWP_CRT_DIR}")
 
 # Do not call a STATIC_LIBRARY compiler probe proof of arithmetic linkage.
 # The final link check below must resolve the genuine compiler-rt helpers.
@@ -95,7 +101,31 @@ foreach(directory emulation io kernel sdl util x11 x11wire opengl vulkan)
 endforeach()
 list(FILTER core_sources EXCLUDE REGEX "/source/util/networkutils\\.cpp$")
 list(FILTER core_sources EXCLUDE REGEX "/source/sdl/(main|startupArgs)\\.cpp$")
+# No fabricated host telemetry: these optional proc/sys readers and their
+# registrations are outside the explicitly supported interpreter profile.
+list(FILTER core_sources EXCLUDE REGEX "/source/kernel/proc/(proccpuinfo|procstat)\\.cpp$")
+list(FILTER core_sources EXCLUDE REGEX "/source/kernel/sys/(cpumaxfreq|cpuscalingcurfreq|cpuscalingmaxfreq)\\.cpp$")
 file(GLOB platform_sources CONFIGURE_DEPENDS "${BOXEDWINE_SOURCE}/platform/sdl/*.cpp")
+include("${CMAKE_CURRENT_SOURCE_DIR}/prepare_profile_overlay.cmake")
+set(profile_overlay "${CMAKE_CURRENT_BINARY_DIR}/profile-overlay")
+proton_prepare_uwp_profile_overlay("${BOXEDWINE_SOURCE}" "${profile_overlay}")
+foreach(relative
+    source/kernel/devs/devsequencer.cpp source/kernel/devs/devdsp.cpp
+    source/kernel/devs/devmixer.cpp source/kernel/ksystem.cpp source/kernel/sys/sysfs.cpp
+    source/kernel/knativesocket.cpp
+    source/emulation/cpu/normal/normalPlatformMultiThreaded.cpp)
+  list(REMOVE_ITEM core_sources "${BOXEDWINE_SOURCE}/${relative}")
+  list(APPEND core_sources "${profile_overlay}/${relative}")
+endforeach()
+list(REMOVE_ITEM platform_sources "${BOXEDWINE_SOURCE}/platform/sdl/knativeaudio.cpp")
+list(APPEND platform_sources "${profile_overlay}/platform/sdl/knativeaudio.cpp")
+list(REMOVE_ITEM platform_sources "${BOXEDWINE_SOURCE}/platform/sdl/knativethread.cpp")
+list(APPEND platform_sources "${profile_overlay}/platform/sdl/knativethread.cpp")
+list(APPEND platform_sources "${PROTONDESKTOP_ROOT}/backend/uwp/UwpPlatformProfile.cpp")
+list(APPEND platform_sources "${PROTONDESKTOP_ROOT}/backend/uwp/UwpScheduling.cpp"
+  "${PROTONDESKTOP_ROOT}/backend/uwp/UwpPlatformScheduling.cpp"
+  "${PROTONDESKTOP_ROOT}/backend/uwp/UwpStringSearch.cpp"
+  "${PROTONDESKTOP_ROOT}/backend/uwp/UwpPlatformStrings.cpp")
 # Drop only the desktop launcher entry; retain the genuine host functions and
 # normal threading behavior. No global __TEST mode or API substitution.
 include("${CMAKE_CURRENT_SOURCE_DIR}/prepare_host_overlay.cmake")
@@ -111,11 +141,15 @@ target_compile_features(proton-uwp-core-objects PRIVATE cxx_std_20)
 target_compile_definitions(proton-uwp-core-objects PRIVATE
   BOXEDWINE_GUEST_X64=1 BOXEDWINE_64=1 BOXEDWINE_MSVC BOXEDWINE_MULTI_THREADED
   BOXEDWINE_HAS_SETJMP BOXEDWINE_DISABLE_UI SDL2=1 SDL_MAIN_HANDLED SIMDE_SSE2_NO_NATIVE
-  USING_GENERATED_CONFIG_H)
+  USING_GENERATED_CONFIG_H PROTONDESKTOP_UWP_PROFILE=1)
 target_include_directories(proton-uwp-core-objects PRIVATE
+  "${PROTONDESKTOP_ROOT}"
   "${CMAKE_CURRENT_BINARY_DIR}/sdl2/include" "${sdl_overlay}/include"
   "${BOXEDWINE_SOURCE}/include" "${BOXEDWINE_SOURCE}/lib/simde"
   "${BOXEDWINE_SOURCE}/platform/sdl"
+  "${BOXEDWINE_SOURCE}/source/kernel" "${BOXEDWINE_SOURCE}/source/kernel/devs"
+  "${BOXEDWINE_SOURCE}/source/kernel/sys"
+  "${BOXEDWINE_SOURCE}/source/emulation/cpu/normal"
   "${BOXEDWINE_SOURCE}/lib/glew/include" "${BOXEDWINE_SOURCE}/lib/pugixml/src"
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/include"
   "${BOXEDWINE_SOURCE}/lib/softfloat/source"
@@ -127,9 +161,11 @@ target_compile_options(proton-uwp-core-objects PRIVATE /O1 /Gy /Gw /W3
 add_executable(proton-uwp-core-linkcheck LinkProbe.cpp
   $<TARGET_OBJECTS:proton-uwp-core-objects>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_memory>
-  $<TARGET_OBJECTS:protondesktop_uwp_platform_host>)
+  $<TARGET_OBJECTS:protondesktop_uwp_platform_host>
+  $<TARGET_OBJECTS:protondesktop_uwp_platform_socket>)
 target_link_options(proton-uwp-core-linkcheck PRIVATE /APPCONTAINER /OPT:REF /OPT:ICF /SUBSYSTEM:CONSOLE)
 target_link_libraries(proton-uwp-core-linkcheck PRIVATE SDL2-static
-  protondesktop_uwp_memory protondesktop_uwp_host_services "${PROTON_CLANG_BUILTINS}" WindowsApp)
+  protondesktop_uwp_memory protondesktop_uwp_host_services protondesktop_uwp_socket_pair
+  "${PROTON_CLANG_BUILTINS}" WindowsApp)
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/qualification-scope.txt" CONTENT
-  "source=${source_pin}\nkind=WindowsStore APP compile/link diagnostic only\npackaged=no\nrun=no\nWine=no\nSDL presentation/audio/filesystem/controller subsystems=disabled\nMissing required platform services must fail link\n")
+  "source=${source_pin}\nkind=WindowsStore APP compile/link diagnostic only\npackaged=no\nrun=no\nWine=no\nSDL presentation/audio/filesystem/controller subsystems=disabled\nsoftware bitmap metadata=BGRA32 (no host renderer/GL/GDI claim)\nCPU/proc host telemetry nodes=omitted\nhost JIT/code writes=rejected before callback\nStore CRT=${PROTON_UWP_CRT_DIR}\nMissing required platform services must fail link\n")
