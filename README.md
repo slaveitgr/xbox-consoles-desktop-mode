@@ -12,14 +12,14 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 
 | Component | Status |
 | --- | --- |
-| Upstream desktop | Patched repack 1.0.46.2 installed and launched on One X; original release 21286 remains the shell/Gecko foundation |
+| Upstream desktop | Patched repack 1.0.46.3 installed and launched on One X with its process confirmed; the preceding 1.0.46.2 game file-open route was verified |
 | Desktop and Win32Bridge source | Pinned upstream source; patched bridge builds and passes ABI comparison; repacks retain the upstream shell and Gecko binaries |
 | Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
 | Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
 | USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
-| Integer x86 execution | Version 0.7 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls |
-| Bounded game startup trace | Version 0.7 executed 41 guest instructions and host gates from the USB game's entry point, then stopped at missing GetVersionExA; no gameplay or graphics |
-| Patched Win32Bridge | Version 0.7 confirmed the packaged DLL loads on One X with ABI 1 and no direct fallback; desktop repack 1.0.46.2 passes signature, ABI and 8,858-file blockmap checks |
+| Integer x86 execution | Version 0.8 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls |
+| Bounded game startup trace | Version 0.8 returns normally from GetVersionExA and reaches 60 guest instructions and host gates before missing GetModuleHandleA; no gameplay or graphics |
+| Patched Win32Bridge | Version 0.8 loads on One X with ABI 1 and no direct fallback; five host APIs implemented; desktop repack 1.0.46.3 passes signature, ABI and 8,858-file blockmap checks |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -106,14 +106,27 @@ checking its WinRT ABI against the original package. It retains the original
 shell and Gecko binaries; a complete independent shell build is still pending.
 
 Version **0.7** was tested on One X with the packaged bridge, without a direct
-runtime fallback. The saved USB game now executes 41 guest instructions and
+runtime fallback. The saved USB game executed 41 guest instructions and
 host gates before stopping at `KERNEL32.dll!GetVersionExA`. The previous
 guest W+X-section and read-only-IAT loader stops are fixed. All 218
 imports are bound to gates, while only four host APIs are implemented; this
 is not a successful game launch. The corresponding **1.0.46.2** desktop repack
 passed CI signature, ABI and blockmap validation, then installed successfully
-and launched on the One X. Device Portal screenshot capture remains unavailable
-for this shell; no new visual or gameplay result is inferred from launch alone.
+and launched on the One X. The user then opened the game through the actual
+desktop file manager; its retrieved bridge log confirmed the same 41-instruction
+GetVersionExA stop, verifying the desktop route as well as the companion.
+
+Version **0.8** implements `GetVersionExA` with a virtual Windows 10.0.19045
+profile. On the One X, the saved USB trace returns normally from that call with last-error
+zero and advances to **60 instructions and host gates**, stopping at missing
+`KERNEL32.dll!GetModuleHandleA`. Five APIs are implemented among 218 import
+gates; there is no successful game exit, graphics or gameplay. All seven Linux
+and seven Windows suites pass, including 39 startup checks with 21 new version
+query cases. Desktop update **1.0.46.3** passes CI signature, ABI and blockmap
+validation and installed on the One X with deployment code 0. Launch returned
+HTTP 200 and the desktop process was confirmed under package version 1.0.46.3.
+Its fresh game file-open trace remains unobserved; the 0.8 diagnostic app verifies
+the shared DLL's startup behavior.
 
 ## Development direction
 

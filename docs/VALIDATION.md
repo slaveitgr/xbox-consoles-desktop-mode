@@ -1,5 +1,34 @@
 # Verified baseline
 
+## GetVersionExA startup progress, version 0.8
+
+Source commit: `fe36866d43a7f218e54bf1f8d403e88b7cdb3499`;
+[Actions run 41410507832](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41410507832).
+All seven Linux suites and seven Windows suites passed, including **39 bounded
+startup checks** with 21 new guest-executed GetVersionExA cases. Desktop repack
+**1.0.46.3** passed WinRT ABI comparison, signature verification and validation
+of all **8,858 blockmap files** in CI. Installation on the One X completed:
+upload HTTP 202, deployment code 0, success true. Package version **1.0.46.3**
+was registered, launch returned HTTP 200, and `DesktopMode.exe` was observed
+running with that exact package identity. A fresh game file-open trace through
+this desktop update has not yet been observed; the 0.8 trace below comes from
+the diagnostic app loading the shared packaged DLL.
+
+Physical Xbox One X, OS **10.0.26100.10448**, diagnostics **0.8.0.0**:
+
+- The packaged bridge loaded with ABI 1 and no direct fallback. Its SHA-256 is
+  `25218abca70bfe9b631130a1e31f7cd11f4d7de69b01140f6f22b03902d1709c`.
+- The embedded four-call smoke test passed in 13 instructions, and the native
+  low-address reservation probe passed.
+- The saved USB game startup trace reached and returned normally from
+  `KERNEL32.dll!GetVersionExA`, with guest last-error remaining zero. Execution
+  advanced from 41 to **60 guest instructions and host gates**, then stopped at
+  unimplemented `KERNEL32.dll!GetModuleHandleA`, gate `0x7ff00250`.
+
+The image still has 218 import gates; **five host APIs** are implemented.
+There was no successful `ExitProcess(0)`, graphics or gameplay. The version
+query uses the explicit virtual Windows 10.0.19045 profile, not the Xbox OS.
+
 ## Packaged Win32Bridge and game startup, version 0.7
 
 Source commit: `4d4f2bcebaf465ea46bfee2864a2462004efb7ba`;
@@ -10,8 +39,11 @@ passed WinRT ABI comparison, SignTool signature verification and blockmap
 validation of all **8,858 files**. The desktop update then installed on the same
 One X with deployment code 0. Its launch returned HTTP 200 and a new
 `DesktopMode.exe` process was observed. The console registered package version
-**1.0.46.2**. Screenshot capture for this shell remains unavailable; its new
-visual behavior and PE32 file-open interaction still need direct observation.
+**1.0.46.2**. Screenshot capture for this shell remains unavailable. The user
+subsequently opened the game through the actual desktop file manager; the
+retrieved bridge log confirmed the same 41-instruction GetVersionExA stop as
+the diagnostic route. This verifies that the desktop file-open path reaches
+the patched runtime.
 
 Physical Xbox One X, OS **10.0.26100.10448**, diagnostics **0.7.0.0**:
 
