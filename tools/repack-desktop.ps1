@@ -2,12 +2,14 @@
 .SYNOPSIS
 Replace the Win32Bridge component in a local DesktopMode x64 package.
 .DESCRIPTION
-Requires Windows, PowerShell 7, and Windows SDK MakeAppx/SignTool. The shell and
+Requires elevated Windows, PowerShell 7, and Windows SDK MakeAppx/SignTool. The shell and
 Gecko binaries come from SourcePackage; neither is rebuilt or downloaded here.
 The original identity is retained and the version must increase. Public WinRT
 metadata is compared before replacement. The output is a community developer
 test package, signed with a temporary nonexportable certificate whose subject
 matches the existing manifest publisher. Only its public certificate is saved.
+The new certificate is trusted in LocalMachine Root only for verification, then
+removed together with its private key. Use an ephemeral build machine for CI.
 .EXAMPLE
 pwsh -File tools/repack-desktop.ps1 -SourcePackage C:\input\DesktopMode.msix `
   -BridgeDirectory C:\build\Win32Bridge.Runtime -OutputDirectory C:\output
@@ -28,6 +30,13 @@ if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
     throw 'DesktopMode repackaging requires Windows and Windows SDK MakeAppx/SignTool.'
 }
 if ($PSVersionTable.PSVersion.Major -lt 7) { throw 'Run this script with PowerShell 7 (pwsh).' }
+$buildIdentity = [Security.Principal.WindowsIdentity]::GetCurrent()
+try {
+    $buildPrincipal = [Security.Principal.WindowsPrincipal]::new($buildIdentity)
+    if (-not $buildPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+        throw 'Run elevated: signature verification temporarily trusts only the newly generated test certificate in LocalMachine Root and removes it afterward.'
+    }
+} finally { $buildIdentity.Dispose() }
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $source = (Resolve-Path -LiteralPath $SourcePackage).Path
 $bridge = (Resolve-Path -LiteralPath $BridgeDirectory).Path
@@ -46,6 +55,10 @@ $package = Join-Path $output "DesktopMode_Bridge_${Version}_x64_DEVELOPER-TEST.m
 $certificateFile = Join-Path $output "DesktopMode_Bridge_${Version}_DEVELOPER-TEST.cer"
 foreach ($path in @($package, $certificateFile, (Join-Path $output 'repack-info.json'))) {
     if (Test-Path -LiteralPath $path) { throw "Output already exists: $path. Use a new output directory." }
+}
+
+function Write-Stage([string]$Message) {
+    Write-Host ('[{0:HH:mm:ss} UTC] {1}' -f [DateTime]::UtcNow, $Message)
 }
 
 function Invoke-SdkTool([string]$Tool, [string[]]$Arguments, [string]$LogFile) {
@@ -269,8 +282,12 @@ if (-not (Test-Path -LiteralPath $bridgeWinmd -PathType Leaf)) {
 Test-BridgeDll $bridgeDll
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($ExpectedSourceSha256 -and $sourceHash -cne $ExpectedSourceSha256.ToLowerInvariant()) { throw 'SourcePackage SHA-256 does not match ExpectedSourceSha256.' }
+Write-Stage 'Validating source package block map.'
 $verifiedFiles = Test-SourceBlockMap $source
+Write-Stage "Source block map passed: $verifiedFiles files."
+Write-Stage 'Finding Windows SDK packaging tools.'
 $sdk = Find-SdkTools
+Write-Stage "Selected SDK tools: $sdk"
 $makeappx = Join-Path $sdk 'makeappx.exe'
 $signtool = Join-Path $sdk 'signtool.exe'
 $work = Join-Path $output ('.desktop-repack-' + [guid]::NewGuid().ToString('N'))
@@ -280,7 +297,9 @@ $temporaryRoot = $false
 $completed = $false
 try {
     New-Item -ItemType Directory -Path $work | Out-Null
+    Write-Stage 'Unpacking source package with MakeAppx.'
     Invoke-SdkTool $makeappx @('unpack', '/p', $source, '/d', $payload, '/o') (Join-Path $output 'makeappx-unpack.log')
+    Write-Stage 'MakeAppx unpack completed.'
     $manifestPath = Join-Path $payload 'AppxManifest.xml'
     $manifestStream = [IO.File]::OpenRead($manifestPath)
     try { $manifest = Read-SafeXml $manifestStream } finally { $manifestStream.Dispose() }
@@ -302,6 +321,7 @@ try {
     foreach ($name in @('Win32Bridge.RuntimeSession', 'Win32Bridge.RuntimeHost')) {
         if ($name -cnotin $classes) { throw "Source manifest does not register $name in the expected runtime DLL." }
     }
+    Write-Stage 'Comparing source and replacement WinRT ABI.'
     $originalContract = [DesktopBridgeRepack.WinmdContract]::Read($sourceWinmd)
     $replacementContract = [DesktopBridgeRepack.WinmdContract]::Read($bridgeWinmd)
     foreach ($name in @('Win32Bridge.RuntimeHost', 'Win32Bridge.RuntimeSession')) {
@@ -310,6 +330,7 @@ try {
     $originalContract | Set-Content -Encoding utf8 (Join-Path $output 'source-winrt-contract.txt')
     $replacementContract | Set-Content -Encoding utf8 (Join-Path $output 'replacement-winrt-contract.txt')
     if ($originalContract -cne $replacementContract) { throw 'Public WinRT ABI changed. The existing compiled shell cannot be reused; compare the contract files.' }
+    Write-Stage 'WinRT ABI comparison passed.'
     $originalDllHash = (Get-FileHash -LiteralPath $sourceDll -Algorithm SHA256).Hash.ToLowerInvariant()
     $bridgeDllHash = (Get-FileHash -LiteralPath $bridgeDll -Algorithm SHA256).Hash.ToLowerInvariant()
     $bridgeWinmdHash = (Get-FileHash -LiteralPath $bridgeWinmd -Algorithm SHA256).Hash.ToLowerInvariant()
@@ -344,21 +365,33 @@ Replacement bridge DLL SHA-256: $bridgeDllHash
         $obsolete = Join-Path $payload $name
         if (Test-Path -LiteralPath $obsolete) { Remove-Item -LiteralPath $obsolete -Force }
     }
+    Write-Stage 'Packing replacement package with MakeAppx.'
     Invoke-SdkTool $makeappx @('pack', '/d', $payload, '/p', $package, '/o') (Join-Path $output 'makeappx-pack.log')
+    Write-Stage 'MakeAppx pack completed.'
+    Write-Stage 'Creating temporary nonexportable developer signing certificate.'
     $certificate = New-SelfSignedCertificate -Type Custom -Subject $publisher `
         -FriendlyName 'CommunityDeveloperTest DesktopMode Win32Bridge temporary certificate' `
         -KeyUsage DigitalSignature -KeyAlgorithm RSA -KeyLength 2048 -KeyExportPolicy NonExportable `
         -HashAlgorithm SHA256 -CertStoreLocation 'Cert:\CurrentUser\My' -NotAfter (Get-Date).AddMonths(12) `
         -TextExtension @('2.5.29.37={text}1.3.6.1.5.5.7.3.3', '2.5.29.19={text}')
     Export-Certificate -Cert $certificate -FilePath $certificateFile | Out-Null
+    Write-Stage 'Signing package with SignTool (SHA-256).'
     Invoke-SdkTool $signtool @('sign', '/fd', 'SHA256', '/sha1', $certificate.Thumbprint, '/s', 'My',
         '/d', 'Community Developer Test - DesktopMode Win32Bridge', $package) (Join-Path $output 'signtool-sign.log')
+    Write-Stage 'SignTool signing completed.'
     # Scope trust to this verification and remove only this newly generated
-    # certificate afterward. No certificate/private key is left installed.
-    Import-Certificate -FilePath $certificateFile -CertStoreLocation 'Cert:\CurrentUser\Root' | Out-Null
+    # certificate afterward. LocalMachine avoids the native CurrentUser Root
+    # consent dialog that blocks unattended CI. Elevation was checked up front.
+    Write-Stage 'Temporarily trusting the new certificate in LocalMachine Root for verification.'
+    Import-Certificate -FilePath $certificateFile -CertStoreLocation 'Cert:\LocalMachine\Root' -Confirm:$false | Out-Null
     $temporaryRoot = $true
+    Write-Stage 'Temporary certificate trust installed.'
+    Write-Stage 'Verifying package signature with SignTool.'
     Invoke-SdkTool $signtool @('verify', '/pa', '/all', '/v', $package) (Join-Path $output 'signtool-verify.log')
+    Write-Stage 'SignTool signature verification passed.'
+    Write-Stage 'Validating output package block map.'
     $verifiedOutputFiles = Test-SourceBlockMap $package
+    Write-Stage "Output block map passed: $verifiedOutputFiles files."
     if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant() -cne $sourceHash) { throw 'Source package changed during repackaging.' }
     [ordered]@{
         PackageType = 'COMMUNITY-DEVELOPER-TEST'
@@ -382,7 +415,7 @@ Replacement bridge DLL SHA-256: $bridgeDllHash
         CertificateSubject = $certificate.Subject
         CertificateThumbprint = $certificate.Thumbprint
         PublicCertificate = $certificateFile
-        SignatureVerification = 'SignTool /pa /all; temporary CurrentUser Root trust removed in finally'
+        SignatureVerification = 'SignTool /pa /all; temporary LocalMachine Root trust removed in finally'
         WindowsSdkTools = $sdk
         XboxHardwareTested = $false
         Note = 'Community self-signed test build. Package validation does not establish game compatibility.'
@@ -392,13 +425,15 @@ Replacement bridge DLL SHA-256: $bridgeDllHash
     Write-Host "Public certificate: $certificateFile"
 } finally {
     if ($null -ne $certificate) {
+        Write-Stage 'Removing the temporary certificate trust and signing private key.'
         try {
-            if ($temporaryRoot -or (Test-Path "Cert:\CurrentUser\Root\$($certificate.Thumbprint)")) {
-                Remove-Item -LiteralPath "Cert:\CurrentUser\Root\$($certificate.Thumbprint)" -Force -ErrorAction Stop
+            if ($temporaryRoot -or (Test-Path "Cert:\LocalMachine\Root\$($certificate.Thumbprint)")) {
+                Remove-Item -LiteralPath "Cert:\LocalMachine\Root\$($certificate.Thumbprint)" -Force -Confirm:$false -ErrorAction Stop
             }
         } finally {
             Remove-Item -LiteralPath "Cert:\CurrentUser\My\$($certificate.Thumbprint)" -DeleteKey -Force -ErrorAction Stop
         }
+        Write-Stage 'Temporary certificate trust and signing private key removed.'
     }
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
     if (-not $completed -and (Test-Path -LiteralPath $package)) { Remove-Item -LiteralPath $package -Force }
