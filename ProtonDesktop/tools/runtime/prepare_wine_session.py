@@ -194,6 +194,15 @@ def memory(cpp, header):
 
 
 def syscalls(cpp):
+    # Wine reports both IDs to wineserver. Returning the thread ID as getpid
+    # makes even kill(getpid(), 0) fail for a live guest process.
+    cpp = once(cpp, """        case X64_SYS_getpid:
+        case X64_SYS_gettid:
+""", """        case X64_SYS_getpid:
+            ret = cpu->thread && cpu->thread->process ? cpu->thread->process->id : 1;
+            break;
+        case X64_SYS_gettid:
+""")
     # A NULL-address shared mapping reserves an address first. That reservation
     # must not turn Wine's shared server clock into a private copy.
     cpp = once(cpp,

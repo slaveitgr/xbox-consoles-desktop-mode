@@ -52,7 +52,8 @@ proton_prepare_wine_session("{source}" "{work}/overlay" sources)
     include_dirs += [source / value for value in ["source/io", "source/x11", "source/x11wire",
                     "source/sdl", "source", "source/kernel", "platform/sdl"]]
     compile_args = [base[0]] + ["-I" + str(path) for path in include_dirs] + base[1:]
-    compile_args += ["-DBOXEDWINE_ZLIB=1", "-DPROTONDESKTOP_OWNED_GUEST_WORKERS=1"]
+    # Keep the cached no-ZIP core's class layouts; this fixture mounts no ZIPs.
+    compile_args += ["-DPROTONDESKTOP_OWNED_GUEST_WORKERS=1"]
     host = (source / "platform/sdl/knativesystem.cpp").read_text()
     entry = '''#ifndef __TEST
 int boxedmain(int argc, const char** argv);
