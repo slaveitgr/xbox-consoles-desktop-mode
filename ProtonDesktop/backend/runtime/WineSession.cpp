@@ -285,7 +285,7 @@ namespace protondesktop::runtime
         auto& state = *activeSession;
         ++state.result.guestFramesSubmitted;
         if (state.result.guestFramesSubmitted == 1)
-            state.Note(state.phase, "Real XWire guest frame submitted to SDL: " +
+            state.Note(state.phase, "Real XWire guest frame passed through SDL; present call returned: " +
                 std::to_string(width) + "x" + std::to_string(height) +
                 "; physical presentation and Explorer interaction require device verification");
     }
@@ -322,7 +322,7 @@ namespace protondesktop::runtime
             startup.envValues = GuestStrings(request.environment);
             startup.setWorkingDir(B("/home/username"));
             startup.setResolution(BString::copy((std::to_string(request.width) + "x" + std::to_string(request.height)).c_str()));
-            startup.setBpp(32); startup.setScale(100); startup.setVsync(VSYNC_DISABLED);
+            startup.setBpp(32); startup.setScale(100); startup.setVsync(VSYNC_ENABLED);
             startup.userId = startup.groupId = startup.effectiveUserId = startup.effectiveGroupId = 1000;
             startup.soundEnabled = false;
             startup.title = B("ProtonDesktop");

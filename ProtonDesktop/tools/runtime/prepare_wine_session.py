@@ -250,11 +250,11 @@ def syscalls(cpp):
 def prepare(source, profile, output):
     def read(relative, profiled=False):
         origin = profile / relative if profiled and (profile / relative).exists() else source / relative
-        return origin.read_text().replace("\r\n", "\n")
+        return origin.read_text(encoding="utf-8").replace("\r\n", "\n")
     def write(relative, text):
         path = output / relative
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(text)
+        path.write_text(text, encoding="utf-8")
     cpp, header = startup(read("source/sdl/startupArgs.cpp", True), read("source/sdl/startupArgs.h"))
     write("source/sdl/startupArgs.cpp", cpp)
     write("source/sdl/startupArgs.h", header)
@@ -280,8 +280,20 @@ def prepare(source, profile, output):
     last = present.index("        // App-switch canvas wipe:", first)
     present = present[:first] + "        // Native Wine profile: no synthetic boot bitmap or inferred guest frame.\n\n" + present[last:]
     present = once(present, "bool isMainthread();", "bool isMainthread();\nvoid protonWineGuestFrameSubmitted(unsigned width, unsigned height);")
-    present = once(present, "            screen->putBitsOnWnd(0, frame.data(), 32, (U32)fw * 4, 0, 0, fw, fh, nullptr, true);",
-        "            protonWineGuestFrameSubmitted(fw, fh);\n            screen->putBitsOnWnd(0, frame.data(), 32, (U32)fw * 4, 0, 0, fw, fh, nullptr, true);")
+    present = once(present, """            screen->putBitsOnWnd(0, frame.data(), 32, (U32)fw * 4, 0, 0, fw, fh, nullptr, true);
+            screen->present();""", """            static unsigned protonPresentTrace = 0;
+            const bool tracePresent = protonPresentTrace < 3;
+            SDL_ClearError();
+            if (tracePresent) SDL_LogInfo(SDL_LOG_CATEGORY_RENDER, "ProtonDesktop guest blit begin: %ux%u", (unsigned)fw, (unsigned)fh);
+            screen->putBitsOnWnd(0, frame.data(), 32, (U32)fw * 4, 0, 0, fw, fh, nullptr, true);
+            if (tracePresent || *SDL_GetError()) SDL_LogInfo(SDL_LOG_CATEGORY_RENDER, "ProtonDesktop guest blit returned: %s", SDL_GetError());
+            if (tracePresent) SDL_LogInfo(SDL_LOG_CATEGORY_RENDER, "ProtonDesktop guest present begin");
+            screen->present();
+            if (tracePresent || *SDL_GetError()) SDL_LogInfo(SDL_LOG_CATEGORY_RENDER, "ProtonDesktop guest present returned: %s", SDL_GetError());
+            ++protonPresentTrace;
+            // Count only after actual SDL upload/present calls returned. This
+            // still does not establish visible console pixels or a DXGI S_OK.
+            protonWineGuestFrameSubmitted(fw, fh);""")
     write("source/x11wire/xwirepresentSDL.cpp", present)
 
 

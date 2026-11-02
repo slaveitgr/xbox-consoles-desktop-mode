@@ -8,9 +8,11 @@
 #include <bcrypt.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -101,10 +103,69 @@ namespace
     public:
         explicit SessionLog(const std::wstring& path)
             : file_(OpenFile(path, GENERIC_WRITE, FILE_SHARE_READ, CREATE_ALWAYS)) {}
-        void Line(const std::string& text) { WriteBytes(file_.Get(), text + "\r\n"); }
+        void Line(const std::string& text)
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            WriteBytes(file_.Get(), text + "\r\n");
+        }
     private:
         FileHandle file_;
+        std::mutex mutex_;
     };
+
+    // SDL may log from auxiliary threads. Each callback pins the sink until
+    // its write finishes; restoring the callback cannot leave a raw log pointer.
+    std::shared_ptr<SessionLog> sdlLogSink;
+
+    void SDLCALL LogSdl(void*, int category, SDL_LogPriority priority, const char* message) noexcept
+    {
+        try
+        {
+            const auto sink = std::atomic_load(&sdlLogSink);
+            if (sink) sink->Line("SDL category=" + std::to_string(category) +
+                "; priority=" + std::to_string(static_cast<int>(priority)) + "; " + (message ? message : ""));
+        }
+        catch (...) { OutputDebugStringW(L"SDL diagnostic log write failed.\n"); }
+    }
+
+    class SdlLogScope
+    {
+    public:
+        explicit SdlLogScope(const std::shared_ptr<SessionLog>& sink)
+        {
+            SDL_LogGetOutputFunction(&previous_, &previousData_);
+            applicationPriority_ = SDL_LogGetPriority(SDL_LOG_CATEGORY_APPLICATION);
+            renderPriority_ = SDL_LogGetPriority(SDL_LOG_CATEGORY_RENDER);
+            std::atomic_store(&sdlLogSink, sink);
+            SDL_LogSetOutputFunction(LogSdl, nullptr);
+            SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, SDL_LOG_PRIORITY_INFO);
+            SDL_LogSetPriority(SDL_LOG_CATEGORY_RENDER, SDL_LOG_PRIORITY_INFO);
+        }
+        ~SdlLogScope()
+        {
+            SDL_LogSetOutputFunction(previous_, previousData_);
+            std::atomic_store(&sdlLogSink, std::shared_ptr<SessionLog>{});
+            SDL_LogSetPriority(SDL_LOG_CATEGORY_APPLICATION, applicationPriority_);
+            SDL_LogSetPriority(SDL_LOG_CATEGORY_RENDER, renderPriority_);
+        }
+        SdlLogScope(const SdlLogScope&) = delete;
+        SdlLogScope& operator=(const SdlLogScope&) = delete;
+    private:
+        SDL_LogOutputFunction previous_ = nullptr;
+        void* previousData_ = nullptr;
+        SDL_LogPriority applicationPriority_ = SDL_LOG_PRIORITY_INFO;
+        SDL_LogPriority renderPriority_ = SDL_LOG_PRIORITY_INFO;
+    };
+
+    void ActivateNativeWindow(SessionLog& log)
+    {
+        const auto window = Windows::UI::Core::CoreWindow::GetForCurrentThread();
+        if (!window) throw std::runtime_error("SDL entry has no owner-thread CoreWindow");
+        log.Line("CoreWindow before activation; visible=" + std::to_string(window->Visible));
+        window->Activate();
+        window->Dispatcher->ProcessEvents(Windows::UI::Core::CoreProcessEventsOption::ProcessAllIfPresent);
+        log.Line("CoreWindow after initial dispatch; visible=" + std::to_string(window->Visible));
+    }
 
     std::string JsonString(const std::string& value)
     {
@@ -243,24 +304,26 @@ namespace
     {
         const auto local = NativePath(Windows::Storage::ApplicationData::Current->LocalFolder->Path);
         const auto installed = NativePath(Windows::ApplicationModel::Package::Current->InstalledLocation->Path);
-        SessionLog log(local + L"\\protondesktop-wine-session.log");
+        const auto log = std::make_shared<SessionLog>(local + L"\\protondesktop-wine-session.log");
+        SdlLogScope sdlLogs(log);
         const auto resultPath = local + L"\\protondesktop-wine-result.json";
         try
         {
             WriteResult(resultPath, "validating", nullptr, "");
-            log.Line("Native SDL/WinRT session entry; no replacement desktop or second CoreApplication.");
-            log.Line("Package=" + Utf8(installed));
-            log.Line("LocalState=" + Utf8(local));
-            log.Line(AppMemoryStatus());
+            log->Line("Native SDL/WinRT session entry; no replacement desktop or second CoreApplication.");
+            log->Line("Package=" + Utf8(installed));
+            log->Line("LocalState=" + Utf8(local));
+            log->Line(AppMemoryStatus());
+            ActivateNativeWindow(*log);
             const auto runtimeDirectory = local + L"\\Runtimes";
             const auto glibcPath = runtimeDirectory + L"\\glibc-rootfs64.zip";
             const auto winePath = runtimeDirectory + L"\\wine64.zip";
-            log.Line("Verifying the two fixed app-local rootfs candidate ZIPs before guest execution.");
+            log->Line("Verifying the two fixed app-local rootfs candidate ZIPs before guest execution.");
             auto glibcLease = VerifyLayer(glibcPath, 2850458,
                 "2507d717e4f860789ea54fa0d73a8db8b152827f74ee24d2665c81757b439822");
             auto wineLease = VerifyLayer(winePath, 276707863,
                 "a2614a5fbda1e4783f30b2e0fb3a66759c2649a1d86250a386191ba43a8cc0ea");
-            log.Line("Both exact rootfs layer sizes/SHA-256 hashes verified; read leases retained.");
+            log->Line("Both exact rootfs layer sizes/SHA-256 hashes verified; read leases retained.");
             const auto overlay = local + L"\\WinePrefix";
             EnsureDirectory(overlay); // Preserve existing prefix data; never erase it.
             SessionRequest request;
@@ -287,25 +350,25 @@ namespace
             {
                 try
                 {
-                    log.Line(std::string(PhaseName(phase)) + ": " + message);
-                    log.Line(AppMemoryStatus());
+                    log->Line(std::string(PhaseName(phase)) + ": " + message);
+                    log->Line(AppMemoryStatus());
                 }
                 catch (...) { evidenceFailed = true; stop->store(true); OutputDebugStringW(L"Wine session evidence failed; stop requested.\n"); }
             }, stop);
             const auto error = evidenceFailed ? std::string("Session evidence failed; shutdown was requested") : result.error;
             WriteResult(resultPath, error.empty() && result.cleanShutdown ? "stopped-cleanly" : "failed", &result, error);
-            log.Line("Session returned; cleanShutdown=" + std::to_string(result.cleanShutdown) + "; error=" + error);
+            log->Line("Session returned; cleanShutdown=" + std::to_string(result.cleanShutdown) + "; error=" + error);
             return error.empty() && result.cleanShutdown ? 0 : 1;
         }
         catch (const std::exception& error)
         {
-            try { log.Line(std::string("FAILED: ") + error.what()); WriteResult(resultPath, "failed", nullptr, error.what()); }
+            try { log->Line(std::string("FAILED: ") + error.what()); WriteResult(resultPath, "failed", nullptr, error.what()); }
             catch (...) { OutputDebugStringW(L"Failed session evidence could not be persisted.\n"); }
             return 1;
         }
         catch (Platform::Exception^ error)
         {
-            try { const auto message = Utf8(NativePath(error->Message)); log.Line("FAILED: " + message); WriteResult(resultPath, "failed", nullptr, message); }
+            try { const auto message = Utf8(NativePath(error->Message)); log->Line("FAILED: " + message); WriteResult(resultPath, "failed", nullptr, message); }
             catch (...) { OutputDebugStringW(L"Failed WinRT session evidence could not be persisted.\n"); }
             return 1;
         }

@@ -23,19 +23,82 @@ struct FixtureSocket : KUnixSocketObject {
  std::shared_ptr<BoxedWineCondition> Condition(){return lockCond;}
 };
 std::atomic<U32> marked{0};
-void protonFixtureTerminationMarked(U32 tid) { marked.store(tid, std::memory_order_release); }
+std::atomic<bool> dualExitMode{false};
+std::atomic<unsigned> dualExitMarks{0}, dualExitReturned{0}, dualExitWaitLoops{0};
+void protonFixtureTerminationMarked(U32 tid) {
+ if(!dualExitMode.load()) { marked.store(tid, std::memory_order_release); return; }
+ dualExitMarks.fetch_add(1);
+ // Both original callers must request cancellation before either waits.
+ // With one finalizer, the cancelled caller instead returns to its CPU loop.
+ while(dualExitMarks.load()<2 && dualExitReturned.load()==0)std::this_thread::yield();
+}
+void protonFixtureThreadRemovalWait(U32) {
+ if(dualExitMode.load())dualExitWaitLoops.fetch_add(1,std::memory_order_relaxed);
+}
+bool fixtureIsTerminating(KThread* thread) {
+#ifdef PROTONDESKTOP_THREAD_STOP_OVERLAY
+ return thread->protonIsTerminating();
+#else
+ // Only diagnostic failure reads this after both release/acquire mark hooks.
+ return thread->terminating;
+#endif
+}
 bool until(const std::function<bool()>& condition, unsigned ms=2000) {
  auto end=std::chrono::steady_clock::now()+std::chrono::milliseconds(ms);
  while(!condition()){if(std::chrono::steady_clock::now()>end)return false;std::this_thread::yield();}return true;
 }
+void checkDualExitGroup(std::string& error) {
+ dualExitMode=true;
+ auto process=KProcess::create();process->memory=KMemory::create(process.get());
+ auto first=process->createThread();auto second=process->createThread();
+ std::promise<void> release,deleteRelease;auto mayExit=release.get_future().share();
+ auto mayDelete=deleteRelease.get_future().share();std::atomic<unsigned> ready{0};
+ auto spawn=[&](KThread* thread) {
+  return SpawnGuestWorker([&,process,thread]{
+   KThread::setCurrentThread(thread);ready.fetch_add(1);mayExit.wait();
+   const U32 result=process->exitgroup(thread,0);
+   if(result!=(U32)-K_CONTINUE)std::_Exit(91);
+   if(dualExitReturned.fetch_add(1)==0)mayDelete.wait();
+   process->deleteThread(thread);KThread::setCurrentThread(nullptr);
+  },process->id,process,error);
+ };
+ if(!spawn(first)||!spawn(second)||!until([&]{return ready.load()==2;}))std::_Exit(92);
+ release.set_value();
+ if(!until([&]{return dualExitReturned.load()!=0;},200)) {
+  std::printf("DUAL_EXIT_BLOCKED marks=%u wait_loops=%u returned=%u remaining_threads=%u first_terminating=%d second_terminating=%d process_terminated=%d live_workers=%llu\n",
+   dualExitMarks.load(),dualExitWaitLoops.load(),dualExitReturned.load(),process->getThreadCount(),fixtureIsTerminating(first),fixtureIsTerminating(second),process->isTerminated(),(unsigned long long)GetGuestWorkerSnapshot().running);
+  // This is a failed bounded counterexample. Do not tear down live CPUs or
+  // claim joined workers; the isolated child is intentionally unsuccessful.
+  std::_Exit(90);
+ }
+ // Keep the cancelled sibling genuinely alive, so an early return from the
+ // owner's removal barrier would visibly run cleanup before this gate opens.
+ std::this_thread::sleep_for(std::chrono::milliseconds(200));
+ if(dualExitReturned.load()!=1||process->isTerminated()||process->getThreadCount()!=2||
+    GetGuestWorkerSnapshot().running!=2)std::_Exit(93);
+ std::printf("DUAL_EXIT_OWNER_WAITED_FOR_LIVE_SIBLING returned=1 remaining_threads=2 process_terminated=0\n");
+ deleteRelease.set_value();
+ if(!until([&]{ReapCompletedGuestWorkers(error);return dualExitReturned.load()==2&&!ProcessHasActiveGuestWorkers(process->id);},200))std::_Exit(94);
+ if(!process->isTerminated()||process->exitCode!=0||process->getThreadCount()!=0)std::_Exit(95);
+ std::printf("CASE dual-guest-exitgroup completed_without_external_rescue=1 wait_loops=%u returned=2 remaining_threads=0 process_terminated=1 exit_code=0 joined_workers=%llu\n",
+  dualExitWaitLoops.load(),(unsigned long long)GetGuestWorkerSnapshot().joined);
+ KSystem::eraseProcess(process->id);process.reset();dualExitMode=false;
+}
 int main(int argc,char**argv) {
- if(argc!=2)return 64;
+ if(argc!=2&&argc!=3)return 64;
  setvbuf(stdout,nullptr,_IONBF,0);
  std::printf("LAYOUT KThread=%zu terminating=%zu waitingCond=%zu waitingCondSync=%zu KProcess=%zu\n",sizeof(KThread),offsetof(KThread,terminating),offsetof(KThread,waitingCond),offsetof(KThread,waitingCondSync),sizeof(KProcess));
  Platform::init();if(!KNativeSystem::init(VIDEO_NO_WINDOW,false))return 65;
  KSystem::init();if(!Fs::initFileSystem(BString::copy(argv[1])))return 66;
  Fs::makeLocalDirs(B("/proc"));KSystem::procNode=Fs::getNodeFromLocalPath(B(""),B("/proc"),true);
  std::string error; if(!BeginGuestWorkerSession(error))return 67;
+ if(argc==3) {
+  if(std::string(argv[2])!="--dual-exit-group")return 64;
+  checkDualExitGroup(error);
+  CloseGuestWorkerAdmission();if(!JoinGuestWorkers(error)||!EndGuestWorkerSession(error))return 73;
+  KSystem::destroy();KNativeSystem::shutdown();KNativeSystem::cleanup();
+  std::printf("DUAL_EXIT_ALL_REAL_WORKERS_JOINED Wine_executed=0\n");return 0;
+ }
  unsigned counterexamples=0;
  for(const char* name:{"socket-before-registration","futex-before-registration"}) {
   bool futex=name[0]=='f';auto process=KProcess::create();process->memory=KMemory::create(process.get());auto thread=process->createThread();U32 tid=thread->id;

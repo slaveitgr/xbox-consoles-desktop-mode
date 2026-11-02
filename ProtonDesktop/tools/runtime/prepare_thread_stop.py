@@ -122,6 +122,18 @@ PROCESS_REQUEST = """BOXEDWINE_CONDITION KProcess::protonRequestThreadTerminatio
 }
 
 """
+EXIT_GROUP_ENTRY = """U32 KProcess::exitgroup(KThread* thread, U32 code) {
+    {
+        std::lock_guard<std::recursive_mutex> guard(threadsMutex);
+        // Elect one finalizer before any caller starts waiting for a sibling.
+        // A sibling already cancelled by that finalizer leaves through its
+        // CPU loop. It must not enter process cleanup while the owner lives.
+        if (thread->protonIsTerminating()) return -K_CONTINUE;
+        for (auto& entry : threads) {
+            if (entry.value != thread) (void)entry.value->protonRequestTermination();
+        }
+    }
+"""
 
 
 def transform(relative, text):
@@ -168,6 +180,7 @@ def transform(relative, text):
             raise ValueError("WineSession lifecycle overlay must precede the thread-stop overlay")
         text = replace(text, "void KProcess::killAllThreads(KThread* exceptThisThread) {",
                        PROCESS_REQUEST + "void KProcess::killAllThreads(KThread* exceptThisThread) {")
+        text = replace(text, "U32 KProcess::exitgroup(KThread* thread, U32 code) {", EXIT_GROUP_ENTRY)
     elif relative in ("source/kernel/kscheduler.cpp", "source/sdl/emscripten/wine64session.cpp"):
         text = replace(text, "thread->terminating = true;", "(void)thread->protonRequestTermination();")
     if relative == "source/emulation/cpu/normal/normal_other.h":

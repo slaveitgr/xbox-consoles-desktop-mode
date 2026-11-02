@@ -161,6 +161,52 @@ def prepare_xwire_desktop(source_root: Path, overlay_root: Path) -> dict:
 """+before_filter+"""
         }""")
     present=submit+remainder
+    # A static first frame must survive the finite swap-buffer clear series.
+    # Reuse only genuine retained guest pixels, then become idle again. The
+    # replay budget shares the pending-frame mutex with submit/event threads.
+    present=once(present,'    bool haveFrame = false, frameDirty = false;',
+                 '    bool haveFrame = false, frameDirty = false;\n'
+                 '    unsigned protonReplayFrames = 0; // finite genuine-frame retries; guarded by mtx')
+    present=once(present,'        if (pendingW != width || pendingH != height) {',
+                 '        if (pendingW != width || pendingH != height) {\n'
+                 '            unsigned desktopW,desktopH;\n'
+                 '            if (protonQueryXWireDesktop(desktopW,desktopH)) protonReplayFrames=3;')
+    present=once(present,'                shownW = wantW; shownH = wantH;',
+                 '                shownW = wantW; shownH = wantH;\n'
+                 '                unsigned desktopW,desktopH;\n'
+                 '                if (protonQueryXWireDesktop(desktopW,desktopH)) protonReplayFrames=3;')
+    present=once(present,'        frameDirty = true;     // ensure the tick does a present even if no new frame',
+                 '        std::lock_guard<std::mutex> lock(mtx);\n'
+                 '        frameDirty = true;\n'
+                 '        unsigned desktopW,desktopH;\n'
+                 '        if (protonQueryXWireDesktop(desktopW,desktopH)) protonReplayFrames=3;')
+    present=once(present,'        uint16_t fw = 0, fh = 0;',
+                 '        uint16_t fw = 0, fh = 0;\n        unsigned replayRemaining=0;')
+    present=once(present,'            if (haveFrame && frameDirty) {',
+                 '            if (haveFrame && (frameDirty || protonReplayFrames)) {')
+    present=once(present,'                frameDirty = false;',
+                 '                frameDirty = false;\n'
+                 '                replayRemaining=protonReplayFrames;\n'
+                 '                if (protonReplayFrames) --protonReplayFrames;')
+    present=once(present,'            if (clearFrames > 0) {',
+                 '            if (replayRemaining>static_cast<unsigned>(clearFrames))\n'
+                 '                clearFrames=static_cast<int>(replayRemaining);\n'
+                 '            if (clearFrames > 0) {')
+    present=once(present,'        switch (e.type) {\n            case SDL_KEYDOWN:',
+                 '''        switch (e.type) {
+            case SDL_WINDOWEVENT: {
+                unsigned desktopW,desktopH;
+                if (protonQueryXWireDesktop(desktopW,desktopH) &&
+                    (e.window.event==SDL_WINDOWEVENT_SHOWN ||
+                     e.window.event==SDL_WINDOWEVENT_RESTORED ||
+                     e.window.event==SDL_WINDOWEVENT_EXPOSED ||
+                     e.window.event==SDL_WINDOWEVENT_SIZE_CHANGED)) {
+                    std::lock_guard<std::mutex> lock(mtx);
+                    protonReplayFrames=3;
+                }
+                break;
+            }
+            case SDL_KEYDOWN:''')
     D.mkdir(parents=True,exist_ok=True)
     for name in ('xwireserver.h','xwireconnection.h','xwirepresent.h','xwirefont.h'):
         shutil.copyfile(S/'source/x11wire'/name,D/name)

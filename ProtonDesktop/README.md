@@ -11,8 +11,13 @@ dialog at 1920×1080. Device Portal captured the actual console image. The app
 then terminated before the main wineboot completed or Explorer was started.
 Its recorded app memory budget was 1 GiB, with a later process snapshot near
 932 MB of private working set. Memory exhaustion is a hypothesis, not a confirmed
-termination reason. A per-package Game-mode retest is pending; a complete Xbox
-Wine desktop and sustained stability are not established.
+termination reason. After selecting per-package Game mode, the app confirmed a
+5 GiB budget, wineboot exited 0, and the Explorer launcher exited 0 with live
+guest workers. Its recorded memory usage exceeded the earlier 1 GiB budget.
+However the television still showed the app splash; generated XWire frames did
+not establish visible desktop presentation. Activation, synchronized first
+presentation and retained-frame replay fixes are being qualified in revision
+0.2.0.1. A complete Xbox Wine desktop and sustained stability are not established.
 
 A complete, consistently built ZIP-enabled Linux runtime rendered the real Wine
 Explorer folder view and taskbar on a 1280×720 canvas; an SDL mouse event opened

@@ -14,7 +14,7 @@ New-Item -ItemType Directory -Force $artifacts | Out-Null
 $proof = [ordered]@{
     status = 'incomplete'; sourceCommit = $env:GITHUB_SHA
     backendPin = '58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4'
-    entry = 'native-SDL-WinRT'; packageVersion = '0.2.0.0'
+    entry = 'native-SDL-WinRT'; packageVersion = '0.2.0.1'
     appActivated = $false; wineExecuted = $false; desktopPixelsVerified = $false; xboxTested = $false
 }
 function Save-Proof { $proof | ConvertTo-Json -Depth 7 | Set-Content (Join-Path $artifacts 'build-result.json') -Encoding utf8 }
@@ -132,7 +132,7 @@ try {
             try { [xml]$manifest = $reader.ReadToEnd() } finally { $reader.Dispose() }
             if ($manifest.Package.Identity.Name -ne 'ProtonDesktop.Native' -or
                 $manifest.Package.Identity.Publisher -ne 'CN=ProtonDesktopDev' -or
-                $manifest.Package.Identity.Version -ne '0.2.0.0') {
+                $manifest.Package.Identity.Version -ne '0.2.0.1') {
                 throw 'The generated package identity/version differs from the separate Wine manifest.'
             }
         } finally { $zip.Dispose() }

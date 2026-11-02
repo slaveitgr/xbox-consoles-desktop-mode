@@ -32,7 +32,8 @@ function Save-Proof {
 Save-Proof
 foreach ($oldFile in @('build.log', 'build-diagnostic.log', 'build.binlog', 'headers.txt',
     'imports.txt', 'exports.txt', 'source-items.txt', 'msbuild-arguments.json',
-    'SDL-UWP.effective.vcxproj', 'AppPartitionGuard.cpp', 'SDL_winrtgamebar.effective.cpp')) {
+    'SDL-UWP.effective.vcxproj', 'AppPartitionGuard.cpp', 'SDL_winrtgamebar.effective.cpp',
+    'SDL_winrtapp_direct3d.effective.cpp', 'SDL_render.effective.c', 'SDL_render_d3d11.effective.c')) {
     Remove-Item -LiteralPath (Join-Path $artifacts $oldFile) -ErrorAction SilentlyContinue
 }
 try {
@@ -101,6 +102,192 @@ try {
     if (-not (Test-Path $gamingHeader) -or
         -not ([System.IO.File]::ReadAllText($gamingHeader).Contains('DEF___FIEventHandler_1_IInspectable_USE'))) {
         throw 'The selected SDK must supply the real Game Bar EventHandler<IInspectable*> ABI specialization.'
+    }
+
+    # Prepare all diagnostics in memory first. Every exact pinned anchor must
+    # match once before any of these staged source files is changed. Original
+    # SDL files remain pristine; these logs report observed state/results only.
+    function New-CheckedSdlDiagnosticOverlay([string]$relativePath, [string]$artifactName, [object[]]$edits) {
+        $originalPath = Join-Path $sdlOriginal $relativePath
+        $stagedPath = Join-Path $stagedSdl $relativePath
+        $originalText = [System.IO.File]::ReadAllText($originalPath)
+        $stagedText = [System.IO.File]::ReadAllText($stagedPath)
+        if ($stagedText -cne $originalText) { throw "SDL diagnostics require an unchanged staged input: $relativePath" }
+        $newline = if ($stagedText.Contains("`r`n")) { "`r`n" } else { "`n" }
+        $updated = $stagedText.Replace("`r`n", "`n")
+        foreach ($edit in $edits) {
+            $before = $edit.Before.Replace("`r`n", "`n")
+            $after = $edit.After.Replace("`r`n", "`n")
+            if ([regex]::Matches($updated, [regex]::Escape($before)).Count -ne 1) {
+                throw "Pinned SDL diagnostic anchor changed or is ambiguous: $relativePath ($($edit.Label))"
+            }
+            $updated = $updated.Replace($before, $after)
+        }
+        if ($newline -eq "`r`n") { $updated = $updated.Replace("`n", "`r`n") }
+        return [pscustomobject]@{
+            RelativePath = $relativePath
+            StagedPath = $stagedPath
+            ArtifactName = $artifactName
+            Text = $updated
+            OriginalSha256 = (Get-FileHash $originalPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            AnchorCount = $edits.Count
+        }
+    }
+
+    $appActivationBefore = @'
+void SDL_WinRTApp::OnAppActivated(CoreApplicationView^ applicationView, IActivatedEventArgs^ args)
+{
+    CoreWindow::GetForCurrentThread()->Activate();
+}
+'@
+    $appActivationAfter = @'
+void SDL_WinRTApp::OnAppActivated(CoreApplicationView^ applicationView, IActivatedEventArgs^ args)
+{
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "ProtonDesktop SDL WinRT AppActivated before Activate; kind=%d visible=%d sdlWindow=%d",
+        (int)args->Kind, (int)CoreWindow::GetForCurrentThread()->Visible, WINRT_GlobalSDLWindow != NULL);
+    CoreWindow::GetForCurrentThread()->Activate();
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "ProtonDesktop SDL WinRT AppActivated after Activate; visible=%d sdlWindow=%d",
+        (int)CoreWindow::GetForCurrentThread()->Visible, WINRT_GlobalSDLWindow != NULL);
+}
+'@
+    $visibilityBefore = @'
+void SDL_WinRTApp::OnVisibilityChanged(CoreWindow^ sender, VisibilityChangedEventArgs^ args)
+{
+'@
+    $visibilityAfter = @'
+void SDL_WinRTApp::OnVisibilityChanged(CoreWindow^ sender, VisibilityChangedEventArgs^ args)
+{
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "ProtonDesktop SDL WinRT VisibilityChanged; visible=%d sdlWindow=%d windowFlags=0x%08x",
+        (int)args->Visible, WINRT_GlobalSDLWindow != NULL,
+        (unsigned int)(WINRT_GlobalSDLWindow ? SDL_GetWindowFlags(WINRT_GlobalSDLWindow) : 0));
+'@
+    $windowActivationBefore = @'
+void SDL_WinRTApp::OnWindowActivated(CoreWindow^ sender, WindowActivatedEventArgs^ args)
+{
+'@
+    $windowActivationAfter = @'
+void SDL_WinRTApp::OnWindowActivated(CoreWindow^ sender, WindowActivatedEventArgs^ args)
+{
+    SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+        "ProtonDesktop SDL WinRT WindowActivated; state=%d visible=%d sdlWindow=%d windowFlags=0x%08x",
+        (int)args->WindowActivationState, (int)sender->Visible, WINRT_GlobalSDLWindow != NULL,
+        (unsigned int)(WINRT_GlobalSDLWindow ? SDL_GetWindowFlags(WINRT_GlobalSDLWindow) : 0));
+'@
+    $renderEntryBefore = @'
+    CHECK_RENDERER_MAGIC(renderer, );
+
+    FlushRenderCommands(renderer);  /* time to send everything to the GPU! */
+'@
+    $renderEntryAfter = @'
+    CHECK_RENDERER_MAGIC(renderer, );
+
+    /* ProtonDesktop: bounded observation before dispatch/flush, not a frame pass. */
+    {
+        static unsigned int protonPresentEntryLogs = 0;
+        if (protonPresentEntryLogs < 3) {
+            ++protonPresentEntryLogs;
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "ProtonDesktop SDL_RenderPresent enter; sample=%u hidden=%d windowFlags=0x%08x rendererFlags=0x%08x renderer=%s",
+                protonPresentEntryLogs, (int)renderer->hidden,
+                (unsigned int)(renderer->window ? SDL_GetWindowFlags(renderer->window) : 0),
+                (unsigned int)renderer->info.flags, renderer->info.name ? renderer->info.name : "(none)");
+        }
+    }
+
+    FlushRenderCommands(renderer);  /* time to send everything to the GPU! */
+'@
+    $hiddenBefore = @'
+    /* Don't present while we're hidden */
+    if (renderer->hidden) {
+        return;
+    }
+'@
+    $hiddenAfter = @'
+    /* Don't present while we're hidden */
+    if (renderer->hidden) {
+        static unsigned int protonHiddenPresentLogs = 0;
+        if (protonHiddenPresentLogs < 8) {
+            ++protonHiddenPresentLogs;
+            SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+                "ProtonDesktop SDL_RenderPresent skipped hidden renderer; sample=%u windowFlags=0x%08x",
+                protonHiddenPresentLogs,
+                (unsigned int)(renderer->window ? SDL_GetWindowFlags(renderer->window) : 0));
+        }
+        return;
+    }
+'@
+    $d3dDeclarationsBefore = @'
+    DXGI_PRESENT_PARAMETERS parameters;
+
+    SDL_zero(parameters);
+'@
+    $d3dDeclarationsAfter = @'
+    DXGI_PRESENT_PARAMETERS parameters;
+    /* Sole SDL owner thread. Record initial results and bounded state changes. */
+    static unsigned int protonPresentCalls = 0;
+    static unsigned int protonPresentChangeLogs = 0;
+    static HRESULT protonPreviousPresentResult = S_OK;
+
+    SDL_zero(parameters);
+'@
+    $d3dResultBefore = @'
+    /* Discard the contents of the render target.
+'@
+    $d3dResultAfter = @'
+    /* Raw HRESULT only: an observed API return does not establish display pixels. */
+    if (protonPresentCalls != 0xffffffffU) ++protonPresentCalls;
+    if (protonPresentCalls <= 8 ||
+        (result != protonPreviousPresentResult && protonPresentChangeLogs < 32)) {
+        if (protonPresentCalls > 8) ++protonPresentChangeLogs;
+        SDL_LogInfo(SDL_LOG_CATEGORY_APPLICATION,
+            "ProtonDesktop SDL D3D11 Present returned; call=%u HRESULT=0x%08x syncInterval=%u presentFlags=0x%08x",
+            protonPresentCalls, (unsigned int)result, (unsigned int)syncInterval, (unsigned int)presentFlags);
+    }
+    protonPreviousPresentResult = result;
+
+    /* Discard the contents of the render target.
+'@
+    $diagnosticOverlays = @(
+        (New-CheckedSdlDiagnosticOverlay 'src/core/winrt/SDL_winrtapp_direct3d.cpp' 'SDL_winrtapp_direct3d.effective.cpp' @(
+            @{ Label = 'AppActivated'; Before = $appActivationBefore; After = $appActivationAfter },
+            @{ Label = 'VisibilityChanged'; Before = $visibilityBefore; After = $visibilityAfter },
+            @{ Label = 'WindowActivated'; Before = $windowActivationBefore; After = $windowActivationAfter }
+        )),
+        (New-CheckedSdlDiagnosticOverlay 'src/render/SDL_render.c' 'SDL_render.effective.c' @(
+            @{ Label = 'RenderPresent entry'; Before = $renderEntryBefore; After = $renderEntryAfter },
+            @{ Label = 'RenderPresent hidden skip'; Before = $hiddenBefore; After = $hiddenAfter }
+        )),
+        (New-CheckedSdlDiagnosticOverlay 'src/render/direct3d11/SDL_render_d3d11.c' 'SDL_render_d3d11.effective.c' @(
+            @{ Label = 'SDL log declaration'; Before = '#include "SDL_hints.h"'; After = "#include `"SDL_hints.h`"`n#include `"SDL_log.h`"" },
+            @{ Label = 'Present result counters'; Before = $d3dDeclarationsBefore; After = $d3dDeclarationsAfter },
+            @{ Label = 'Present raw result'; Before = $d3dResultBefore; After = $d3dResultAfter }
+        ))
+    )
+    # All diagnostic anchors have now passed; apply only to the disposable copy.
+    $diagnosticProof = @()
+    foreach ($overlay in $diagnosticOverlays) {
+        [System.IO.File]::WriteAllText($overlay.StagedPath, $overlay.Text, [System.Text.UTF8Encoding]::new($false))
+        Copy-Item $overlay.StagedPath (Join-Path $artifacts $overlay.ArtifactName)
+        $diagnosticProof += [ordered]@{
+            source = $overlay.RelativePath
+            originalSha256 = $overlay.OriginalSha256
+            effectiveSha256 = (Get-FileHash $overlay.StagedPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            exactAnchors = $overlay.AnchorCount
+            effectiveSourceArtifact = $overlay.ArtifactName
+        }
+    }
+    $proof['nativePresentationDiagnostics'] = [ordered]@{
+        category = 'SDL_LOG_CATEGORY_APPLICATION / SDL_LogInfo'
+        overlays = $diagnosticProof
+        boundedRenderEntryLogs = 3
+        boundedHiddenSkipLogs = 8
+        initialDxgiResultLogs = 8
+        maximumAdditionalDxgiResultChangeLogs = 32
+        presentationBehaviorChanged = $false
+        logsEstablishDesktopPixels = $false
     }
     $gameBarNewline = if ($gameBarSource.Contains("`r`n")) { "`r`n" } else { "`n" }
     $gameBarReplacement = $foundationInclude + $gameBarNewline +
