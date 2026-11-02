@@ -33,8 +33,9 @@ namespace protondesktop::uwp
         void CloseAdmission();
         bool Spawn(std::function<void()> entry, std::uint32_t processId,
                    std::shared_ptr<void> processPin, std::string& error);
-        // Reaps only futures made ready at thread exit (after TLS destructors),
-        // then joins outside the registry mutex. Joining from a worker fails.
+        // Reaps only fully exited threads (Windows native-handle poll, otherwise
+        // at-thread-exit future), then joins outside the registry mutex. It never
+        // polls a handle while another drain joins it. Worker self-join fails.
         bool ReapCompleted(std::string& error);
         // Admission must already be closed. Blocking, no timeout/cancellation.
         // Success means all admitted threads joined; inspect Snapshot.failed

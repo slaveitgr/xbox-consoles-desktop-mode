@@ -183,6 +183,7 @@ target_include_directories(proton-uwp-core-objects PRIVATE
   "${PROTONDESKTOP_ROOT}"
   ${proton_sdl_includes}
   "${BOXEDWINE_SOURCE}/include" "${BOXEDWINE_SOURCE}/lib/simde"
+  "${BOXEDWINE_SOURCE}/source"
   "${BOXEDWINE_SOURCE}/platform/sdl"
   "${BOXEDWINE_SOURCE}/source/kernel" "${BOXEDWINE_SOURCE}/source/kernel/devs"
   "${BOXEDWINE_SOURCE}/source/io" "${BOXEDWINE_SOURCE}/source/x11"

@@ -92,7 +92,13 @@ try {
     $arguments | ConvertTo-Json | Set-Content (Join-Path $artifacts 'msbuild-arguments.json')
     & (Join-Path $vsPath 'MSBuild/Current/Bin/MSBuild.exe') @arguments 2>&1 | Tee-Object (Join-Path $artifacts 'build.log')
     if ($LASTEXITCODE -ne 0) { throw 'Actual native SDL/WinRT Wine application build/package failed.' }
-    $executable = Join-Path $repoRoot 'build/uwp-wine/Release/ProtonDesktop.Wine.exe'
+    # Genuine UWP targets may append the project name to OutDir. Inspect the
+    # unique actual image rather than assuming a desktop-style flat layout.
+    $outputRoot = Join-Path $repoRoot 'build/uwp-wine/Release'
+    $executables = @(Get-ChildItem -LiteralPath $outputRoot -Recurse -File -Filter ProtonDesktop.Wine.exe)
+    if ($executables.Count -ne 1) { throw 'Expected one actual native Wine application executable in its output tree.' }
+    $executable = $executables[0].FullName
+    $proof['emittedExecutableRelativePath'] = [System.IO.Path]::GetRelativePath($repoRoot, $executable)
     $proof['applicationDependencies'] = Inspect-AppImage $executable 'app'
     if ($proof.applicationDependencies -notcontains 'sdl2.dll') { throw 'The application did not link the real native SDL2.dll.' }
     $exeDigest = (Get-FileHash $executable -Algorithm SHA256).Hash.ToLowerInvariant()

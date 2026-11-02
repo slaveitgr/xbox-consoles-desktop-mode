@@ -137,9 +137,11 @@ namespace
             command("wineVersion", result->version);
             command("wineboot", result->prefix);
             command("explorer", result->requested);
+            command("shutdown", result->shutdown);
             json << ",\n  \"cleanShutdown\":" << (result->cleanShutdown ? "true" : "false")
                  << ",\n  \"stopped\":" << (result->stopped ? "true" : "false")
-                 << ",\n  \"prefixFilesPresent\":" << (result->prefixFilesPresent ? "true" : "false");
+                 << ",\n  \"prefixFilesPresent\":" << (result->prefixFilesPresent ? "true" : "false")
+                 << ",\n  \"guestFramesSubmitted\":" << result->guestFramesSubmitted;
         }
         json << "\n}\n";
         FileHandle file(OpenFile(path, GENERIC_WRITE, FILE_SHARE_READ, CREATE_ALWAYS));

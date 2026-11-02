@@ -347,7 +347,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Wine contracts configure failed.' }
           cmake --build build/wine-contracts --config Release --target protondesktop_guest_worker_tests protondesktop_guest_softfloat_tests proton-archive-tests --parallel
           if ($LASTEXITCODE -ne 0) { throw 'Wine contracts build failed.' }
-          ctest --test-dir build/wine-contracts -C Release -R 'protondesktop_guest_workers|protondesktop_softfloat_tls|protondesktop_owned_workers_overlay|protondesktop_wine_session_overlay|proton-real-minizip' --output-on-failure
+          ctest --test-dir build/wine-contracts -C Release -R 'protondesktop_guest_workers|protondesktop_softfloat_tls|protondesktop_owned_workers_overlay|protondesktop_wine_session_overlay|proton-real-minizip' --timeout 60 --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'Wine contracts failed.' }
       - name: Build existing native SDL WinRT library
         id: wine_sdl_build

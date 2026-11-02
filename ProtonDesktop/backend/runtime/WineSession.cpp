@@ -403,7 +403,12 @@ namespace protondesktop::runtime
                     state.result.shutdown.exitCode == 0 && uwp::GetGuestWorkerSnapshot().running == 0 &&
                     state.result.prefixFilesPresent;
             }
-            else state.result.cleanShutdown = uwp::GetGuestWorkerSnapshot().running == 0;
+            else
+            {
+                state.result.prefixFilesPresent = PrefixFilesPresent(nativeRoot);
+                state.result.cleanShutdown = uwp::GetGuestWorkerSnapshot().running == 0 &&
+                    state.result.prefixFilesPresent;
+            }
         }
         catch (const std::exception& error) { state.result.error = error.what(); }
         catch (...) { state.result.error = "The native Wine session raised a nonstandard exception"; }
