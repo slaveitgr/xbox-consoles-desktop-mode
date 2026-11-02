@@ -31,6 +31,8 @@ using namespace Windows::UI;
 using namespace Windows::UI::Xaml;
 using namespace Windows::UI::Xaml::Controls;
 using namespace Windows::UI::Xaml::Media;
+using namespace Microsoft::Web::WebView2::Core;
+using ShellView = Microsoft::UI::Xaml::Controls::WebView2;
 
 namespace {
 constexpr unsigned ReadLimit = 1024U * 1024U;
@@ -58,25 +60,8 @@ void Basename(String^ name) {
         if (c < 32 || std::wstring(L"\\/:*?\"<>|").find(c) != std::wstring::npos)
             Fail(L"File and folder names cannot contain paths or reserved characters.");
 }
-bool Trusted(Uri^ uri) {
-    if (!uri || Wide(uri->SchemeName) != L"ms-appx-web" || Wide(uri->Path) != L"/Mihawk/index.html") return false;
-    const auto authority = Wide(uri->Host);
-    if (authority.empty()) return true;
-    // An omitted ms-appx-web authority can be canonicalized to the current
-    // package identity. Accept that exact package, never another package/host.
-    const auto identity = Windows::ApplicationModel::Package::Current->Id;
-    for (auto candidate : {identity->Name, identity->FamilyName, identity->FullName}) {
-        const auto package = Wide(candidate);
-        if (authority.size() != package.size()) continue;
-        bool equal = true;
-        for (std::size_t n = 0; n < authority.size(); ++n) {
-            const auto fold = [](wchar_t c) { return c >= L'A' && c <= L'Z' ? c - L'A' + L'a' : c; };
-            if (fold(authority[n]) != fold(package[n])) { equal = false; break; }
-        }
-        if (equal) return true;
-    }
-    return false;
-}
+constexpr wchar_t ShellUrl[] = L"https://mihawk-shell.local/index.html";
+bool Trusted(Uri^ uri) { return uri && Wide(uri->AbsoluteUri) == ShellUrl; }
 bool WebAddress(Uri^ uri) {
     const auto scheme = uri ? Wide(uri->SchemeName) : std::wstring();
     return (scheme == L"https" || scheme == L"http") && !Wide(uri->Host).empty();
@@ -95,7 +80,7 @@ struct Game {
 };
 struct State {
     Grid^ root = nullptr;
-    WebView^ shell = nullptr;
+    ShellView^ shell = nullptr;
     Grid^ overlay = nullptr;
     Grid^ surface = nullptr;
     std::shared_ptr<MihawkModern::Browser> modernBrowser;
@@ -111,8 +96,13 @@ struct State {
     std::map<std::wstring, Item> items;
     std::wstring usbId;
     unsigned nextId = 1, pending = 0, notifyCount = 0, rejectedNotifyCount = 0;
-    String^ lastNotifyUri = L"", shellProbe = L"", shellProbeError = L"";
+    String^ lastNotifyUri = L"";
+    String^ shellProbe = L"";
+    String^ shellProbeError = L"";
     bool javascriptReady = false, smokeStarted = false;
+    bool layoutScalingDisabled = false, useCoreWindow = false;
+    String^ layoutError = L"";
+    String^ shellEngineVersion = L"";
     String^ userAgent = L"";
     String^ navigation = L"starting";
     String^ lastError = L"";
@@ -137,6 +127,15 @@ task<void> Status(const std::shared_ptr<State>& state) {
     Number(status, L"rejectedNotifyCount", state->rejectedNotifyCount);
     Text(status, L"shellProbe", state->shellProbe);
     Text(status, L"shellProbeError", state->shellProbeError);
+    Text(status, L"shellEngine", L"WebView2 Edge/Chromium");
+    Text(status, L"shellEngineVersion", state->shellEngineVersion);
+    Bool(status, L"layoutScalingDisabled", state->layoutScalingDisabled);
+    Bool(status, L"useCoreWindow", state->useCoreWindow);
+    Text(status, L"layoutError", state->layoutError);
+    if (Window::Current) {
+        const auto bounds = Window::Current->Bounds;
+        Number(status, L"windowWidth", bounds.Width); Number(status, L"windowHeight", bounds.Height);
+    }
     const auto snapshot = status->Stringify();
     const auto local = ApplicationData::Current->LocalFolder;
     state->statusTail = state->statusTail.then([local, snapshot](task<void> previous) {
@@ -150,13 +149,12 @@ void Observe(task<void> operation) {
     operation.then([](task<void> done) { try { done.get(); } catch (...) { } });
 }
 void ProbeShell(const std::shared_ptr<State>& state) {
-    if (!state->shell || !Trusted(state->shell->Source)) return;
-    // This fixed diagnostic is read-only and runs only in our packaged shell.
-    // Request strings, filenames and browser pages are never evaluated.
-    auto arguments = ref new Platform::Collections::Vector<String^>();
-    arguments->Append(L"JSON.stringify({href:location.href,userAgent:navigator.userAgent,readyState:document.readyState,nativeReply:typeof window.MihawkNativeReply,notify:typeof window.external.notify,icons:document.querySelectorAll('.desktop-icon').length,body:(document.body?document.body.innerText:'').slice(0,300)})");
+    if (!state->shell || !Trusted(state->shell->Source) || !state->shell->CoreWebView2) return;
+    // Fixed read-only diagnostic in our exact local virtual-host page. No
+    // request strings, filenames or remote browser pages are evaluated.
     try {
-        create_task(state->shell->InvokeScriptAsync(L"eval", arguments)).then([state](task<String^> result) {
+        String^ script = L"({href:location.href,userAgent:navigator.userAgent,readyState:document.readyState,nativeReply:typeof window.MihawkNativeReply,transport:typeof window.chrome.webview.postMessage,icons:document.querySelectorAll('.desktop-icon').length,body:(document.body?document.body.innerText:'').slice(0,300),viewportWidth:innerWidth,viewportHeight:innerHeight,devicePixelRatio:devicePixelRatio})";
+        create_task(state->shell->CoreWebView2->ExecuteScriptAsync(script)).then([state](task<String^> result) {
             try { state->shellProbe = result.get(); state->shellProbeError = L""; }
             catch (Exception^ error) { state->shellProbeError = error->Message; }
             catch (...) { state->shellProbeError = L"The read-only shell probe failed."; }
@@ -652,6 +650,13 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
     }
     Fail(L"This native method is not implemented.");
 }
+task<void> SmokeRecord(String^ filename, JsonObject^ result) {
+    // Pairing data stays in the app's private LocalState and is emitted only
+    // for an explicitly requested native smoke, never ordinary diagnostics.
+    auto buffer = CryptographicBuffer::ConvertStringToBinary(result->Stringify(), BinaryStringEncoding::Utf8);
+    return create_task(ApplicationData::Current->LocalFolder->CreateFileAsync(filename, CreationCollisionOption::OpenIfExists))
+        .then([buffer](StorageFile^ file) { return WriteBuffer(file, buffer); }, Ui());
+}
 void NativeSmoke(const std::shared_ptr<State>& state) {
     if (state->smokeStarted) return;
     state->smokeStarted = true;
@@ -667,12 +672,16 @@ void NativeSmoke(const std::shared_ptr<State>& state) {
             task<void> smoke = task_from_result();
             if (config->HasKey(L"lan") && config->GetNamedBoolean(L"lan"))
                 smoke = smoke.then([state] {
-                    return Dispatch(state, L"lanStart", ref new JsonObject()).then([](JsonObject^) {});
+                    return Dispatch(state, L"lanStart", ref new JsonObject()).then([](JsonObject^ result) {
+                        return SmokeRecord(L"mihawk-lan-status.json", result);
+                    }, Ui());
                 }, Ui());
             if (config->HasKey(L"browser") && config->GetNamedBoolean(L"browser"))
                 smoke = smoke.then([state] {
                     auto parameters = ref new JsonObject(); Text(parameters, L"url", L"https://example.com");
-                    return Dispatch(state, L"browser", parameters).then([](JsonObject^) {});
+                    return Dispatch(state, L"browser", parameters).then([](JsonObject^ result) {
+                        return SmokeRecord(L"mihawk-native-smoke-result.json", result);
+                    }, Ui());
                 }, Ui());
             return smoke;
         }, Ui()).then([state](task<void> completed) {
@@ -684,26 +693,17 @@ void NativeSmoke(const std::shared_ptr<State>& state) {
 void Reply(const std::shared_ptr<State>& state, String^ id, JsonObject^ result, String^ error) {
     auto response = ref new JsonObject(); Text(response, L"id", id); Bool(response, L"ok", !error);
     if (error) Text(response, L"error", error); else response->SetNamedValue(L"result", result ? result : ref new JsonObject());
-    auto arguments = ref new Platform::Collections::Vector<String^>(); arguments->Append(response->Stringify());
     try {
-        create_task(state->shell->InvokeScriptAsync(L"MihawkNativeReply", arguments)).then([state](task<String^> sent) {
-            try { sent.get(); } catch (Exception^ exception) { HostError(state, L"Desktop reply failed: " + exception->Message); }
-            catch (...) { HostError(state, L"Desktop reply failed."); }
-        }, Ui());
-    } catch (Exception^ exception) { HostError(state, exception->Message); }
+        if (!state->shell || !state->shell->CoreWebView2 || !Trusted(state->shell->Source))
+            Fail(L"The trusted desktop message channel is unavailable.");
+        state->shell->CoreWebView2->PostWebMessageAsJson(response->Stringify());
+    } catch (Exception^ exception) { HostError(state, L"Desktop reply failed: " + exception->Message); }
 }
-void Request(const std::shared_ptr<State>& state, Object^ sender, NotifyEventArgs^ args) {
-    ++state->notifyCount;
-    state->lastNotifyUri = state->shell && state->shell->Source ? state->shell->Source->AbsoluteUri : L"";
-    if (sender != state->shell || !Trusted(state->shell->Source)) {
-        ++state->rejectedNotifyCount;
-        if (state->rejectedNotifyCount <= 4) Observe(Status(state));
-        return;
-    }
+void Request(const std::shared_ptr<State>& state, String^ payload) {
     String^ id = L"";
     try {
-        if (!args->Value || args->Value->Length() > 2U * 1024U * 1024U) Fail(L"Native request is too large.");
-        auto request = JsonObject::Parse(args->Value);
+        if (!payload || payload->Length() > 2U * 1024U * 1024U) Fail(L"Native request is too large.");
+        auto request = JsonObject::Parse(payload);
         id = Required(request, L"id"); if (id->Length() == 0) Fail(L"A request ID is required.");
         auto method = Required(request, L"method", 64);
         auto parameters = request->HasKey(L"params") ? request->GetNamedObject(L"params") : ref new JsonObject();
@@ -726,6 +726,17 @@ void Request(const std::shared_ptr<State>& state, Object^ sender, NotifyEventArg
         }, Ui());
     } catch (Exception^ exception) { Reply(state, id, nullptr, exception->Message); }
     catch (...) { Reply(state, id, nullptr, L"Invalid native request."); }
+}
+void ShellMessage(const std::shared_ptr<State>& state, CoreWebView2^ sender, CoreWebView2WebMessageReceivedEventArgs^ args) {
+    ++state->notifyCount; state->lastNotifyUri = args->Source;
+    if (!state->shell || sender != state->shell->CoreWebView2 || Wide(args->Source) != ShellUrl) {
+        ++state->rejectedNotifyCount;
+        if (state->rejectedNotifyCount <= 4) Observe(Status(state));
+        return;
+    }
+    try { Request(state, args->TryGetWebMessageAsString()); }
+    catch (Exception^ error) { state->lastError = L"Desktop message: " + error->Message; Observe(Status(state)); }
+    catch (...) { state->lastError = L"Desktop message was not a JSON string."; Observe(Status(state)); }
 }
 Button^ Action(String^ title) {
     auto button = ref new Button(); button->Content = title; button->Margin = ThicknessHelper::FromUniformLength(8);
@@ -753,7 +764,14 @@ protected:
         auto state = std::make_shared<State>(); m_state = state;
         state->root = ref new Grid();
         state->root->Background = ref new SolidColorBrush(Colors::Black);
-        Window::Current->Content = state->root; Window::Current->Activate();
+        Window::Current->Content = state->root;
+        try {
+            if (Windows::Foundation::Metadata::ApiInformation::IsTypePresent(L"Windows.UI.ViewManagement.ApplicationViewScaling"))
+                state->layoutScalingDisabled = Windows::UI::ViewManagement::ApplicationViewScaling::TrySetDisableLayoutScaling(true);
+            state->useCoreWindow = Windows::UI::ViewManagement::ApplicationView::GetForCurrentView()->SetDesiredBoundsMode(
+                Windows::UI::ViewManagement::ApplicationViewBoundsMode::UseCoreWindow);
+        } catch (Exception^ error) { state->layoutError = error->Message; }
+        Window::Current->Activate();
         state->fallback = ref new TextBlock(); state->fallback->Text = L"Opening Mihawk desktop...";
         state->fallback->TextWrapping = TextWrapping::Wrap;
         state->fallback->Foreground = ref new SolidColorBrush(Colors::White);
@@ -784,7 +802,7 @@ protected:
                 catch (...) { }
             });
             state->inputTimer->Start();
-            Suspending += ref new Windows::ApplicationModel::SuspendingEventHandler(
+            Suspending += ref new Windows::UI::Xaml::SuspendingEventHandler(
                 [state](Object^, Windows::ApplicationModel::SuspendingEventArgs^) {
                     try { state->lan->Stop(); } catch (...) { }
                     try { if (state->session) state->session->SetInputEnabled(false); } catch (...) { }
@@ -808,23 +826,44 @@ protected:
             header->Children->Append(close); header->Children->Append(state->back); header->Children->Append(state->overlayTitle);
             state->surface = ref new Grid(); Grid::SetRow(state->surface, 1);
             state->overlay->Children->Append(header); state->overlay->Children->Append(state->surface);
-            state->shell = ref new WebView();
-            state->shell->NavigationStarting += ref new TypedEventHandler<WebView^, WebViewNavigationStartingEventArgs^>(
-                [](WebView^, WebViewNavigationStartingEventArgs^ args) { if (!Trusted(args->Uri)) args->Cancel = true; });
-            state->shell->FrameNavigationStarting += ref new TypedEventHandler<WebView^, WebViewNavigationStartingEventArgs^>(
-                [](WebView^, WebViewNavigationStartingEventArgs^ args) { args->Cancel = true; });
-            state->shell->NewWindowRequested += ref new TypedEventHandler<WebView^, WebViewNewWindowRequestedEventArgs^>(
-                [](WebView^, WebViewNewWindowRequestedEventArgs^ args) { args->Handled = true; });
-            state->shell->NavigationCompleted += ref new TypedEventHandler<WebView^, WebViewNavigationCompletedEventArgs^>(
-                [state](WebView^, WebViewNavigationCompletedEventArgs^ args) {
-                    state->navigation = Str(args->IsSuccess ? (state->javascriptReady ? L"ready" : L"loaded") : L"failed");
-                    if (!args->IsSuccess) HostError(state, L"The packaged desktop page could not load. Web error " + Str(std::to_wstring(static_cast<int>(args->WebErrorStatus))));
-                    else { Observe(Status(state)); ProbeShell(state); }
-                });
-            state->shell->ScriptNotify += ref new NotifyEventHandler([state](Object^ sender, NotifyEventArgs^ args) { Request(state, sender, args); });
+            MihawkModern::InitializeResources();
+            state->shell = ref new ShellView();
             state->root->Children->InsertAt(0, state->shell);
             state->root->Children->Append(state->overlay);
-            state->shell->Navigate(ref new Uri(L"ms-appx-web:///Mihawk/index.html"));
+            state->navigation = L"initializing-webview2"; Observe(Status(state));
+            create_task(state->shell->EnsureCoreWebView2Async()).then([state](task<void> initialized) {
+                try {
+                    initialized.get();
+                    auto core = state->shell->CoreWebView2;
+                    if (!core) Fail(L"The desktop WebView2 engine did not initialize.");
+                    state->shellEngineVersion = core->Environment->BrowserVersionString;
+                    core->Settings->IsWebMessageEnabled = true;
+                    core->Settings->IsGeneralAutofillEnabled = false;
+                    core->Settings->IsPasswordAutosaveEnabled = false;
+                    core->Settings->AreDevToolsEnabled = false;
+                    core->SetVirtualHostNameToFolderMapping(L"mihawk-shell.local", L"Mihawk", CoreWebView2HostResourceAccessKind::DenyCors);
+                    state->shell->NavigationStarting += ref new TypedEventHandler<ShellView^, CoreWebView2NavigationStartingEventArgs^>(
+                        [](ShellView^, CoreWebView2NavigationStartingEventArgs^ args) {
+                            try { if (!Trusted(ref new Uri(args->Uri))) args->Cancel = true; }
+                            catch (...) { args->Cancel = true; }
+                        });
+                    state->shell->NavigationCompleted += ref new TypedEventHandler<ShellView^, CoreWebView2NavigationCompletedEventArgs^>(
+                        [state](ShellView^, CoreWebView2NavigationCompletedEventArgs^ args) {
+                            state->navigation = Str(args->IsSuccess ? (state->javascriptReady ? L"ready" : L"loaded") : L"failed");
+                            if (!args->IsSuccess) HostError(state, L"The packaged desktop page could not load. WebView2 error " +
+                                Str(std::to_wstring(static_cast<int>(args->WebErrorStatus))));
+                            else { Observe(Status(state)); ProbeShell(state); }
+                        });
+                    core->WebMessageReceived += ref new TypedEventHandler<CoreWebView2^, CoreWebView2WebMessageReceivedEventArgs^>(
+                        [state](CoreWebView2^ sender, CoreWebView2WebMessageReceivedEventArgs^ args) { ShellMessage(state, sender, args); });
+                    core->NewWindowRequested += ref new TypedEventHandler<CoreWebView2^, CoreWebView2NewWindowRequestedEventArgs^>(
+                        [](CoreWebView2^, CoreWebView2NewWindowRequestedEventArgs^ args) { args->Handled = true; });
+                    core->LaunchingExternalUriScheme += ref new TypedEventHandler<CoreWebView2^, CoreWebView2LaunchingExternalUriSchemeEventArgs^>(
+                        [](CoreWebView2^, CoreWebView2LaunchingExternalUriSchemeEventArgs^ args) { args->Cancel = true; });
+                    state->shell->Source = ref new Uri(ref new String(ShellUrl));
+                } catch (Exception^ error) { state->navigation = L"failed"; HostError(state, L"Desktop WebView2 initialization failed: " + error->Message); }
+                catch (...) { state->navigation = L"failed"; HostError(state, L"Desktop WebView2 initialization failed."); }
+            }, Ui());
         } catch (Exception^ exception) { HostError(state, L"Native desktop initialization failed: " + exception->Message); }
         catch (...) { HostError(state, L"Native desktop initialization failed."); }
     }

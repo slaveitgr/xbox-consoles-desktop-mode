@@ -18,6 +18,14 @@ using namespace Windows::UI::Xaml::Media;
 using ModernView = Microsoft::UI::Xaml::Controls::WebView2;
 using namespace Microsoft::Web::WebView2::Core;
 
+inline void InitializeResources() {
+    static bool initialized=false;
+    if (!initialized) {
+        Application::Current->Resources->MergedDictionaries->Append(ref new Microsoft::UI::Xaml::Controls::XamlControlsResources());
+        initialized=true;
+    }
+}
+
 class Browser : public std::enable_shared_from_this<Browser> {
     struct Tab {
         ModernView^ view = nullptr;
@@ -165,11 +173,7 @@ public:
         if (!Http(uri)) throw ref new InvalidArgumentException(L"The browser accepts HTTP and HTTPS addresses.");
         m_closed=false; m_parent=surface; m_title=title;
         auto self=shared_from_this();
-        static bool resourcesInitialized=false;
-        if (!resourcesInitialized) {
-            Application::Current->Resources->MergedDictionaries->Append(ref new Microsoft::UI::Xaml::Controls::XamlControlsResources());
-            resourcesInitialized=true;
-        }
+        InitializeResources();
         m_title->Text=L"Edge / Chromium Browser";
         m_root=ref new Grid();
         for (unsigned i=0;i<4;++i) { auto row=ref new RowDefinition(); if (i!=2) row->Height=GridLengthHelper::Auto; m_root->RowDefinitions->Append(row); }
@@ -177,7 +181,7 @@ public:
         m_root->Children->Append(m_tabs);
         auto toolbar=ref new Grid();Grid::SetRow(toolbar,1);
         for (unsigned i=0;i<6;++i) { auto col=ref new ColumnDefinition(); if(i!=3)col->Width=GridLengthHelper::Auto;toolbar->ColumnDefinitions->Append(col); }
-        auto addControl=[toolbar](UIElement^ control,int column){Grid::SetColumn(control,column);toolbar->Children->Append(control);};
+        auto addControl=[toolbar](FrameworkElement^ control,int column){Grid::SetColumn(control,column);toolbar->Children->Append(control);};
         addControl(ButtonFor(L"Back",ref new RoutedEventHandler([self](Object^,RoutedEventArgs^){self->GoBack();})),0);
         addControl(ButtonFor(L"Forward",ref new RoutedEventHandler([self](Object^,RoutedEventArgs^){if(self->m_active&&self->m_active->ready&&self->m_active->view->CanGoForward)self->m_active->view->GoForward();})),1);
         addControl(ButtonFor(L"Reload",ref new RoutedEventHandler([self](Object^,RoutedEventArgs^){if(self->m_active&&self->m_active->ready)self->m_active->view->Reload();})),2);

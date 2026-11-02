@@ -12,13 +12,15 @@ existing filenames and currently limits each file to 16 MiB.
 
 The browser overlay uses official Edge/Chromium WebView2 with tabs, address
 bar and navigation controls. It receives no desktop RPC or host objects.
-The trusted desktop remains on its separate packaged platform WebView.
+The trusted desktop uses a separate WebView2 mapped only to its packaged
+Mihawk folder. Its native RPC validates both the sending control and exact
+local origin/page; its CSP blocks external requests and frames.
 The official Microsoft Xbox sample is the integration reference:
 https://github.com/microsoft/Media-App-Samples-for-Xbox/tree/main/WebView2
 
 The frontend is GPL-3.0-or-later; see `mihawk/COPYING`. Other repository code
 keeps its existing licenses. The native host uses C++/CX to consume the pinned
-Win32Bridge WinRT metadata directly and platform UWP XAML WebView; it does not
+Win32Bridge WinRT metadata directly and native UWP XAML controls; it does not
 use desktop window/process APIs. The browser consumes official WinUI 2 and
 WebView2 WinRT metadata; SDK archives are pinned by SHA-256 and their runtime
 license notices are packaged. The WinUI framework dependency is supplied

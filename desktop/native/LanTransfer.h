@@ -389,7 +389,7 @@ class Server : public std::enable_shared_from_this<Server> {
         auto self = shared_from_this();
         StorageFolder^ inbox;
         { std::lock_guard<std::mutex> guard(mutex_); inbox = inbox_; }
-        return create_task(inbox->GetFilesAsync(offset, Detail::FilePage)).then([self, c, offset](Windows::Foundation::Collections::IVectorView<StorageFile^>^ files) {
+        return create_task(inbox->GetFilesAsync(Windows::Storage::Search::CommonFileQuery::DefaultQuery, offset, Detail::FilePage)).then([self, c, offset](Windows::Foundation::Collections::IVectorView<StorageFile^>^ files) {
             auto entries = ref new JsonArray();
             { std::lock_guard<std::mutex> guard(self->mutex_);
                 for (auto file : files) {

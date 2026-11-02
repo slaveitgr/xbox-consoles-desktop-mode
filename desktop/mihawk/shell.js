@@ -72,7 +72,10 @@
     add(document.getElementById('toasts'), node);
     setTimeout(function () { if (node.parentNode) node.parentNode.removeChild(node); }, 7000);
   }
-  function bridgeAvailable() { return !!(window.external && window.external.notify); }
+  function modernBridge() {
+    return window.chrome && window.chrome.webview && window.chrome.webview.postMessage ? window.chrome.webview : null;
+  }
+  function bridgeAvailable() { return !!(modernBridge() || (window.external && window.external.notify)); }
   function rpc(method, params, timeout) {
     return new Promise(function (resolve, reject) {
       if (!bridgeAvailable()) { reject(new Error('Open this desktop in the Xbox application to access files and native apps.')); return; }
@@ -82,7 +85,11 @@
         delete pending[id]; reject(new Error('The Xbox host did not answer ' + method + '. Try again.'));
       }, timeout || 30000);
       pending[id] = { resolve: resolve, reject: reject, timer: timer };
-      try { window.external.notify(JSON.stringify({ id: id, method: method, params: params || {} })); }
+      try {
+        var serialized = JSON.stringify({ id: id, method: method, params: params || {} });
+        var modern = modernBridge();
+        if (modern) modern.postMessage(serialized); else window.external.notify(serialized);
+      }
       catch (error) { clearTimeout(timer); delete pending[id]; reject(error); }
     });
   }
@@ -95,6 +102,10 @@
     if (response.ok) task.resolve(response.result);
     else task.reject(new Error(errorText(response.error)));
   };
+  var webviewMessages = modernBridge();
+  if (webviewMessages && webviewMessages.addEventListener) {
+    webviewMessages.addEventListener('message', function (event) { window.MihawkNativeReply(event.data); });
+  }
   function setConnection(ok, label) {
     connected = ok;
     var status = document.getElementById('connection-status');
@@ -105,7 +116,12 @@
   function connect() {
     if (connecting) return Promise.resolve();
     connecting = true;
-    rpc('ready', { userAgent: navigator.userAgent }).catch(function () {});
+    rpc('ready', {
+      userAgent: navigator.userAgent,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+      devicePixelRatio: window.devicePixelRatio || 1
+    }).catch(function () {});
     return rpc('hello', {}).then(function (info) {
       if (!info || !Array.isArray(info.roots)) throw new Error('The host returned an invalid workspace response.');
       hostInfo = info; roots = info.roots; setConnection(true, 'Xbox connected');
