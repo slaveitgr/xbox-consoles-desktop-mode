@@ -1,0 +1,617 @@
+--- a/Win32Bridge/Bridge/GuestModule.cpp
++++ b/Win32Bridge/Bridge/GuestModule.cpp
+@@ -35,6 +35,15 @@
+ 
+     thread_local GuestModuleLoader* g_currentModuleLoader = nullptr;
+     thread_local unsigned g_forwarderDepth = 0;
++
++    class ScopedForwarderDepth final
++    {
++    public:
++        ScopedForwarderDepth() { ++g_forwarderDepth; }
++        ~ScopedForwarderDepth() { --g_forwarderDepth; }
++        ScopedForwarderDepth(const ScopedForwarderDepth&) = delete;
++        ScopedForwarderDepth& operator=(const ScopedForwarderDepth&) = delete;
++    };
+ 
+     void SetWin32Error(DWORD* target, DWORD value)
+     {
+@@ -208,8 +217,10 @@
+ GuestModuleLoader::GuestModuleLoader(
+     std::shared_ptr<GuestStorageContext> storage,
+     ImportResolver resolver,
+-    StorageFolder^ moduleSourceFolder)
+-    : m_storage(std::move(storage)),
++    StorageFolder^ moduleSourceFolder,
++    xcdm::runtime::ModuleOwnership ownership)
++    : m_ownership(std::move(ownership)),
++      m_storage(std::move(storage)),
+       m_resolver(std::move(resolver)),
+       m_moduleSourceFolder(moduleSourceFolder)
+ {
+@@ -244,12 +255,25 @@
+         SetWin32Error(win32Error, ERROR_MOD_NOT_FOUND);
+         return false;
+     }
+-    const std::wstring apiSetHost = ApiSetHostLibrary(normalized);
+-    if (IsApiSetLibrary(normalized))
+-    {
+-        RuntimeDiagnostics::Record(
+-            L"APISET: " + normalized + L" -> " + apiSetHost + L".");
+-        normalized = apiSetHost;
++    if (m_ownership.IsStrict())
++    {
++        const auto decision = m_ownership.Decide(normalized);
++        if (decision.owner != xcdm::runtime::ModuleOwner::Wine)
++        {
++            SetWin32Error(win32Error, ERROR_MOD_NOT_FOUND);
++            RuntimeDiagnostics::Record(L"DLL OWNER REJECTED: " + normalized + L" cannot be mapped as a Wine module. " + decision.reason);
++            return false;
++        }
++        normalized = decision.canonicalName;
++    }
++    else
++    {
++        const std::wstring apiSetHost = ApiSetHostLibrary(normalized);
++        if (IsApiSetLibrary(normalized))
++        {
++            RuntimeDiagnostics::Record(L"APISET: " + normalized + L" -> " + apiSetHost + L".");
++            normalized = apiSetHost;
++        }
+     }
+     *requestedBaseName = FileNameOf(normalized);
+ 
+@@ -297,6 +321,21 @@
+         candidate.displayName = logicalPath;
+         candidates->push_back(std::move(candidate));
+     };
++
++    if (m_ownership.IsStrict())
++    {
++        // One approved guest location for the Wine stack. Never search USB,
++        // the application directory, host System32 or caller DLL directories.
++        if ((searchFlags & LoadLibrarySearchDllLoadDir) != 0)
++        {
++            SetWin32Error(win32Error, ERROR_INVALID_PARAMETER);
++            return false;
++        }
++        *searchByBaseName = true;
++        if (!addVirtual(JoinPath(L"C:\\Windows\\System32", normalized))) return false;
++        SetWin32Error(win32Error, ERROR_SUCCESS);
++        return true;
++    }
+ 
+     const bool containsPath = normalized.find(L'\\') != std::wstring::npos ||
+         (normalized.size() >= 2 && normalized[1] == L':');
+@@ -666,6 +705,15 @@
+         &searchByBaseName, win32Error))
+     {
+         RuntimeDiagnostics::Record(L"DLL FAILED: invalid module name or search policy.");
++        return false;
++    }
++
++    if (m_ownership.IsStrict() && !resourceOnly)
++    {
++        // No executable Wine mapping, TLS or DllMain until the guest thread
++        // environment is qualified. Resource-only mappings remain inert.
++        SetWin32Error(win32Error, ERROR_NOT_SUPPORTED);
++        RuntimeDiagnostics::Record(L"DLL EXECUTION BLOCKED: strict Wine guest TEB/PEB/TLS environment is not qualified.");
+         return false;
+     }
+ 
+@@ -819,85 +867,87 @@
+ 
+     const ImportResolver dependencyResolver = [this, candidate, searchFlags](const ImportedSymbol& symbol)
+     {
+-        ImportResolution resolution = m_resolver(symbol);
+-        if (resolution.targetAddress != 0) return resolution;
+-
+-        const std::wstring dependencyName = ApiSetHostLibrary(symbol.library);
+-        const std::wstring dependencyKey = Lowercase(FileNameOf(dependencyName));
+-        HMODULE dependency = nullptr;
+-        DWORD error = ERROR_SUCCESS;
+-
+-        // Snap a dependency once per importing module, not once per symbol.
+-        // A dependency that is already being mapped is a cycle edge: its base
+-        // is valid for IAT addresses, but taking another load-count reference
+-        // would create a permanent reference cycle.
+-        {
+-            std::lock_guard<std::mutex> guard(m_lock);
+-            const auto cached = candidate->dependencyModules.find(dependencyKey);
+-            if (cached != candidate->dependencyModules.end())
++        return ResolveOwnedImport(symbol, [this, candidate, searchFlags](const ImportedSymbol& symbol)
++        {
++            ImportResolution resolution{};
++            resolution.disposition = ImportDisposition::Unsupported;
++            const std::wstring dependencyName = ApiSetHostLibrary(symbol.library);
++            const std::wstring dependencyKey = Lowercase(FileNameOf(dependencyName));
++            HMODULE dependency = nullptr;
++            DWORD error = ERROR_SUCCESS;
++    
++            // Snap a dependency once per importing module, not once per symbol.
++            // A dependency that is already being mapped is a cycle edge: its base
++            // is valid for IAT addresses, but taking another load-count reference
++            // would create a permanent reference cycle.
+             {
+-                dependency = cached->second;
+-            }
+-            else
+-            {
+-                const auto existing = FindModuleByBaseNameLocked(dependencyKey);
+-                if (existing)
++                std::lock_guard<std::mutex> guard(m_lock);
++                const auto cached = candidate->dependencyModules.find(dependencyKey);
++                if (cached != candidate->dependencyModules.end())
+                 {
+-                    dependency = reinterpret_cast<HMODULE>(existing->runtime.Base());
+-                    candidate->dependencyModules.emplace(dependencyKey, dependency);
+-                    if (!existing->loading && existing != candidate)
++                    dependency = cached->second;
++                }
++                else
++                {
++                    const auto existing = FindModuleByBaseNameLocked(dependencyKey);
++                    if (existing)
+                     {
+-                        ++existing->references;
+-                        candidate->dependencyReferences.push_back(dependency);
++                        dependency = reinterpret_cast<HMODULE>(existing->runtime.Base());
++                        candidate->dependencyModules.emplace(dependencyKey, dependency);
++                        if (!existing->loading && existing != candidate)
++                        {
++                            ++existing->references;
++                            candidate->dependencyReferences.push_back(dependency);
++                        }
+                     }
+                 }
+             }
+-        }
+-        if (!GetModuleHandle(dependencyName.c_str(), &dependency, &error))
+-        {
+-            if (!dependency && (searchFlags & LoadLibrarySearchDllLoadDir) != 0)
++            if (!GetModuleHandle(dependencyName.c_str(), &dependency, &error))
+             {
+-                const std::wstring dependencyPath =
+-                    JoinPath(DirectoryOf(candidate->canonicalName), dependencyName);
+-                LoadLibrary(dependencyPath.c_str(), &dependency, &error);
++                if (!dependency && (searchFlags & LoadLibrarySearchDllLoadDir) != 0)
++                {
++                    const std::wstring dependencyPath =
++                        JoinPath(DirectoryOf(candidate->canonicalName), dependencyName);
++                    LoadLibrary(dependencyPath.c_str(), &dependency, &error);
++                }
++                const DWORD inheritedFlags = searchFlags & ~LoadLibrarySearchDllLoadDir;
++                if (!dependency &&
++                    ((searchFlags & LoadLibrarySearchDllLoadDir) == 0 || inheritedFlags != 0))
++                {
++                    LoadLibrary(dependencyName.c_str(), &dependency, &error, inheritedFlags);
++                }
++                if (!dependency) return resolution;
++    
++                std::lock_guard<std::mutex> guard(m_lock);
++                const auto inserted = candidate->dependencyModules.emplace(
++                    dependencyKey, dependency);
++                if (inserted.second)
++                    candidate->dependencyReferences.push_back(dependency);
+             }
+-            const DWORD inheritedFlags = searchFlags & ~LoadLibrarySearchDllLoadDir;
+-            if (!dependency &&
+-                ((searchFlags & LoadLibrarySearchDllLoadDir) == 0 || inheritedFlags != 0))
++    
++            LPCSTR requested = symbol.importedByOrdinal
++                ? reinterpret_cast<LPCSTR>(static_cast<ULONG_PTR>(symbol.ordinal))
++                : nullptr;
++            std::string asciiName;
++            if (!symbol.importedByOrdinal)
+             {
+-                LoadLibrary(dependencyName.c_str(), &dependency, &error, inheritedFlags);
++                asciiName.reserve(symbol.name.size());
++                for (const wchar_t character : symbol.name)
++                {
++                    if (character > 0x7f) return resolution;
++                    asciiName.push_back(static_cast<char>(character));
++                }
++                requested = asciiName.c_str();
+             }
+-            if (!dependency) return resolution;
+-
+-            std::lock_guard<std::mutex> guard(m_lock);
+-            const auto inserted = candidate->dependencyModules.emplace(
+-                dependencyKey, dependency);
+-            if (inserted.second)
+-                candidate->dependencyReferences.push_back(dependency);
+-        }
+-
+-        LPCSTR requested = symbol.importedByOrdinal
+-            ? reinterpret_cast<LPCSTR>(static_cast<ULONG_PTR>(symbol.ordinal))
+-            : nullptr;
+-        std::string asciiName;
+-        if (!symbol.importedByOrdinal)
+-        {
+-            asciiName.reserve(symbol.name.size());
+-            for (const wchar_t character : symbol.name)
++    
++            const FARPROC procedure = GetProcAddress(dependency, requested, &error);
++            if (procedure)
+             {
+-                if (character > 0x7f) return resolution;
+-                asciiName.push_back(static_cast<char>(character));
++                resolution.targetAddress = reinterpret_cast<ULONGLONG>(procedure);
++                resolution.note = L"Resolved from guest dependency " + dependencyName + L".";
+             }
+-            requested = asciiName.c_str();
+-        }
+-
+-        const FARPROC procedure = GetProcAddress(dependency, requested, &error);
+-        if (procedure)
+-        {
+-            resolution.targetAddress = reinterpret_cast<ULONGLONG>(procedure);
+-            resolution.note = L"Resolved from guest dependency " + dependencyName + L".";
+-        }
+-        return resolution;
++            return resolution;
++        });
+     };
+ 
+     if (!ImportBinder::Bind(
+@@ -1025,58 +1075,86 @@
+     return true;
+ }
+ 
++ImportResolution GuestModuleLoader::ResolveOwnedImport(
++    const ImportedSymbol& symbol, const ImportResolver& wineResolver) const
++{
++    const auto decision = m_ownership.Decide(symbol.library);
++    ImportedSymbol canonical = symbol;
++    if (m_ownership.IsStrict()) canonical.library = decision.canonicalName;
++    ImportResolution failure{};
++    failure.disposition = ImportDisposition::Unsupported;
++    failure.note = L"Module ownership rejected " + symbol.library + L": " + decision.reason;
++    ImportResolution resolution = xcdm::runtime::RouteModuleSymbol(decision,
++        [&] { return m_resolver(canonical); },
++        [&] { return wineResolver(canonical); },
++        [](const ImportResolution& value) { return value.targetAddress != 0; }, failure);
++    if (m_ownership.IsStrict() && resolution.targetAddress == 0)
++    {
++        const std::wstring owner = decision.owner == xcdm::runtime::ModuleOwner::Bridge
++            ? L"Bridge" : decision.owner == xcdm::runtime::ModuleOwner::Wine ? L"Wine" : L"Reject";
++        resolution.disposition = ImportDisposition::Unsupported;
++        resolution.note = L"Strict owner " + owner + L" could not resolve " + symbol.library + L"!" +
++            (symbol.importedByOrdinal ? L"#" + std::to_wstring(symbol.ordinal) : symbol.name) +
++            L". No cross-owner fallback is permitted. " + decision.reason;
++        RuntimeDiagnostics::Record(L"DLL OWNER MISSING: " + resolution.note);
++    }
++    return resolution;
++}
++
+ ImportResolution GuestModuleLoader::ResolveImport(
+     const ImportedSymbol& symbol,
+     DWORD searchFlags)
+ {
+     std::lock_guard<std::recursive_mutex> loaderGuard(m_loaderLock);
+-    ImportResolution resolution = m_resolver(symbol);
+-    if (resolution.targetAddress != 0) return resolution;
+-
+-    const std::wstring requestedLibrary = ApiSetHostLibrary(symbol.library);
+-    const std::wstring key = Lowercase(requestedLibrary);
+-    HMODULE dependency = nullptr;
+-    {
+-        std::lock_guard<std::mutex> guard(m_lock);
+-        const auto found = m_importModules.find(key);
+-        if (found != m_importModules.end()) dependency = found->second;
+-    }
+-    DWORD error = ERROR_SUCCESS;
+-    if (!dependency)
+-    {
+-        if (!LoadLibrary(requestedLibrary.c_str(), &dependency, &error, searchFlags))
+-            return resolution;
+-        std::lock_guard<std::mutex> guard(m_lock);
+-        m_importModules.emplace(key, dependency);
+-    }
+-
+-    LPCSTR requested = nullptr;
+-    std::string asciiName;
+-    if (symbol.importedByOrdinal)
+-    {
+-        requested = reinterpret_cast<LPCSTR>(static_cast<ULONG_PTR>(symbol.ordinal));
+-    }
+-    else
+-    {
+-        asciiName.reserve(symbol.name.size());
+-        for (const wchar_t character : symbol.name)
+-        {
+-            if (character > 0x7f) return resolution;
+-            asciiName.push_back(static_cast<char>(character));
+-        }
+-        requested = asciiName.c_str();
+-    }
+-    const FARPROC procedure = GetProcAddress(dependency, requested, &error);
+-    if (procedure)
+-    {
+-        resolution.targetAddress = reinterpret_cast<ULONGLONG>(procedure);
+-        resolution.disposition = ImportDisposition::NeedsBridge;
+-        resolution.note = symbol.importedByOrdinal
+-            ? L"Resolved ordinal #" + std::to_wstring(symbol.ordinal) +
+-                L" from guest dependency " + requestedLibrary + L"."
+-            : L"Resolved from guest dependency " + requestedLibrary + L".";
+-    }
+-    return resolution;
++    return ResolveOwnedImport(symbol, [this, searchFlags](const ImportedSymbol& symbol)
++    {
++        ImportResolution resolution{};
++        resolution.disposition = ImportDisposition::Unsupported;
++        const std::wstring requestedLibrary = ApiSetHostLibrary(symbol.library);
++        const std::wstring key = Lowercase(requestedLibrary);
++        HMODULE dependency = nullptr;
++        {
++            std::lock_guard<std::mutex> guard(m_lock);
++            const auto found = m_importModules.find(key);
++            if (found != m_importModules.end()) dependency = found->second;
++        }
++        DWORD error = ERROR_SUCCESS;
++        if (!dependency)
++        {
++            if (!LoadLibrary(requestedLibrary.c_str(), &dependency, &error, searchFlags))
++                return resolution;
++            std::lock_guard<std::mutex> guard(m_lock);
++            m_importModules.emplace(key, dependency);
++        }
++    
++        LPCSTR requested = nullptr;
++        std::string asciiName;
++        if (symbol.importedByOrdinal)
++        {
++            requested = reinterpret_cast<LPCSTR>(static_cast<ULONG_PTR>(symbol.ordinal));
++        }
++        else
++        {
++            asciiName.reserve(symbol.name.size());
++            for (const wchar_t character : symbol.name)
++            {
++                if (character > 0x7f) return resolution;
++                asciiName.push_back(static_cast<char>(character));
++            }
++            requested = asciiName.c_str();
++        }
++        const FARPROC procedure = GetProcAddress(dependency, requested, &error);
++        if (procedure)
++        {
++            resolution.targetAddress = reinterpret_cast<ULONGLONG>(procedure);
++            resolution.disposition = ImportDisposition::NeedsBridge;
++            resolution.note = symbol.importedByOrdinal
++                ? L"Resolved ordinal #" + std::to_wstring(symbol.ordinal) +
++                    L" from guest dependency " + requestedLibrary + L"."
++                : L"Resolved from guest dependency " + requestedLibrary + L".";
++        }
++        return resolution;
++    });
+ }
+ 
+ bool GuestModuleLoader::GetModuleHandle(
+@@ -1291,6 +1369,19 @@
+             else
+             {
+                 forwarded.name = forwardedName;
++            }
++
++            if (m_ownership.IsStrict())
++            {
++                ScopedForwarderDepth depth;
++                const ImportResolution owned = ResolveImport(forwarded);
++                if (owned.targetAddress != 0)
++                {
++                    SetWin32Error(win32Error, ERROR_SUCCESS);
++                    return reinterpret_cast<FARPROC>(owned.targetAddress);
++                }
++                SetWin32Error(win32Error, ERROR_PROC_NOT_FOUND);
++                return nullptr;
+             }
+ 
+             const ImportResolution bridgeResolution = m_resolver(forwarded);
+--- a/Win32Bridge/Bridge/GuestModule.h
++++ b/Win32Bridge/Bridge/GuestModule.h
+@@ -3,6 +3,8 @@
+ #include "Bridge/GuestStorage.h"
+ #include "Bridge/ImportBinder.h"
+ #include "Bridge/RuntimeImage.h"
++
++#include <ModuleOwnership.h>
+ 
+ #include <memory>
+ #include <mutex>
+@@ -27,8 +29,10 @@
+         GuestModuleLoader(
+             std::shared_ptr<GuestStorageContext> storage,
+             ImportResolver resolver,
+-            Windows::Storage::StorageFolder^ moduleSourceFolder);
++            Windows::Storage::StorageFolder^ moduleSourceFolder,
++            xcdm::runtime::ModuleOwnership ownership = xcdm::runtime::ModuleOwnership());
+         ~GuestModuleLoader();
++        const xcdm::runtime::ModuleOwnership& OwnershipPolicy() const { return m_ownership; }
+ 
+         bool LoadLibrary(
+             LPCWSTR requestedName,
+@@ -85,7 +89,9 @@
+         bool NotifyModule(const std::shared_ptr<Module>& module, DWORD reason,
+             std::wstring* error) const;
+         void ReleaseModuleDependencies(const std::shared_ptr<Module>& module);
++        ImportResolution ResolveOwnedImport(const ImportedSymbol& symbol, const ImportResolver& wineResolver) const;
+ 
++        const xcdm::runtime::ModuleOwnership m_ownership;
+         std::shared_ptr<GuestStorageContext> m_storage;
+         ImportResolver m_resolver;
+         Platform::Agile<Windows::Storage::StorageFolder^> m_moduleSourceFolder;
+--- a/Win32Bridge/Bridge/GuestRuntime.cpp
++++ b/Win32Bridge/Bridge/GuestRuntime.cpp
+@@ -499,6 +499,12 @@
+ 
+     if (IsPe32Candidate(fileBytes, fileSize))
+     {
++        if (m_ownership.IsStrict())
++        {
++            m_metadata.error = L"Strict Wine ownership is x64-only; PE32 execution is not permitted.";
++            SetError(error, m_metadata.error);
++            return false;
++        }
+         constexpr size_t maximumPe32FileBytes = 64U * 1024U * 1024U;
+         if (fileSize > maximumPe32FileBytes)
+         {
+@@ -578,7 +584,30 @@
+         RuntimeDiagnostics::Record(L"PREPARE FAILED: base relocations.");
+         return false;
+     }
+-    if (!ImportBinder::Bind(&m_mapped, m_metadata, resolver, &m_bindings, error))
++    // Strict mode never prebinds through the raw shim resolver. The active
++    // per-process loader must choose the module owner before any IAT address.
++    ImportResolver prepareResolver = resolver;
++    if (m_ownership.IsStrict())
++    {
++        prepareResolver = [](const ImportedSymbol&)
++        {
++            ImportResolution deferred{};
++            deferred.disposition = ImportDisposition::Deferred;
++            deferred.note = L"Strict module ownership deferred until the guest loader is active.";
++            return deferred;
++        };
++        for (const auto& symbol : m_metadata.imports)
++        {
++            const auto owner = m_ownership.Decide(symbol.library);
++            if (owner.owner == xcdm::runtime::ModuleOwner::Reject)
++            {
++                SetError(error, L"Strict module ownership rejected " + symbol.library + L": " + owner.reason);
++                RuntimeDiagnostics::Record(L"PREPARE FAILED: unowned module " + symbol.library + L".");
++                return false;
++            }
++        }
++    }
++    if (!ImportBinder::Bind(&m_mapped, m_metadata, prepareResolver, &m_bindings, error))
+     {
+         RuntimeDiagnostics::Record(L"PREPARE FAILED: import binding.");
+         return false;
+@@ -635,6 +664,15 @@
+         return true;
+     }
+ 
++    // Routing policy alone does not qualify Wine's direct TEB/PEB, compiler
++    // TLS or callback ABI. No override is provided: replace this gate only
++    // after a qualified guest environment has been integrated and reviewed.
++    if (m_ownership.IsStrict())
++    {
++        SetError(error, L"Strict Wine execution is blocked: a qualified guest TEB/PEB/TLS environment is not integrated.");
++        RuntimeDiagnostics::Record(L"RUN BLOCKED: strict Wine guest environment is not qualified.");
++        return false;
++    }
+     if (m_mapped.entryPointRva == 0 ||
+         m_mapped.entryPointRva >= m_runtime.Size())
+     {
+@@ -659,7 +697,8 @@
+     m_modules = std::make_shared<GuestModuleLoader>(
+         m_storage,
+         m_resolver,
+-        m_moduleSourceFolder.Get());
++        m_moduleSourceFolder.Get(),
++        m_ownership);
+     if (!m_registry)
+     {
+         m_registry = std::make_shared<GuestRegistryContext>(m_storage);
+@@ -892,7 +931,7 @@
+         childStorage = std::make_shared<GuestStorageContext>(
+             m_storage->LocalFolder(), logicalPath, m_modules->ModuleSourceFolder(),
+             m_storage->ExternalFolder());
+-        child = std::make_shared<GuestRuntime>();
++        child = std::make_shared<GuestRuntime>(m_ownership);
+     }
+     catch (const std::bad_alloc&)
+     {
+--- a/Win32Bridge/Bridge/GuestRuntime.h
++++ b/Win32Bridge/Bridge/GuestRuntime.h
+@@ -3,6 +3,8 @@
+ #include "Bridge\\ImportBinder.h"
+ #include "Bridge\\RuntimeImage.h"
+ #include "Bridge\\GuestStorage.h"
++
++#include <ModuleOwnership.h>
+ 
+ #include <memory>
+ #include <agile.h>
+@@ -22,6 +24,9 @@
+     class GuestRuntime final
+     {
+     public:
++        explicit GuestRuntime(xcdm::runtime::ModuleOwnership ownership = xcdm::runtime::ModuleOwnership())
++            : m_ownership(std::move(ownership)) {}
++
+         void SetStorageContext(std::shared_ptr<GuestStorageContext> storage) { m_storage = std::move(storage); }
+         void SetRegistryContext(std::shared_ptr<GuestRegistryContext> registry) { m_registry = std::move(registry); }
+         void SetWindowManager(std::shared_ptr<GuestWindowManager> windows) { m_windows = std::move(windows); }
+@@ -55,6 +60,7 @@
+         const BindingReport& Bindings() const { return m_bindings; }
+ 
+     private:
++        const xcdm::runtime::ModuleOwnership m_ownership;
+         PeImageInfo m_metadata;
+         MappedPeImage m_mapped;
+         MappedPeImage m_resourceSatellite;
+--- a/Win32Bridge/Bridge/Kernel32Shims.cpp
++++ b/Win32Bridge/Bridge/Kernel32Shims.cpp
+@@ -551,6 +551,7 @@
+     {
+         const wchar_t* library;
+         ULONG_PTR token;
++        bool strictOnly = false;
+     };
+ 
+     constexpr BridgeSystemModule BridgeSystemModules[] =
+@@ -568,6 +569,8 @@
+         { L"msvcrt.dll", BridgeSystemModuleBaseToken + 11 },
+         { L"version.dll", BridgeSystemModuleBaseToken + 12 },
+         { L"shcore.dll", BridgeSystemModuleBaseToken + 13 },
++        { L"ntdll.dll", BridgeSystemModuleBaseToken + 14, true },
++        { L"win32u.dll", BridgeSystemModuleBaseToken + 15, true },
+     };
+ 
+     HMODULE GuestMainModule()
+@@ -877,7 +880,18 @@
+     const BridgeSystemModule* FindBridgeSystemModule(LPCWSTR requestedName)
+     {
+         if (!requestedName) return nullptr;
+-        const std::wstring canonical = ApiSetHostLibrary(requestedName);
++        const GuestModuleLoader* loader = CurrentGuestModuleLoader();
++        const bool strict = loader && loader->OwnershipPolicy().IsStrict();
++        std::wstring canonical;
++        if (strict)
++        {
++            const size_t length = wcsnlen_s(requestedName, 256);
++            if (length == 0 || length >= 256) return nullptr;
++            const auto decision = loader->OwnershipPolicy().Decide(std::wstring_view(requestedName, length));
++            if (decision.owner != xcdm::runtime::ModuleOwner::Bridge) return nullptr;
++            canonical = decision.canonicalName;
++        }
++        else canonical = ApiSetHostLibrary(requestedName);
+         const wchar_t* fileName = FileNameFromPath(canonical.c_str());
+         if (!fileName || !*fileName)
+         {
+@@ -886,6 +900,7 @@
+ 
+         for (const auto& candidate : BridgeSystemModules)
+         {
++            if (candidate.strictOnly && !strict) continue;
+             if (_wcsicmp(fileName, candidate.library) == 0)
+             {
+                 return &candidate;
+@@ -897,10 +912,15 @@
+ 
+     const BridgeSystemModule* FindBridgeSystemModule(HMODULE module)
+     {
++        const GuestModuleLoader* loader = CurrentGuestModuleLoader();
++        const bool strict = loader && loader->OwnershipPolicy().IsStrict();
+         for (const auto& candidate : BridgeSystemModules)
+         {
++            if (candidate.strictOnly && !strict) continue;
+             if (module == reinterpret_cast<HMODULE>(candidate.token))
+             {
++                // Reject even a forged old token for a Wine-owned module.
++                if (strict && !loader->OwnershipPolicy().AllowsBridgeHandle(candidate.library)) return nullptr;
+                 return &candidate;
+             }
+         }

@@ -15,6 +15,7 @@
 
 #include "LanTransfer.h"
 #include "ModernBrowser.h"
+#include "HostedWindow.h"
 
 using namespace concurrency;
 using namespace Platform;
@@ -84,6 +85,7 @@ struct State {
     CoreWebView2^ shellCore = nullptr;
     bool lastEventSenderNull = false;
     Grid^ overlay = nullptr;
+    std::shared_ptr<XWindows::HostedWindow> hostedWindow;
     Grid^ surface = nullptr;
     std::shared_ptr<MihawkModern::Browser> modernBrowser;
     std::shared_ptr<MihawkModern::Browser> wineBrowser;
@@ -143,6 +145,7 @@ task<void> Status(const std::shared_ptr<State>& state) {
     Bool(status, L"layoutScalingDisabled", state->layoutScalingDisabled);
     Bool(status, L"useCoreWindow", state->useCoreWindow);
     Text(status, L"layoutError", state->layoutError);
+    if (state->hostedWindow) status->SetNamedValue(L"hostedWindow", state->hostedWindow->Snapshot());
     if (Window::Current) {
         const auto bounds = Window::Current->Bounds;
         Number(status, L"windowWidth", bounds.Width); Number(status, L"windowHeight", bounds.Height);
@@ -427,13 +430,11 @@ void CloseOverlay(const std::shared_ptr<State>& state) {
     }
     if (state->modernBrowser) { state->modernBrowser->Close(); state->modernBrowser.reset(); }
     state->surface->Children->Clear();
-    state->overlay->Visibility = Visibility::Collapsed;
+    state->hostedWindow->Hide();
 }
 void OpenOverlay(const std::shared_ptr<State>& state, String^ title, bool browser) {
     CloseOverlay(state);
-    state->overlayTitle->Text = title;
-    state->back->Visibility = browser ? Visibility::Visible : Visibility::Collapsed;
-    state->overlay->Visibility = Visibility::Visible;
+    state->hostedWindow->Open(title, browser);
 }
 task<JsonObject^> RunFile(const std::shared_ptr<State>& state, StorageFile^ file, StorageFolder^ parent, bool inputEnabled) {
     if (!parent) Fail(L"Open the executable from its containing folder first.");
@@ -443,10 +444,10 @@ task<JsonObject^> RunFile(const std::shared_ptr<State>& state, StorageFile^ file
     return create_task(session->PrepareAsync(file, parent)).then([state, session, file, inputEnabled](bool prepared) {
         if (state->session != session) Fail(L"Execution was canceled before startup.");
         if (!prepared) { state->overlayTitle->Text = L"Stopped: " + session->LastError; Fail(session->LastError); }
-        session->SetInputEnabled(inputEnabled);
+        session->SetInputEnabled(inputEnabled && state->hostedWindow->InputActive());
         state->overlayTitle->Text = L"Running " + file->Name;
         auto running = create_task(session->RunAsync());
-        session->SetInputEnabled(inputEnabled);
+        session->SetInputEnabled(inputEnabled && state->hostedWindow->InputActive());
         running.then([state, session, file](task<int> finished) {
             try {
                 const auto exit = finished.get();
@@ -711,7 +712,7 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
             return state->wineLaunch;
         }
         if (state->wineViewResult && state->wineBrowser && state->modernBrowser == state->wineBrowser && state->wineModeDesktop == desktop) {
-            state->overlay->Visibility = Visibility::Visible;
+            state->hostedWindow->Restore();
             return task_from_result(state->wineViewResult);
         }
         state->wineModeDesktop = desktop;
@@ -913,6 +914,36 @@ void ScheduleWineCapture(const std::shared_ptr<State>& state, const std::shared_
     });
     timer->Start();
 }
+task<void> WindowChromeSmoke(const std::shared_ptr<State>& state) {
+    auto report=ref new JsonObject(); auto snapshots=ref new JsonArray();
+    Bool(report, L"guestExecuted", false);
+    auto record=[state,snapshots](String^ name) {
+        state->root->UpdateLayout(); auto item=state->hostedWindow->Snapshot();
+        Text(item,L"step",name); snapshots->Append(item); return item;
+    };
+    OpenOverlay(state,L"XWindows OS window test",false);
+    auto text=ref new TextBlock(); text->Text=L"Native window controls test. No EXE is executed.\nMove or resize this window; use the title buttons for minimize, maximize and fullscreen.";
+    text->TextWrapping=TextWrapping::Wrap; text->FontSize=20; text->Margin=ThicknessHelper::FromUniformLength(32);
+    text->Foreground=ref new SolidColorBrush(Colors::White); state->surface->Children->Append(text);
+    auto normal=record(L"windowed");
+    state->hostedWindow->ToggleMaximize(); auto maximum=record(L"maximized");
+    state->hostedWindow->ToggleFullscreen(); auto full=record(L"fullscreen");
+    state->hostedWindow->Minimize(); auto minimized=record(L"minimized");
+    state->hostedWindow->Restore(); auto restoredFull=record(L"restore-fullscreen");
+    state->hostedWindow->ToggleFullscreen(); auto restoredMax=record(L"leave-fullscreen");
+    state->hostedWindow->ToggleMaximize(); auto restoredNormal=record(L"restore-windowed");
+    const auto bounds=Window::Current->Bounds;
+    const auto near=[](double a,double b) { return std::abs(a-b)<2; };
+    const bool passed=normal->GetNamedNumber(L"width")<bounds.Width &&
+        near(maximum->GetNamedNumber(L"width"),bounds.Width) && near(maximum->GetNamedNumber(L"height"),bounds.Height-48) &&
+        near(full->GetNamedNumber(L"width"),bounds.Width) && near(full->GetNamedNumber(L"height"),bounds.Height) &&
+        minimized->GetNamedBoolean(L"minimized") && !minimized->GetNamedBoolean(L"visible") && !minimized->GetNamedBoolean(L"inputActive") &&
+        restoredFull->GetNamedString(L"mode")==L"fullscreen" && restoredMax->GetNamedString(L"mode")==L"maximized" &&
+        near(restoredNormal->GetNamedNumber(L"width"),normal->GetNamedNumber(L"width")) &&
+        near(restoredNormal->GetNamedNumber(L"height"),normal->GetNamedNumber(L"height"));
+    Bool(report,L"passed",passed); report->SetNamedValue(L"snapshots",snapshots);
+    return SmokeRecord(L"xwindows-window-smoke.json",report);
+}
 void NativeSmoke(const std::shared_ptr<State>& state) {
     if (state->smokeStarted) return;
     state->smokeStarted = true;
@@ -926,6 +957,8 @@ void NativeSmoke(const std::shared_ptr<State>& state) {
             if (!text) return task_from_result();
             auto config = JsonObject::Parse(text);
             task<void> smoke = task_from_result();
+            if (config->HasKey(L"windowChrome") && config->GetNamedBoolean(L"windowChrome"))
+                smoke=smoke.then([state] { return WindowChromeSmoke(state); }, Ui());
             if (config->HasKey(L"shellCapture") && config->GetNamedBoolean(L"shellCapture"))
                 smoke = smoke.then([state] { return ScheduleShellCapture(state); }, Ui());
             if (config->HasKey(L"lan") && config->GetNamedBoolean(L"lan"))
@@ -1067,9 +1100,9 @@ protected:
             TimeSpan inputInterval; inputInterval.Duration = 1000000;
             state->inputTimer->Interval = inputInterval;
             state->inputTimer->Tick += ref new EventHandler<Object^>([state](Object^, Object^) {
-                // The bridge worker enables input as it starts. Reapply an
-                // explicitly disabled per-game setting while that worker runs.
-                try { if (state->session && !state->runtimeInput) state->session->SetInputEnabled(false); }
+                // Reapply focus/minimize and per-game input settings after
+                // the bridge worker enables input as it starts.
+                try { if (state->session) state->session->SetInputEnabled(state->runtimeInput && state->hostedWindow && state->hostedWindow->InputActive()); }
                 catch (...) { }
             });
             state->inputTimer->Start();
@@ -1078,29 +1111,22 @@ protected:
                     try { state->lan->Stop(); } catch (...) { }
                     try { if (state->session) state->session->SetInputEnabled(false); } catch (...) { }
                 });
-            state->overlay = ref new Grid(); state->overlay->Visibility = Visibility::Collapsed;
-            state->overlay->Background = ref new SolidColorBrush(Colors::Black);
-            auto headerRow = ref new RowDefinition(); headerRow->Height = GridLengthHelper::Auto;
-            state->overlay->RowDefinitions->Append(headerRow);
-            state->overlay->RowDefinitions->Append(ref new RowDefinition());
-            auto header = ref new StackPanel(); header->Orientation = Orientation::Horizontal;
-            auto close = Action(L"Xbox Tools"); state->back = Action(L"Back");
-            close->Click += ref new RoutedEventHandler([state](Object^, RoutedEventArgs^) { CloseOverlay(state); });
-            state->back->Click += ref new RoutedEventHandler([state](Object^, RoutedEventArgs^) {
-                if (state->modernBrowser && state->modernBrowser->CanGoBack()) state->modernBrowser->GoBack();
-            });
-            state->overlayTitle = ref new TextBlock();
-            state->overlayTitle->Foreground = ref new SolidColorBrush(Colors::White);
-            state->overlayTitle->TextWrapping = TextWrapping::Wrap;
-            state->overlayTitle->MaxWidth = 900;
-            state->overlayTitle->VerticalAlignment = VerticalAlignment::Center;
-            header->Children->Append(close); header->Children->Append(state->back); header->Children->Append(state->overlayTitle);
-            state->surface = ref new Grid(); Grid::SetRow(state->surface, 1);
-            state->overlay->Children->Append(header); state->overlay->Children->Append(state->surface);
             MihawkModern::InitializeResources();
             state->shell = ref new ShellView();
             state->root->Children->InsertAt(0, state->shell);
-            state->root->Children->Append(state->overlay);
+            const std::weak_ptr<State> weakState = state;
+            state->hostedWindow = XWindows::HostedWindow::Create(state->root,
+                [weakState] { if (auto locked=weakState.lock()) CloseOverlay(locked); },
+                [weakState](bool active) {
+                    if (auto locked=weakState.lock()) {
+                        try { if (locked->session) locked->session->SetInputEnabled(active && locked->runtimeInput); } catch (...) { }
+                    }
+                });
+            state->overlay = state->hostedWindow->Frame(); state->surface = state->hostedWindow->Surface;
+            state->overlayTitle = state->hostedWindow->Title; state->back = state->hostedWindow->Back;
+            state->back->Click += ref new RoutedEventHandler([state](Object^, RoutedEventArgs^) {
+                if (state->modernBrowser && state->modernBrowser->CanGoBack()) state->modernBrowser->GoBack();
+            });
             state->navigation = L"initializing-webview2"; Observe(Status(state));
             create_task(state->shell->EnsureCoreWebView2Async()).then([state](task<void> initialized) {
                 try {

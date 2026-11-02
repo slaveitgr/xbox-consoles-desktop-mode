@@ -14,6 +14,7 @@ add_library(xcdm_x86emu STATIC
 target_include_directories(xcdm_x86emu PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/third_party/libx86emu/include")
 
 add_library(xcdm_runtime STATIC
+    runtime/ModuleOwnership.cpp
     runtime/PeImage.cpp
     runtime/GamePreflight.cpp
     runtime/Pe32Image.cpp
@@ -53,6 +54,9 @@ if(BUILD_TESTING)
         endif()
     endif()
     add_test(NAME mihawk_lan_input_contract COMMAND lan_transfer_tests)
+    add_executable(module_ownership_tests tests/ModuleOwnershipTests.cpp)
+    target_link_libraries(module_ownership_tests PRIVATE xcdm_runtime)
+    add_test(NAME wine_module_ownership_contract COMMAND module_ownership_tests)
     add_executable(pe_image_tests tests/PeImageTests.cpp)
     target_link_libraries(pe_image_tests PRIVATE xcdm_runtime)
     add_test(NAME pe_image_contract COMMAND pe_image_tests)
