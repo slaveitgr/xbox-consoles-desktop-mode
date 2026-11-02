@@ -17,6 +17,10 @@ if(WIN32)
   target_link_libraries(protondesktop_uwp_host_services PUBLIC protondesktop_uwp_memory_policy WindowsApp)
   target_compile_definitions(protondesktop_uwp_host_services PUBLIC
     WINAPI_FAMILY=WINAPI_FAMILY_APP _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
+  add_library(protondesktop_uwp_socket_pair STATIC UwpSocketPair.cpp)
+  target_link_libraries(protondesktop_uwp_socket_pair PUBLIC protondesktop_uwp_memory_policy WindowsApp)
+  target_compile_definitions(protondesktop_uwp_socket_pair PUBLIC
+    WINAPI_FAMILY=WINAPI_FAMILY_APP _WIN32_WINNT=0x0A00 WINVER=0x0A00 NOMINMAX WIN32_LEAN_AND_MEAN)
   # Optional compile proof against the actual pinned upstream declarations.
   # This is an OBJECT target: full UWP core linkage needs the other Platform
   # services and must exclude upstream's duplicate desktop memory definitions.
@@ -36,6 +40,14 @@ if(WIN32)
     if(NOT source_changed EQUAL 0)
       message(FATAL_ERROR "Compile against pristine pinned Boxedwine64 headers")
     endif()
+    add_library(protondesktop_uwp_platform_socket OBJECT UwpPlatformSocket.cpp)
+    target_link_libraries(protondesktop_uwp_platform_socket PRIVATE protondesktop_uwp_socket_pair)
+    target_compile_features(protondesktop_uwp_platform_socket PRIVATE cxx_std_20)
+    target_compile_definitions(protondesktop_uwp_platform_socket PRIVATE
+      BOXEDWINE_MSVC BOXEDWINE_64 BOXEDWINE_GUEST_X64 BOXEDWINE_MULTI_THREADED BOXEDWINE_DISABLE_UI SDL2=1)
+    target_include_directories(protondesktop_uwp_platform_socket PRIVATE
+      "${BOXEDWINE_SOURCE}/include" "${BOXEDWINE_SOURCE}/lib/sdl2/include"
+      "${BOXEDWINE_SOURCE}/lib/simde")
     add_library(protondesktop_uwp_platform_memory OBJECT UwpPlatformMemory.cpp)
     add_library(protondesktop_uwp_platform_host OBJECT UwpPlatformHost.cpp)
     target_link_libraries(protondesktop_uwp_platform_host PRIVATE protondesktop_uwp_host_services)
@@ -55,6 +67,13 @@ if(WIN32)
   endif()
 endif()
 if(BUILD_TESTING)
+  add_executable(protondesktop_uwp_socket_tests "${PROTONDESKTOP_ROOT}/tests/UwpSocketPairTests.cpp")
+  target_link_libraries(protondesktop_uwp_socket_tests PRIVATE protondesktop_uwp_memory_policy)
+  if(WIN32)
+    target_link_libraries(protondesktop_uwp_socket_tests PRIVATE protondesktop_uwp_socket_pair)
+  endif()
+  add_test(NAME protondesktop_uwp_socket_pair COMMAND protondesktop_uwp_socket_tests)
+  set_tests_properties(protondesktop_uwp_socket_pair PROPERTIES TIMEOUT 45)
   add_executable(protondesktop_uwp_memory_tests "${PROTONDESKTOP_ROOT}/tests/UwpPlatformMemoryTests.cpp")
   target_link_libraries(protondesktop_uwp_memory_tests PRIVATE protondesktop_uwp_memory_policy)
   if(WIN32)

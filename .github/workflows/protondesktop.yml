@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   windows-host:
-    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') }}
     name: Compile native UWP host
     runs-on: windows-2022
     timeout-minutes: 30
@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: warn
 
   windows-core:
-    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') }}
     name: Build and run actual x64 interpreter on Windows
     runs-on: windows-2022
     timeout-minutes: 30
@@ -169,4 +169,52 @@ jobs:
             ProtonDesktop/build/uwp-core/CMakeCache.txt
             ProtonDesktop/build/uwp-core/qualification-scope.txt
             ProtonDesktop/build/uwp-core-contracts/Testing/Temporary/LastTest.log
+          if-no-files-found: warn
+
+  platform-contracts:
+    name: Run actual UWP API service tests on desktop Windows
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[platform-only]') || contains(github.event.head_commit.message, '[uwp-core-only]') }}
+    runs-on: windows-2022
+    timeout-minutes: 10
+    env:
+      MSBUILDDISABLENODEREUSE: '1'
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ProtonDesktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: andrewnakas/Boxedwine64
+          ref: 58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4
+          path: ProtonDesktop/external/Boxedwine64-full
+          persist-credentials: false
+          sparse-checkout: |
+            include
+            source
+            platform
+            lib/sdl2/include
+            lib/simde
+            lib/softfloat
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile genuine APP-family adapters and execute host tests
+        run: |
+          $source = (Resolve-Path external/Boxedwine64-full).Path
+          cmake -S . -B build/platform-contracts -A x64 "-DBOXEDWINE_SOURCE=$source"
+          if ($LASTEXITCODE -ne 0) { throw 'Platform configure failed.' }
+          cmake --build build/platform-contracts --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Platform build failed.' }
+          ctest --test-dir build/platform-contracts -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Platform tests failed.' }
+      - name: Upload host test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protondesktop-platform-services
+          path: |
+            ProtonDesktop/build/platform-contracts/Testing/Temporary/LastTest.log
+            ProtonDesktop/build/platform-contracts/CMakeCache.txt
           if-no-files-found: warn
