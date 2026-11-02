@@ -24,6 +24,17 @@ endif()]=])
     message(FATAL_ERROR "Pinned SDL clang-cl include-flag patch no longer matches")
   endif()
   string(REPLACE "${original}" "${replacement}" patched "${sdl_cmake}")
+  # The legacy Windows LIBC branch claims every listed function exists,
+  # including BSD wcslcpy/wcslcat which the UCRT does not expose. Probe every
+  # listed function's real declaration and linkability, retaining SDL's own
+  # implementation whenever the actual CRT lacks it.
+  set(original_crt_claim [=[set(HAVE_${_UPPER} 1)]=])
+  set(verified_crt_claim [=[check_symbol_exists(${_FN} "stdlib.h;string.h;wchar.h;math.h" HAVE_${_UPPER})]=])
+  string(FIND "${patched}" "${original_crt_claim}" crt_claim_position)
+  if(crt_claim_position EQUAL -1)
+    message(FATAL_ERROR "Pinned SDL Windows LIBC capability patch no longer matches")
+  endif()
+  string(REPLACE "${original_crt_claim}" "${verified_crt_claim}" patched "${patched}")
   file(WRITE "${destination}/CMakeLists.txt" "${patched}")
 
   # SDL2.0.12 intentionally undefines SSE/SSE2 in its clang-cl branch, but

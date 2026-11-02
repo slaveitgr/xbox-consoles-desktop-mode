@@ -16,5 +16,7 @@ $source = (Resolve-Path external/Boxedwine64-full).Path
 & $clang --version | Set-Content artifacts/windows-core/compiler.txt
 cmake -S tools/windows-core -B build/windows-core -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_C_COMPILER=$clang" "-DCMAKE_CXX_COMPILER=$clang" "-DBOXEDWINE_SOURCE=$source" 2>&1 | Tee-Object artifacts/windows-core/configure.log
 if ($LASTEXITCODE -ne 0) { throw 'Windows interpreter configure failed.' }
-cmake --build build/windows-core --target boxedwine64-windows --parallel 4 2>&1 | Tee-Object artifacts/windows-core/build.log
+# Collect independent compiler errors in one attempt; the real target still
+# fails if any translation unit or the final link fails.
+cmake --build build/windows-core --target boxedwine64-windows --parallel 4 -- -k 0 2>&1 | Tee-Object artifacts/windows-core/build.log
 if ($LASTEXITCODE -ne 0) { throw 'Windows interpreter compilation failed.' }

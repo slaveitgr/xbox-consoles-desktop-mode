@@ -73,6 +73,10 @@ provides a genuine pointer-width `intptr_t` before generating SDL's configuratio
 This fixes the incomplete legacy integer fallback instead of editing individual
 string/memory functions. Graphics switches use this version's actual unprefixed
 option names (`VIDEO_OPENGL`, `VIDEO_OPENGLES`, `VIDEO_VULKAN`).
+Its Windows LIBC loop also replaces unconditional function claims with actual
+declaration-and-link probes for every listed CRT function. Missing functions
+such as `wcslcpy`/`wcslcat` then select SDL's existing implementations. No dummy
+implementations stand in for absent system functions.
 
 UWP memory adaptation has its own independent `backend/uwp` target. It cannot
 be linked with the unmodified desktop `platform/windows/platform.cpp`, which
