@@ -84,9 +84,34 @@ static observations: no control-flow recovery, embedded-data distinction or
 alternate instruction-boundary proof is claimed. Source `__TRY` counts are
 conservative; absent handlers are no longer asserted to prove setjmp use.
 
+A subsequent read-only check correlated all 67 undecodable bytes with retained
+COFF symbols and the pinned `dlls/msvcrt/cxx.h` assembly macros. They lie in
+named RTTI/C++ exception tables embedded in `.text`, outside the recorded
+`.pdata` function ranges. For example, msvcrt `0xbd21`/`0xbd22` are bytes of an
+`ffffffff` RTTI sentinel; ucrtbase `0x188d1`/`0x188d2` are the corresponding
+sentinel. This explains these exact decode gaps as embedded data. It does not
+provide general code/data recovery or prove that arbitrary alternate entry
+points cannot reach them. The audit outcome and runtime gates remain unchanged.
+
 Native ntdll/win32u providers, NLS/heap services, thread/callback lifecycle,
 guest last error and registry integration remain separate runtime work. No
 execution gate was loosened, and no Wine DLL was executed.
+
+## Windows and CI qualification
+
+Source `3e42c5f2a9bdc50d0cf878aff375b497e2936435` passed:
+
+- [Linux portable build/tests](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41454321360).
+- [Standalone Wine Explorer PE64 build and source checks](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41454321447).
+- [Windows host tests, bridge and UWP package build](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41454321443).
+
+The Windows CTest run registered 12 suites: 11 executed and passed, including
+the new guest environment's Windows-specific checks; the binary-audit fixture
+suite skipped for absent optional tools/dependencies. Its executed evidence is
+the separate Linux run above. The new package was built for verification and
+was not deployed over the separately validated One X installation from
+`546eda5351593fa17a958ea3b43d7a4063668417`. No Wine execution is implied by any
+of these build results.
 
 ## Offline registry evidence
 

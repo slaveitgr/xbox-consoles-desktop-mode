@@ -225,6 +225,7 @@ qualified bounds. No loader gate is removed by these changes.
 | Check | Where | Result |
 | --- | --- | --- |
 | Updated `guest_environment_tests` | This workspace, Linux GCC 15, ASan/UBSan | 107/107 |
+| Updated `wine_guest_environment_contract` | Windows 2022 runner, MSVC x64, CI 41454321443 | Passed; includes Windows thread/fiber cleanup fixtures |
 | Independent compiled Wine ABI comparison | This workspace, Linux GCC 15, syntax-only | 596 assertions passed; deliberate one-byte mismatch rejected |
 | Earlier Windows-code-path tests | Collaborator-reported mingw build under Wine 9 on Linux | 102/102; predates the cleanup fixes |
 | `verify_guest_layout.py` vs pinned `winternl.h` comments | Linux | 187 fields, 0 mismatches; superseded for independent ABI evidence by the compiled comparison |
@@ -232,9 +233,15 @@ qualified bounds. No loader gate is removed by these changes.
 | Actual compiled registry resources and generated INF | This workspace, Linux, offline only | ExplorerBrowser CLSID check passed; partial seed, 719 keys and 6 warnings |
 | Corrected binary-audit fixtures | This workspace, Linux clang 23 | 25/25; optional MinGW CRT/TLS fixture skipped |
 | Full repository CTest with local audit dependencies | This workspace, Linux, ASan/UBSan | 13/13; optional fixture cases noted above remain skipped |
+| Full repository Windows CTest | Windows 2022 runner, MSVC x64, CI 41454321443 | 11 executed suites passed, 1 audit suite skipped; 12 registered |
 
 The earlier Windows result was reported from running a mingw build under Wine
 on Linux; it is not an MSVC, real-Windows or Xbox result. The independent ABI
 comparison and its limitations are in
 [`../desktop/wine-explorer/guest-abi/README.md`](../desktop/wine-explorer/guest-abi/README.md).
 Nothing here has executed a Wine module inside Win32Bridge yet.
+The Windows host checks and UWP build passed at source
+`3e42c5f2a9bdc50d0cf878aff375b497e2936435` in
+[CI run 41454321443](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41454321443).
+The audit suite skipped there because its optional cross-tool/dependency
+environment was absent; its executed fixture proof is the separate Linux run.
