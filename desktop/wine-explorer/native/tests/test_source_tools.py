@@ -8,8 +8,10 @@ import unittest
 
 NATIVE = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(NATIVE))
+sys.path.insert(0, str(NATIVE.parent))
 from validate_native import parse_imports, validate_headers  # noqa: E402
 from prepare_native import adapt  # noqa: E402
+from audit_imports import parse_objdump_imports  # noqa: E402
 
 
 def minimal_pe() -> bytearray:
@@ -91,6 +93,52 @@ class NativeBuildGateTests(unittest.TestCase):
     def test_ordinal_preserved(self):
         imports = parse_imports(IMPORTS.replace("  Summary", "               727 ordinal 727\n  Summary"))
         self.assertTrue(any(entry["symbol"] == "#727" for entry in imports))
+
+    def test_actual_dumpbin_ordinal_layout_and_ordinal_only_library(self):
+        text = IMPORTS.replace("  Summary", """
+    OLEAUT32.dll
+             14001A198 Import Address Table
+             14001A758 Import Name Table
+                     0 time date stamp
+                     0 Index of first forwarder reference
+
+                             Ordinal     9
+                             Ordinal   411
+    SHELL32.dll
+                             Ordinal   727
+  Summary""")
+        imports = parse_imports(text)
+        self.assertEqual(len(imports), 11)
+        self.assertEqual([entry["symbol"] for entry in imports if entry["library"] == "oleaut32.dll"], ["#411", "#9"])
+        self.assertIn({"library": "shell32.dll", "symbol": "#727"}, imports)
+
+    def test_unsupported_ordinal_only_or_empty_library_rejected(self):
+        for tail in ("", "                             Ordinal     9\n"):
+            text = IMPORTS.replace("  Summary", "    ucrtbase.dll\n" + tail + "  Summary")
+            with self.assertRaisesRegex(ValueError, "Unexpected runtime library: ucrtbase.dll"):
+                parse_imports(text)
+
+    def test_allowed_empty_library_and_invalid_ordinal_rejected(self):
+        with self.assertRaisesRegex(ValueError, "no recovered imports"):
+            parse_imports(IMPORTS.replace("  Summary", "    OLEAUT32.dll\n  Summary"))
+        with self.assertRaisesRegex(ValueError, "ordinal exceeds"):
+            parse_imports(IMPORTS.replace("  Summary", "                             Ordinal 65536\n  Summary"))
+
+    def test_objdump_ordinary_named_and_ordinal_imports(self):
+        text = """
+        DLL Name: OLEAUT32.dll
+        vma:     Ordinal  Hint  Member-Name  Bound-To
+        0001a198      9  <none> <none>
+        0001a1a0    411  <none> <none>
+        DLL Name: SHELL32.dll
+        0001a200  <none>  0143  SHGetDesktopFolder
+        0001a258    727  <none> <none>
+The Function Table (interpreted .pdata section contents)
+"""
+        imports = parse_objdump_imports(text)
+        self.assertEqual([(entry["library"], entry["symbol"]) for entry in imports],
+                         [("oleaut32.dll", "#9"), ("oleaut32.dll", "#411"),
+                          ("shell32.dll", "SHGetDesktopFolder"), ("shell32.dll", "#727")])
 
     def test_source_remains_real_wine_and_wrong_source_rejected(self):
         path = NATIVE.parent / "staged/wine/programs/explorer/explorer.c"

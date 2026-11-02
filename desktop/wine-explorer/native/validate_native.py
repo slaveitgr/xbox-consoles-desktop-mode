@@ -56,24 +56,37 @@ def validate_headers(data: bytes) -> dict:
 def parse_imports(text: str) -> list[dict]:
     imports = []
     library = None
+    declared = set()
     for line in text.splitlines():
-        if line.strip().lower() == "summary":
+        if line.strip().lower() == "summary" or re.match(r"\s*SECTION HEADER #", line):
             library = None
         match = re.fullmatch(r"\s+([A-Za-z0-9._-]+\.dll)\s*", line, re.I)
         if match:
             library = match[1].lower()
+            if library not in ALLOWED_LIBRARIES:
+                raise ValueError(f"Unexpected runtime library: {library}")
+            declared.add(library)
             continue
         if not library:
+            continue
+        match = re.fullmatch(r"\s+Ordinal\s+(\d+)\s*", line, re.I)
+        if not match:
+            match = re.fullmatch(r"\s+\d+\s+ordinal\s+(\d+)\s*", line, re.I)
+        if match:
+            ordinal = int(match[1])
+            if ordinal > 0xffff:
+                raise ValueError(f"Import ordinal exceeds the PE range: {ordinal}")
+            imports.append({"library": library, "symbol": f"#{ordinal}"})
             continue
         match = re.fullmatch(r"\s+[0-9A-Fa-f]+\s+([^\s]+)\s*", line)
         if match:
             imports.append({"library": library, "symbol": match[1]})
             continue
-        match = re.fullmatch(r"\s+\d+\s+ordinal\s+(\d+)\s*", line, re.I)
-        if match:
-            imports.append({"library": library, "symbol": "#" + match[1]})
     if not imports:
         raise ValueError("No import inventory was recovered from dumpbin output")
+    empty = declared - {entry["library"] for entry in imports}
+    if empty:
+        raise ValueError("Declared import libraries have no recovered imports: " + ", ".join(sorted(empty)))
     for entry in imports:
         name = entry["symbol"].lower()
         if entry["library"] not in ALLOWED_LIBRARIES:

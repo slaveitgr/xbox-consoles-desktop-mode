@@ -33,6 +33,27 @@ SOURCES = {
 }
 
 
+def parse_objdump_imports(private: str) -> list[dict]:
+    """Recover named and ordinal ordinary imports from GNU objdump -p."""
+    imports = []
+    library = None
+    for line in private.splitlines():
+        if "The Function Table" in line or "PE File Base Relocations" in line:
+            break
+        match = re.search(r"DLL Name:\s*(\S+)", line)
+        if match:
+            library = match[1].lower()
+            continue
+        match = re.fullmatch(r"\s*[0-9a-f]+\s+(\d+)\s+<none>\s+<none>\s*", line, re.I)
+        if library and match:
+            imports.append({"library": library, "symbol": "#" + str(int(match[1])), "kind": "ordinary"})
+            continue
+        match = re.match(r"^\s*[0-9a-f]+\s+(?:<none>\s+)?[0-9a-f]+\s+([A-Za-z_?][^\s]*)\s*$", line)
+        if library and match:
+            imports.append({"library": library, "symbol": match[1], "kind": "ordinary"})
+    return imports
+
+
 def inspect(binary: Path, objdump: str) -> dict:
     data = binary.read_bytes()
     if len(data) > 64 * 1024 * 1024:
@@ -44,18 +65,7 @@ def inspect(binary: Path, objdump: str) -> dict:
     image_base_match = re.search(r"^ImageBase\s+([0-9a-fA-F]+)", private, re.M)
     if not image_base_match or "file format pei-x86-64" not in private:
         raise ValueError("Expected a PE32+ x64 Wine executable")
-    imports = []
-    library = None
-    for line in private.splitlines():
-        if "The Function Table" in line or "PE File Base Relocations" in line:
-            break
-        match = re.search(r"DLL Name:\s*(\S+)", line)
-        if match:
-            library = match[1].lower()
-            continue
-        match = re.match(r"^\s*[0-9a-f]+\s+(?:<none>\s+)?[0-9a-f]+\s+([A-Za-z_?][^\s]*)\s*$", line)
-        if library and match:
-            imports.append({"library": library, "symbol": match[1], "kind": "ordinary"})
+    imports = parse_objdump_imports(private)
     recovered = set()
     pending = None
     delayed = set()

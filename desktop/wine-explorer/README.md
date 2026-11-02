@@ -97,6 +97,12 @@ The output artifact includes the executable, `native-imports.json`,
 source, support/project/build/validation script, source lock and selected
 upstream sources/licenses. It contains no Windows SDK headers or libraries.
 
+The first Windows CI build compiled successfully. Independent read-only
+inspection of its PE64 artifact recovered **64 imports across 8 DLLs**, including
+13 ordinal imports; the corrected dumpbin and GNU objdump inventories agree.
+This verifies the build and import inventory only. The guest has not been run
+on Windows or Xbox, and its Wine shell provider is still absent.
+
 Portable validation without Wine execution:
 
 ```sh
