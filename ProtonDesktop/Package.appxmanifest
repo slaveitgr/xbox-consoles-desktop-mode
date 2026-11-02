@@ -1,8 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
          xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
-         IgnorableNamespaces="uap">
+         xmlns:mp="http://schemas.microsoft.com/appx/2014/phone/manifest"
+         IgnorableNamespaces="uap mp">
   <Identity Name="ProtonDesktop.Native" Publisher="CN=ProtonDesktopDev" Version="0.1.0.0" ProcessorArchitecture="x64" />
+  <mp:PhoneIdentity PhoneProductId="9a8927d3-155d-4ebd-9c44-ca47b0721918" PhonePublisherId="00000000-0000-0000-0000-000000000000" />
   <Properties><DisplayName>ProtonDesktop</DisplayName><PublisherDisplayName>ProtonDesktop</PublisherDisplayName><Logo>Assets\StoreLogo.png</Logo></Properties>
   <Dependencies><TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" /></Dependencies>
   <Resources><Resource Language="en-US" /></Resources>

@@ -2,8 +2,22 @@
 # Explicit opt-in standalone real-SDL pipeline qualification; no Wine launcher.
 cmake_minimum_required(VERSION 3.20)
 cmake_policy(SET CMP0091 NEW)
-project(ProtonDesktopSdlVideo LANGUAGES C CXX)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>DLL")
+option(PROTON_SDLVIDEO_APP_HEADERS
+  "Windows desktop diagnostic using genuine APP SDK headers and Store CRT; not AppContainer" OFF)
+if((CMAKE_HOST_WIN32 OR CMAKE_SYSTEM_NAME MATCHES "^Windows") AND
+   (CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" OR PROTON_SDLVIDEO_APP_HEADERS))
+  # project() performs the compiler executable-link smoke test before the
+  # target configuration below. The Store CRT already selected in LIB needs
+  # RoInitialize through WindowsApp even for that tiny main(). Seed actual
+  # cached standard libraries before platform defaults are initialized.
+  set(CMAKE_C_STANDARD_LIBRARIES "WindowsApp.lib" CACHE STRING "APP SDK standard libraries" FORCE)
+  set(CMAKE_CXX_STANDARD_LIBRARIES "WindowsApp.lib" CACHE STRING "APP SDK standard libraries" FORCE)
+  # Compiler/feature probes must use the selected release APP CRT, not the
+  # debug Store CRT chosen by the default MSVC try_compile configuration.
+  set(CMAKE_TRY_COMPILE_CONFIGURATION Release)
+endif()
+project(ProtonDesktopSdlVideo LANGUAGES C CXX)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 include(CTest)
 set(BOXEDWINE_SOURCE "" CACHE PATH "Pristine pinned full Boxedwine64 checkout")
@@ -22,8 +36,6 @@ execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${BOXEDWINE_SOURCE}" status --po
 if(NOT changed STREQUAL "")
   message(FATAL_ERROR "The pinned source checkout must stay pristine")
 endif()
-option(PROTON_SDLVIDEO_APP_HEADERS
-  "Windows desktop diagnostic using genuine APP SDK headers and Store CRT; not AppContainer" OFF)
 set(proton_app_partition OFF)
 if(CMAKE_SYSTEM_NAME STREQUAL "WindowsStore" OR PROTON_SDLVIDEO_APP_HEADERS)
   if(NOT WIN32 OR NOT MSVC OR NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang" OR
