@@ -113,6 +113,34 @@ cmake --build desktop/wine-explorer/build/host-checks
 ctest --test-dir desktop/wine-explorer/build/host-checks --output-on-failure
 ```
 
+## Audit before guest PEB/TEB implementation
+
+The next proposed native architecture rebuilds Wine's PE modules with a guest
+`NtCurrentTeb()` accessor, then gives each DLL exactly one provider. Before
+implementing that runtime, inspect the complete pinned source tree:
+
+```sh
+python3 desktop/wine-explorer/environment-audit/audit_environment.py \
+  --source-root /path/to/pinned-wine-source \
+  --source-pin 1c78596625336a73dbfc035dbbcf0dbdd95b06eb \
+  --output artifacts/wine-guest-environment.json
+python3 -m unittest discover -s desktop/wine-explorer/environment-audit/tests -v
+```
+
+Add `--binary /path/to/module.dll` for each actual PE64 build to inspect its TLS
+metadata and optional objdump segment-access evidence without executing it.
+Source findings distinguish shared headers, Unix implementation and candidate
+PE sources. Dependency discovery is conservative and does not establish the
+complete runtime DLL closure. Missing binaries remain unknown coverage.
+
+The accessor proposal requires an explicit guest process context and scoped
+per-thread activation before DLL initialization or callbacks. Dynamic `Tls*`,
+last error, `RtlGetCurrentPeb`, Wine callback/GDI tables and module lifetime must
+use the same guest state. Compiler static TLS and direct assembly bypass a C
+accessor and need separate qualification. The bridge already registers x64
+unwind tables; compatible Wine exception dispatch and teardown still require
+tests. This audit does not modify headers, add guest structures or run Wine.
+
 ## Current bridge blockers
 
 The current pinned x64 Win32Bridge has real virtual storage, window/GDI and some

@@ -1,0 +1,34 @@
+{
+  "schema": 1,
+  "source_repository": "https://github.com/ValveSoftware/wine",
+  "source_commit": "1c78596625336a73dbfc035dbbcf0dbdd95b06eb",
+  "source_archive_sha256": "c5e9d053b4edec0507d0e1cd8acf19d2ed0bba982417d67f7dcfa6122b53b0be",
+  "archive_regular_files": 11155,
+  "source_code_executed": false,
+  "source_audit": {
+    "files": 1984,
+    "source_modules": 60,
+    "lexical_evidence_records": 901,
+    "categories": {
+      "dynamic_tls_api_reference": 102,
+      "nt_current_teb_definition": 10,
+      "nt_current_teb_reference": 508,
+      "rtl_get_current_peb_reference": 27,
+      "segment_intrinsic": 6,
+      "segment_memory": 37,
+      "segment_register_instruction": 211
+    },
+    "compiled_pe_blockers_proven": false
+  },
+  "binary_audit": {
+    "supplied_binary": "MihawkWineExplorer.exe (our standalone file-window source unit)",
+    "sha256": "4383fdc22c35dd10fe6d7133557ff296bf1599c7efbad5eda1381150612b52e1",
+    "tls_directory_present": false,
+    "segment_disassembly_findings": 0,
+    "full_wine_dll_closure_inspected": false,
+    "compiler_tls_absence_in_wine_dlls": "unknown"
+  },
+  "runtime_or_header_modified": false,
+  "guest_executed": false,
+  "remaining_precondition": "Build and audit the exact Wine PE DLL closure before implementing or running the guest context. Source lexical findings do not prove compiled behavior."
+}

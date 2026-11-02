@@ -35,6 +35,8 @@ jobs:
         run: |
           python3 desktop/wine-explorer/prepare_sources.py
           python3 -m unittest discover -s desktop/wine-explorer/native/tests -p test_source_tools.py -v
+      - name: Check guest environment audit fixtures
+        run: python3 -m unittest discover -s desktop/wine-explorer/environment-audit/tests -v
 
   native-guest:
     name: Actual Wine Explorer PE64 build
@@ -54,6 +56,8 @@ jobs:
         run: ./desktop/wine-explorer/build-native.ps1
       - name: Verify source adaptation and malformed PE/import rejection
         run: python -m unittest discover -s desktop/wine-explorer/native/tests -p test_source_tools.py -v
+      - name: Check guest environment audit fixtures
+        run: python -m unittest discover -s desktop/wine-explorer/environment-audit/tests -v
       - name: Upload Explorer guest and corresponding source
         uses: actions/upload-artifact@v4
         with:
