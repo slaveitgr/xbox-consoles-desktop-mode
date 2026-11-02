@@ -232,6 +232,196 @@ void GuestThreadSegment() {
           "an unmapped guest FS base faults without accessing the host TEB");
 }
 
+X86ExecutionResult OneInstruction(const std::vector<std::uint8_t>& instruction,
+                                  X86Registers initial) {
+    Guest guest;
+    std::copy(instruction.begin(), instruction.end(), guest.memory.begin());
+    auto config = Config(guest, 1);
+    initial.eip = kBase;
+    initial.esp = config.initial.esp;
+    config.initial = initial;
+    return RunX86(config);
+}
+
+void DivisionExceptionsAndSignedMultiply() {
+    for (bool word : {false, true}) {
+        for (bool hostMinimum : {false, true}) {
+            X86Registers initial;
+            initial.ecx = 0xffffffff;
+            // Both the host signed division minimum and the smaller guest
+            // quotient overflow must raise guest #DE before host C divides.
+            initial.eax = hostMinimum ? 0 : (word ? 0x8000 : 0x80000000);
+            initial.edx = hostMinimum ? (word ? 0x8000 : 0x80000000) : 0xffffffff;
+            std::vector<std::uint8_t> instruction;
+            if (word) instruction.push_back(0x66);
+            instruction.insert(instruction.end(), {0xf7, 0xf9}); // idiv cx/ecx
+            const auto result = OneInstruction(instruction, initial);
+            Check(!result.ok && result.reason == X86StopReason::HostFault,
+                  "signed divide overflow raises a guest exception without host undefined division");
+        }
+    }
+    X86Registers initial;
+    initial.eax = 255;
+    const auto aam = OneInstruction({0xd4, 0x00}, initial);
+    Check(!aam.ok && aam.reason == X86StopReason::HostFault,
+          "AAM base zero raises guest divide error without dividing the host by zero");
+
+    struct Product { std::uint32_t left, right, low; bool overflow; };
+    for (const auto& product : std::array<Product, 4>{{
+        {0x80000000, 1, 0x80000000, false},
+        {0x80000000, 0xffffffff, 0x80000000, true},
+        {0x40000000, 2, 0x80000000, true},
+        {0xffffffff, 2, 0xfffffffe, false}
+    }}) {
+        initial.eax = product.left;
+        initial.ecx = product.right;
+        const auto result = OneInstruction({0x0f, 0xaf, 0xc1}, initial); // imul eax,ecx
+        Check(result.reason == X86StopReason::InstructionLimit && result.registers.eax == product.low,
+              "signed multiplication retains the low 32 bits without signed-mask undefined behavior");
+        Check((result.registers.eflags & 0x801U) == (product.overflow ? 0x801U : 0),
+              "IMUL carry and overflow reflect signed result representability");
+    }
+    initial.eax = 0x80000000;
+    initial.ecx = 31;
+    const auto bit = OneInstruction({0x0f, 0xa3, 0xc8}, initial); // bt eax,ecx
+    Check(bit.reason == X86StopReason::InstructionLimit && (bit.registers.eflags & 1U),
+          "BT bit 31 uses an unsigned mask and reports the original high bit");
+}
+
+bool EvenParity(std::uint32_t value) {
+    unsigned ones = 0;
+    for (unsigned bit = 0; bit < 8; ++bit) ones += (value >> bit) & 1U;
+    return (ones & 1U) == 0;
+}
+
+#if (defined(__GNUC__) || defined(__clang__)) && defined(__x86_64__)
+struct NativeRotateResult { std::uint32_t value, flags; };
+NativeRotateResult NativeRotate(std::uint32_t value, unsigned count, unsigned carry, bool right) {
+    unsigned char cf = 0, of = 0;
+    if (right) {
+        __asm__ volatile("btl $0, %[carry]; rcrl %%cl, %[value]; setc %[cf]; seto %[of]"
+            : [value] "+r"(value), [cf] "=qm"(cf), [of] "=qm"(of)
+            : "c"(count), [carry] "r"(carry) : "cc");
+    } else {
+        __asm__ volatile("btl $0, %[carry]; rcll %%cl, %[value]; setc %[cf]; seto %[of]"
+            : [value] "+r"(value), [cf] "=qm"(cf), [of] "=qm"(of)
+            : "c"(count), [carry] "r"(carry) : "cc");
+    }
+    return {value, static_cast<std::uint32_t>(cf) | (static_cast<std::uint32_t>(of) << 11)};
+}
+#endif
+
+void ShiftAndRotateEdges() {
+    constexpr std::uint32_t arithmeticFlags = 0x8d5;
+    for (unsigned width : {8U, 16U, 32U}) {
+        const std::uint32_t mask = width == 32 ? 0xffffffffU : (1U << width) - 1;
+        const std::uint32_t sign = 1U << (width - 1);
+        for (unsigned operation : {4U, 5U, 7U}) { // SHL, SHR, SAR
+            for (unsigned count : {0U, 1U, 7U, 8U, 15U, 16U, 31U, 32U, 63U, 255U}) {
+                for (std::uint32_t value : {0U, 1U, sign, mask}) {
+                    X86Registers initial;
+                    initial.eax = (0xa5a50000U & ~mask) | value;
+                    initial.eflags = arithmeticFlags | 2U;
+                    std::vector<std::uint8_t> instruction;
+                    if (width == 16) instruction.push_back(0x66);
+                    instruction.insert(instruction.end(), {
+                        static_cast<std::uint8_t>(width == 8 ? 0xc0 : 0xc1),
+                        static_cast<std::uint8_t>(0xc0 | (operation << 3)),
+                        static_cast<std::uint8_t>(count)});
+                    const auto result = OneInstruction(instruction, initial);
+                    // Independent single-bit reference avoids C shifts by a
+                    // host type's width even for counts 31/32/63/255.
+                    std::uint32_t expected = value, carry = 0;
+                    const unsigned effective = count & 31U;
+                    for (unsigned step = 0; step < effective; ++step) {
+                        if (operation == 4) {
+                            carry = (expected & sign) != 0;
+                            expected = (expected << 1) & mask;
+                        } else {
+                            carry = expected & 1U;
+                            expected = (expected >> 1) | (operation == 7 ? expected & sign : 0);
+                        }
+                    }
+                    expected |= initial.eax & ~mask;
+                    Check(result.reason == X86StopReason::InstructionLimit && result.registers.eax == expected,
+                          "shift result and untouched high register bits match masked x86 count semantics");
+                    if (!effective) {
+                        Check((result.registers.eflags & arithmeticFlags) == arithmeticFlags,
+                              "zero masked shift count preserves arithmetic flags");
+                        continue;
+                    }
+                    std::uint32_t definedMask = 0xc4; // SF, ZF, PF; AF is undefined.
+                    std::uint32_t expectedFlags =
+                        ((expected & sign) ? 0x80U : 0) |
+                        ((expected & mask) == 0 ? 0x40U : 0) |
+                        (EvenParity(expected) ? 4U : 0);
+                    // CF is undefined for oversized logical shifts; SAR's
+                    // repeated sign bit remains defined for these counts.
+                    if (effective < width || operation == 7) {
+                        definedMask |= 1U;
+                        expectedFlags |= carry;
+                    }
+                    if (effective == 1) {
+                        definedMask |= 0x800U;
+                        const bool overflow = operation == 4
+                            ? (((expected & sign) != 0) != (carry != 0))
+                            : operation == 5 && (value & sign);
+                        if (overflow) expectedFlags |= 0x800U;
+                    }
+                    if ((result.registers.eflags & definedMask) != expectedFlags)
+                        std::cerr << "shift width=" << width << " operation=" << operation << " count=" << count
+                                  << " value=" << std::hex << value << " expected flags=" << expectedFlags
+                                  << " actual=" << (result.registers.eflags & definedMask) << std::dec << '\n';
+                    Check((result.registers.eflags & definedMask) == expectedFlags,
+                          "shift flags match only architecturally defined result/CF/OF bits");
+                }
+            }
+        }
+    }
+
+    for (bool right : {false, true}) {
+        for (unsigned count : {0U, 1U, 31U, 32U, 63U, 255U}) {
+            for (std::uint32_t value : {0U, 1U, 0x80000000U, 0xffffffffU, 0x12345678U}) {
+                for (unsigned carry : {0U, 1U}) {
+                    X86Registers initial;
+                    initial.eax = value;
+                    initial.eflags = (arithmeticFlags & ~1U) | 2U | carry;
+                    const auto result = OneInstruction({0xc1,
+                        static_cast<std::uint8_t>(right ? 0xd8 : 0xd0),
+                        static_cast<std::uint8_t>(count)}, initial);
+                    std::uint32_t expected = value;
+                    unsigned expectedCarry = carry;
+                    for (unsigned step = 0; step < (count & 31U); ++step) {
+                        const unsigned nextCarry = right ? expected & 1U : expected >> 31;
+                        expected = right ? (expected >> 1) | (expectedCarry << 31)
+                                         : (expected << 1) | expectedCarry;
+                        expectedCarry = nextCarry;
+                    }
+                    Check(result.reason == X86StopReason::InstructionLimit && result.registers.eax == expected &&
+                          (result.registers.eflags & 1U) == expectedCarry,
+                          "RCL/RCR32 result and carry match the 33-bit rotate reference");
+                    Check((result.registers.eflags & 0xd4U) == (initial.eflags & 0xd4U),
+                          "rotate-through-carry preserves SF/ZF/AF/PF");
+#if (defined(__GNUC__) || defined(__clang__)) && defined(__x86_64__)
+                    const auto native = NativeRotate(value, count, carry, right);
+                    const auto nativeMask = (count & 31U) == 1 ? 0x801U : 1U;
+                    Check(native.value == result.registers.eax &&
+                          (native.flags & nativeMask) == (result.registers.eflags & nativeMask),
+                          "RCL/RCR32 matches native x86 results and defined CF/OF");
+#endif
+                    if ((count & 31U) <= 1) {
+                        const bool overflow = right ? ((expected >> 31) ^ (expected >> 30)) & 1U
+                                                    : ((expected >> 31) ^ expectedCarry) & 1U;
+                        const unsigned expectedOf = (count & 31U) ? (overflow ? 0x800U : 0) : initial.eflags & 0x800U;
+                        Check((result.registers.eflags & 0x800U) == expectedOf,
+                              "RCL/RCR32 single-bit overflow and zero-count flags are defined correctly");
+                    }
+                }
+            }
+        }
+    }
+}
+
 void UnsupportedExtensionsAndConfiguration() {
     const std::vector<std::vector<std::uint8_t>> instructions{
         {0x0f, 0x0b},       // UD2
@@ -273,6 +463,8 @@ int main() {
     HostCallsAndIntegerExecution();
     FaultsAndBudgets();
     GuestThreadSegment();
+    DivisionExceptionsAndSignedMultiply();
+    ShiftAndRotateEdges();
     UnsupportedExtensionsAndConfiguration();
     std::cout << checks << " x86 interpreter checks; " << failures << " failures\n";
     return failures ? 1 : 0;

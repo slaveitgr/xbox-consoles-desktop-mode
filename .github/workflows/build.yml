@@ -67,21 +67,31 @@ jobs:
         run: cmake --build build-windows --config Release --parallel
       - name: Run Windows native host tests
         run: ctest --test-dir build-windows -C Release --output-on-failure
+      - name: Build pinned upstream Win32Bridge DLL only
+        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
+        run: ./tools/build-upstream.ps1 -Configuration Release
+      - name: Build Win32Bridge with PE32 startup backend
+        run: ./tools/build-upstream.ps1 -Configuration Release -WithX86Backend
       - name: Build unsigned diagnostic AppX
         run: ./tools/build-uwp.ps1 -Configuration Release
       - name: Build test-signed diagnostic AppX and public certificate
         run: ./tools/build-uwp.ps1 -Configuration Release -Sign
-      - name: Build pinned upstream Win32Bridge DLL only
-        if: ${{ !cancelled() && steps.toolchain.outcome == 'success' }}
-        run: ./tools/build-upstream.ps1 -Configuration Release
+      - name: Repackage pinned desktop with the patched bridge
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'artifacts/DesktopMode_1.0.46.0_x64.msix'
+          Invoke-WebRequest 'https://github.com/Pedro1234-code/DesktopMode_uwp/releases/download/21286/DesktopMode_1.0.46.0_x64.msix' -OutFile $source
+          $expected = '4691181e07f68f8d8c58e96ad44d4a01a9d2ccf1381669fd3ffa61d1e492beea'
+          if ((Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Upstream package digest mismatch.' }
+          ./tools/repack-desktop.ps1 -SourcePackage $source -BridgeDirectory artifacts/upstream-bridge-x86/Release -OutputDirectory artifacts/patched-desktop -Version 1.0.46.1
       - name: Reject private signing keys in outputs
         if: always()
         run: |
           $keys = @(Get-ChildItem artifacts -Recurse -File -ErrorAction SilentlyContinue |
             Where-Object { $_.Extension -in @('.pfx', '.p12', '.key') })
           if ($keys.Count -gt 0) { throw 'Private signing-key material must never be uploaded.' }
-      # AppX packages belong only to our clean diagnostics companion. These
-      # artifacts do not contain an upstream shell package or guest programs.
+      # Keep companion packages separate from the explicit upstream desktop
+      # repack below. Neither output adds guest games or private signing keys.
       - name: Upload unsigned diagnostic packages
         if: always()
         uses: actions/upload-artifact@v4
@@ -121,8 +131,28 @@ jobs:
           name: upstream-win32bridge-x64-release-DLL-ONLY
           path: |
             artifacts/upstream-bridge/Release/**/Win32Bridge.Runtime.dll
-            artifacts/upstream-bridge/Release/**/Win32Bridge.Runtime.winmd
+            artifacts/upstream-bridge/Release/**/*.winmd
             artifacts/upstream-bridge/Release/**/Win32Bridge.Runtime.pdb
             artifacts/upstream-bridge/Release/*.log
             artifacts/upstream-bridge/Release/*.binlog
           if-no-files-found: warn
+      - name: Upload patched Win32Bridge DLL and metadata
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: win32bridge-x64-PE32-startup-DLL-ONLY
+          path: |
+            artifacts/upstream-bridge-x86/Release/**/Win32Bridge.Runtime.dll
+            artifacts/upstream-bridge-x86/Release/**/*.winmd
+            artifacts/upstream-bridge-x86/Release/*.log
+          if-no-files-found: warn
+      - name: Upload development desktop with patched bridge
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktopmode-x64-1.0.46.1-PE32-startup-DEV-SIGNED
+          path: |
+            artifacts/patched-desktop/*.msix
+            artifacts/patched-desktop/*.cer
+            artifacts/patched-desktop/*.json
+          if-no-files-found: error

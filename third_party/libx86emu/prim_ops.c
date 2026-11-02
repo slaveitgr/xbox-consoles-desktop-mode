@@ -192,6 +192,7 @@ u16 aam_word(x86emu_t *emu, u8 d, u8 base)
 {
     u16 h, l;
 
+    if (!base) { INTR_RAISE_DIV0(emu); return 0; }
 	h = (u16)(d / base);
 	l = (u16)(d % base);
 	l |= (u16)(h << 8);
@@ -829,6 +830,8 @@ Implements the RCL instruction and side effects.
 ****************************************************************************/
 u8 rcl_byte(x86emu_t *emu, u8 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
     register unsigned int res, cnt, mask, cf;
 
     /* s is the rotate distance.  It varies from 0 - 8. */
@@ -867,7 +870,7 @@ u8 rcl_byte(x86emu_t *emu, u8 d, u8 s)
            into the range B_7 .. B_cnt */
         /* B_(7) .. B_(n)  <-  b_(8-(n+1)) .. b_0  */
         /* note that the right hand side done by the mask */
-		res = (d << cnt) & 0xff;
+		res = ((u32)d << cnt) & 0xff;
 
         /* now the high stuff which rotated around 
            into the positions B_cnt-2 .. B_0 */
@@ -875,13 +878,13 @@ u8 rcl_byte(x86emu_t *emu, u8 d, u8 s)
         /* shift it downward, 7-(n-2) = 9-n positions. 
            and mask off the result before or'ing in. 
          */
-        mask = (1 << (cnt - 1)) - 1;
+        mask = (1U << (cnt - 1)) - 1;
         res |= (d >> (9 - cnt)) & mask;
 
         /* if the carry flag was set, or it in.  */
 		if (ACCESS_FLAG(F_CF)) {     /* carry flag is set */
             /*  B_(n-1) <- cf */
-            res |= 1 << (cnt - 1);
+            res |= 1U << (cnt - 1);
         }
         /* set the new carry flag, based on the variable "cf" */
 		CONDITIONAL_SET_FLAG(cf, F_CF);
@@ -902,16 +905,18 @@ Implements the RCL instruction and side effects.
 ****************************************************************************/
 u16 rcl_word(x86emu_t *emu, u16 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	register unsigned int res, cnt, mask, cf;
 
 	res = d;
 	if ((cnt = s % 17) != 0) {
 		cf = (d >> (16 - cnt)) & 0x1;
-		res = (d << cnt) & 0xffff;
-		mask = (1 << (cnt - 1)) - 1;
+		res = ((u32)d << cnt) & 0xffff;
+		mask = (1U << (cnt - 1)) - 1;
 		res |= (d >> (17 - cnt)) & mask;
 		if (ACCESS_FLAG(F_CF)) {
-			res |= 1 << (cnt - 1);
+			res |= 1U << (cnt - 1);
 		}
 		CONDITIONAL_SET_FLAG(cf, F_CF);
 		CONDITIONAL_SET_FLAG(cnt == 1 && XOR2(cf + ((res >> 14) & 0x2)),
@@ -926,16 +931,18 @@ Implements the RCL instruction and side effects.
 ****************************************************************************/
 u32 rcl_long(x86emu_t *emu, u32 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	register u32 res, cnt, mask, cf;
 
 	res = d;
 	if ((cnt = s % 33) != 0) {
 		cf = (d >> (32 - cnt)) & 0x1;
-		res = (d << cnt) & 0xffffffff;
-		mask = (1 << (cnt - 1)) - 1;
-		res |= (d >> (33 - cnt)) & mask;
+		res = ((u32)d << cnt) & 0xffffffff;
+		mask = (1U << (cnt - 1)) - 1;
+		if (cnt > 1) res |= (d >> (33 - cnt)) & mask;
 		if (ACCESS_FLAG(F_CF)) {     /* carry flag is set */
-			res |= 1 << (cnt - 1);
+			res |= 1U << (cnt - 1);
 		}
 		CONDITIONAL_SET_FLAG(cf, F_CF);
 		CONDITIONAL_SET_FLAG(cnt == 1 && XOR2(cf + ((res >> 30) & 0x2)),
@@ -950,6 +957,8 @@ Implements the RCR instruction and side effects.
 ****************************************************************************/
 u8 rcr_byte(x86emu_t *emu, u8 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	u32	res, cnt;
 	u32	mask, cf, ocf = 0;
 
@@ -999,7 +1008,7 @@ u8 rcr_byte(x86emu_t *emu, u8 d, u8 s)
            in case the object came in and was treated 
            as a negative number.  Needed??? */
 
-        mask = (1 << (8 - cnt)) - 1;
+        mask = (1U << (8 - cnt)) - 1;
         res = (d >> cnt) & mask;
 
         /* now the high stuff which rotated around 
@@ -1008,12 +1017,12 @@ u8 rcr_byte(x86emu_t *emu, u8 d, u8 s)
         /* shift it downward, 7-(n-2) = 9-n positions. 
            and mask off the result before or'ing in. 
          */
-        res |= (d << (9 - cnt));
+        res |= ((u32)d << (9 - cnt));
 
         /* if the carry flag was set, or it in.  */
 		if (ACCESS_FLAG(F_CF)) {     /* carry flag is set */
             /*  B_(8-n) <- cf */
-            res |= 1 << (8 - cnt);
+            res |= 1U << (8 - cnt);
         }
         /* set the new carry flag, based on the variable "cf" */
 		CONDITIONAL_SET_FLAG(cf, F_CF);
@@ -1034,6 +1043,8 @@ Implements the RCR instruction and side effects.
 ****************************************************************************/
 u16 rcr_word(x86emu_t *emu, u16 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	u32 res, cnt;
 	u32	mask, cf, ocf = 0;
 
@@ -1045,11 +1056,11 @@ u16 rcr_word(x86emu_t *emu, u16 d, u8 s)
 			ocf = ACCESS_FLAG(F_CF) != 0;
 		} else
 			cf = (d >> (cnt - 1)) & 0x1;
-		mask = (1 << (16 - cnt)) - 1;
+		mask = (1U << (16 - cnt)) - 1;
 		res = (d >> cnt) & mask;
-		res |= (d << (17 - cnt));
+		res |= ((u32)d << (17 - cnt));
 		if (ACCESS_FLAG(F_CF)) {
-			res |= 1 << (16 - cnt);
+			res |= 1U << (16 - cnt);
 		}
 		CONDITIONAL_SET_FLAG(cf, F_CF);
 		if (cnt == 1) {
@@ -1066,6 +1077,8 @@ Implements the RCR instruction and side effects.
 ****************************************************************************/
 u32 rcr_long(x86emu_t *emu, u32 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	u32 res, cnt;
 	u32 mask, cf, ocf = 0;
 
@@ -1077,12 +1090,12 @@ u32 rcr_long(x86emu_t *emu, u32 d, u8 s)
 			ocf = ACCESS_FLAG(F_CF) != 0;
 		} else
 			cf = (d >> (cnt - 1)) & 0x1;
-		mask = (1 << (32 - cnt)) - 1;
+		mask = (1U << (32 - cnt)) - 1;
 		res = (d >> cnt) & mask;
 		if (cnt != 1)
-			res |= (d << (33 - cnt));
+			res |= ((u32)d << (33 - cnt));
 		if (ACCESS_FLAG(F_CF)) {     /* carry flag is set */
-			res |= 1 << (32 - cnt);
+			res |= 1U << (32 - cnt);
 		}
 		CONDITIONAL_SET_FLAG(cf, F_CF);
 		if (cnt == 1) {
@@ -1099,12 +1112,14 @@ Implements the ROL instruction and side effects.
 ****************************************************************************/
 u8 rol_byte(x86emu_t *emu, u8 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
   unsigned cnt;
 
   if(!s) return d;
 
   if((cnt = s % 8) != 0) {
-    d = (d << cnt) + ((d >> (8 - cnt)) & ((1 << cnt) - 1));
+    d = ((u32)d << cnt) + ((d >> (8 - cnt)) & ((1U << cnt) - 1));
   }
 
   /* OF flag is set if s == 1; OF = CF _XOR_ MSB of result */
@@ -1124,12 +1139,14 @@ Implements the ROL instruction and side effects.
 ****************************************************************************/
 u16 rol_word(x86emu_t *emu, u16 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
   unsigned cnt;
 
   if(!s) return d;
 
   if((cnt = s % 16) != 0) {
-    d = (d << cnt) + ((d >> (16 - cnt)) & ((1 << cnt) - 1));
+    d = ((u32)d << cnt) + ((d >> (16 - cnt)) & ((1U << cnt) - 1));
   }
 
   /* OF flag is set if s == 1; OF = CF _XOR_ MSB of result */
@@ -1149,12 +1166,14 @@ Implements the ROL instruction and side effects.
 ****************************************************************************/
 u32 rol_long(x86emu_t *emu, u32 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
   unsigned cnt;
 
   if(!s) return d;
 
   if((cnt = s % 32) != 0) {
-    d = (d << cnt) + ((d >> (32 - cnt)) & ((1 << cnt) - 1));
+    d = ((u32)d << cnt) + ((d >> (32 - cnt)) & ((1U << cnt) - 1));
   }
 
   /* OF flag is set if s == 1; OF = CF _XOR_ MSB of result */
@@ -1174,12 +1193,14 @@ Implements the ROR instruction and side effects.
 ****************************************************************************/
 u8 ror_byte(x86emu_t *emu, u8 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
   unsigned cnt;
 
   if(!s) return d;
 
   if((cnt = s % 8) != 0) {
-    d = (d << (8 - cnt)) + ((d >> (cnt)) & ((1 << (8 - cnt)) - 1));
+    d = ((u32)d << (8 - cnt)) + ((d >> (cnt)) & ((1U << (8 - cnt)) - 1));
   }
 
   /* OF flag is set if s == 1; OF = MSB _XOR_ (M-1)SB of result */
@@ -1188,7 +1209,7 @@ u8 ror_byte(x86emu_t *emu, u8 d, u8 s)
   }
 
   /* set new CF; note that it is the MSB of the result */
-  CONDITIONAL_SET_FLAG(d & (1 << 7), F_CF);
+  CONDITIONAL_SET_FLAG(d & (1U << 7), F_CF);
 
   return d;
 }
@@ -1199,12 +1220,14 @@ Implements the ROR instruction and side effects.
 ****************************************************************************/
 u16 ror_word(x86emu_t *emu, u16 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
   unsigned cnt;
 
   if(!s) return d;
 
   if((cnt = s % 16) != 0) {
-    d = (d << (16 - cnt)) + ((d >> (cnt)) & ((1 << (16 - cnt)) - 1));
+    d = ((u32)d << (16 - cnt)) + ((d >> (cnt)) & ((1U << (16 - cnt)) - 1));
   }
 
   /* OF flag is set if s == 1; OF = MSB _XOR_ (M-1)SB of result */
@@ -1213,7 +1236,7 @@ u16 ror_word(x86emu_t *emu, u16 d, u8 s)
   }
 
   /* set new CF; note that it is the MSB of the result */
-  CONDITIONAL_SET_FLAG(d & (1 << 15), F_CF);
+  CONDITIONAL_SET_FLAG(d & (1U << 15), F_CF);
 
   return d;
 }
@@ -1224,12 +1247,14 @@ Implements the ROR instruction and side effects.
 ****************************************************************************/
 u32 ror_long(x86emu_t *emu, u32 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
   unsigned cnt;
 
   if(!s) return d;
 
   if((cnt = s % 32) != 0) {
-    d = (d << (32 - cnt)) + ((d >> (cnt)) & ((1 << (32 - cnt)) - 1));
+    d = ((u32)d << (32 - cnt)) + ((d >> (cnt)) & ((1U << (32 - cnt)) - 1));
   }
 
   /* OF flag is set if s == 1; OF = MSB _XOR_ (M-1)SB of result */
@@ -1238,7 +1263,7 @@ u32 ror_long(x86emu_t *emu, u32 d, u8 s)
   }
 
   /* set new CF; note that it is the MSB of the result */
-  CONDITIONAL_SET_FLAG(d & (1 << 31), F_CF);
+  CONDITIONAL_SET_FLAG(d & (1U << 31), F_CF);
 
   return d;
 }
@@ -1249,6 +1274,8 @@ Implements the SHL instruction and side effects.
 ****************************************************************************/
 u8 shl_byte(x86emu_t *emu, u8 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
 	if (s < 8) {
@@ -1256,8 +1283,8 @@ u8 shl_byte(x86emu_t *emu, u8 d, u8 s)
 
 		/* last bit shifted out goes into carry flag */
 		if (cnt > 0) {
-			res = d << cnt;
-			cf = d & (1 << (8 - cnt));
+			res = (u32)d << cnt;
+			cf = d & (1U << (8 - cnt));
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xff) == 0, F_ZF);
 			CONDITIONAL_SET_FLAG(res & 0x80, F_SF);
@@ -1278,7 +1305,7 @@ u8 shl_byte(x86emu_t *emu, u8 d, u8 s)
 		}
 	} else {
 		res = 0;
-		CONDITIONAL_SET_FLAG((d << (s-1)) & 0x80, F_CF);
+		CONDITIONAL_SET_FLAG(((u32)d << (s-1)) & 0x80, F_CF);
 		CLEAR_FLAG(F_OF);
 		CLEAR_FLAG(F_SF);
 		SET_FLAG(F_PF);
@@ -1293,13 +1320,15 @@ Implements the SHL instruction and side effects.
 ****************************************************************************/
 u16 shl_word(x86emu_t *emu, u16 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
     unsigned int cnt, res, cf;
 
 	if (s < 16) {
 		cnt = s % 16;
 		if (cnt > 0) {
-			res = d << cnt;
-			cf = d & (1 << (16 - cnt));
+			res = (u32)d << cnt;
+			cf = d & (1U << (16 - cnt));
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffff) == 0, F_ZF);
 			CONDITIONAL_SET_FLAG(res & 0x8000, F_SF);
@@ -1318,7 +1347,7 @@ u16 shl_word(x86emu_t *emu, u16 d, u8 s)
         }
     } else {
 		res = 0;
-		CONDITIONAL_SET_FLAG((d << (s-1)) & 0x8000, F_CF);
+		CONDITIONAL_SET_FLAG(((u32)d << (s-1)) & 0x8000, F_CF);
 		CLEAR_FLAG(F_OF);
 		CLEAR_FLAG(F_SF);
 		SET_FLAG(F_PF);
@@ -1333,13 +1362,15 @@ Implements the SHL instruction and side effects.
 ****************************************************************************/
 u32 shl_long(x86emu_t *emu, u32 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
 	if (s < 32) {
 		cnt = s % 32;
 		if (cnt > 0) {
-			res = d << cnt;
-			cf = d & (1 << (32 - cnt));
+			res = (u32)d << cnt;
+			cf = d & (1U << (32 - cnt));
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffffffff) == 0, F_ZF);
 			CONDITIONAL_SET_FLAG(res & 0x80000000, F_SF);
@@ -1355,7 +1386,7 @@ u32 shl_long(x86emu_t *emu, u32 d, u8 s)
 		}
 	} else {
 		res = 0;
-		CONDITIONAL_SET_FLAG((d << (s-1)) & 0x80000000, F_CF);
+		CONDITIONAL_SET_FLAG(((u32)d << (s-1)) & 0x80000000, F_CF);
 		CLEAR_FLAG(F_OF);
 		CLEAR_FLAG(F_SF);
 		SET_FLAG(F_PF);
@@ -1370,12 +1401,14 @@ Implements the SHR instruction and side effects.
 ****************************************************************************/
 u8 shr_byte(x86emu_t *emu, u8 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
 	if (s < 8) {
 		cnt = s % 8;
 		if (cnt > 0) {
-			cf = d & (1 << (cnt - 1));
+			cf = d & (1U << (cnt - 1));
 			res = d >> cnt;
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xff) == 0, F_ZF);
@@ -1407,12 +1440,14 @@ Implements the SHR instruction and side effects.
 ****************************************************************************/
 u16 shr_word(x86emu_t *emu, u16 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
 	if (s < 16) {
 		cnt = s % 16;
 		if (cnt > 0) {
-			cf = d & (1 << (cnt - 1));
+			cf = d & (1U << (cnt - 1));
 			res = d >> cnt;
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffff) == 0, F_ZF);
@@ -1433,7 +1468,7 @@ u16 shr_word(x86emu_t *emu, u16 d, u8 s)
 		CLEAR_FLAG(F_OF);
 		SET_FLAG(F_ZF);
 		CLEAR_FLAG(F_SF);
-		CLEAR_FLAG(F_PF);
+		SET_FLAG(F_PF);
     }
 	return (u16)res;
 }
@@ -1444,12 +1479,14 @@ Implements the SHR instruction and side effects.
 ****************************************************************************/
 u32 shr_long(x86emu_t *emu, u32 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
 	if (s < 32) {
 		cnt = s % 32;
 		if (cnt > 0) {
-			cf = d & (1 << (cnt - 1));
+			cf = d & (1U << (cnt - 1));
 			res = d >> cnt;
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffffffff) == 0, F_ZF);
@@ -1480,14 +1517,17 @@ Implements the SAR instruction and side effects.
 ****************************************************************************/
 u8 sar_byte(x86emu_t *emu, u8 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
+    if (s == 1) CLEAR_FLAG(F_OF);
 	unsigned int cnt, res, cf, mask, sf;
 
 	res = d;
 	sf = d & 0x80;
-    cnt = s % 8;
+    cnt = s;
 	if (cnt > 0 && cnt < 8) {
-		mask = (1 << (8 - cnt)) - 1;
-		cf = d & (1 << (cnt - 1));
+		mask = (1U << (8 - cnt)) - 1;
+		cf = d & (1U << (cnt - 1));
 		res = (d >> cnt) & mask;
 		CONDITIONAL_SET_FLAG(cf, F_CF);
 		if (sf) {
@@ -1508,7 +1548,7 @@ u8 sar_byte(x86emu_t *emu, u8 d, u8 s)
 			CLEAR_FLAG(F_CF);
 			SET_FLAG(F_ZF);
 			CLEAR_FLAG(F_SF);
-			CLEAR_FLAG(F_PF);
+			SET_FLAG(F_PF);
 		}
 	}
 	return (u8)res;
@@ -1520,14 +1560,17 @@ Implements the SAR instruction and side effects.
 ****************************************************************************/
 u16 sar_word(x86emu_t *emu, u16 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
+    if (s == 1) CLEAR_FLAG(F_OF);
     unsigned int cnt, res, cf, mask, sf;
 
     sf = d & 0x8000;
-    cnt = s % 16;
+    cnt = s;
 	res = d;
 	if (cnt > 0 && cnt < 16) {
-        mask = (1 << (16 - cnt)) - 1;
-        cf = d & (1 << (cnt - 1));
+        mask = (1U << (16 - cnt)) - 1;
+        cf = d & (1U << (cnt - 1));
         res = (d >> cnt) & mask;
 		CONDITIONAL_SET_FLAG(cf, F_CF);
         if (sf) {
@@ -1548,7 +1591,7 @@ u16 sar_word(x86emu_t *emu, u16 d, u8 s)
 			CLEAR_FLAG(F_CF);
 			SET_FLAG(F_ZF);
 			CLEAR_FLAG(F_SF);
-			CLEAR_FLAG(F_PF);
+			SET_FLAG(F_PF);
         }
     }
 	return (u16)res;
@@ -1560,14 +1603,17 @@ Implements the SAR instruction and side effects.
 ****************************************************************************/
 u32 sar_long(x86emu_t *emu, u32 d, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
+    if (s == 1) CLEAR_FLAG(F_OF);
     u32 cnt, res, cf, mask, sf;
 
     sf = d & 0x80000000;
     cnt = s % 32;
 	res = d;
 	if (cnt > 0 && cnt < 32) {
-        mask = (1 << (32 - cnt)) - 1;
-		cf = d & (1 << (cnt - 1));
+        mask = (1U << (32 - cnt)) - 1;
+		cf = d & (1U << (cnt - 1));
         res = (d >> cnt) & mask;
 		CONDITIONAL_SET_FLAG(cf, F_CF);
         if (sf) {
@@ -1600,13 +1646,15 @@ Implements the SHLD instruction and side effects.
 ****************************************************************************/
 u16 shld_word (x86emu_t *emu, u16 d, u16 fill, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
-	if (s < 16) {
-		cnt = s % 16;
+	if (s <= 16) {
+		cnt = s;
 		if (cnt > 0) {
-			res = (d << cnt) | (fill >> (16-cnt));
-			cf = d & (1 << (16 - cnt));
+			res = ((u32)d << cnt) | (fill >> (16-cnt));
+			cf = d & (1U << (16 - cnt));
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffff) == 0, F_ZF);
 			CONDITIONAL_SET_FLAG(res & 0x8000, F_SF);
@@ -1622,7 +1670,7 @@ u16 shld_word (x86emu_t *emu, u16 d, u16 fill, u8 s)
 		}
 	} else {
 		res = 0;
-		CONDITIONAL_SET_FLAG((d << (s-1)) & 0x8000, F_CF);
+		CONDITIONAL_SET_FLAG(((u32)d << (s-1)) & 0x8000, F_CF);
 		CLEAR_FLAG(F_OF);
 		CLEAR_FLAG(F_SF);
 		SET_FLAG(F_PF);
@@ -1637,13 +1685,15 @@ Implements the SHLD instruction and side effects.
 ****************************************************************************/
 u32 shld_long (x86emu_t *emu, u32 d, u32 fill, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
 	if (s < 32) {
 		cnt = s % 32;
 		if (cnt > 0) {
-			res = (d << cnt) | (fill >> (32-cnt));
-			cf = d & (1 << (32 - cnt));
+			res = ((u32)d << cnt) | (fill >> (32-cnt));
+			cf = d & (1U << (32 - cnt));
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffffffff) == 0, F_ZF);
 			CONDITIONAL_SET_FLAG(res & 0x80000000, F_SF);
@@ -1659,7 +1709,7 @@ u32 shld_long (x86emu_t *emu, u32 d, u32 fill, u8 s)
 		}
 	} else {
 		res = 0;
-		CONDITIONAL_SET_FLAG((d << (s-1)) & 0x80000000, F_CF);
+		CONDITIONAL_SET_FLAG(((u32)d << (s-1)) & 0x80000000, F_CF);
 		CLEAR_FLAG(F_OF);
 		CLEAR_FLAG(F_SF);
 		SET_FLAG(F_PF);
@@ -1674,13 +1724,15 @@ Implements the SHRD instruction and side effects.
 ****************************************************************************/
 u16 shrd_word (x86emu_t *emu, u16 d, u16 fill, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
-	if (s < 16) {
-		cnt = s % 16;
+	if (s <= 16) {
+		cnt = s;
 		if (cnt > 0) {
-			cf = d & (1 << (cnt - 1));
-			res = (d >> cnt) | (fill << (16 - cnt));
+			cf = d & (1U << (cnt - 1));
+			res = (d >> cnt) | ((u32)fill << (16 - cnt));
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffff) == 0, F_ZF);
 			CONDITIONAL_SET_FLAG(res & 0x8000, F_SF);
@@ -1711,13 +1763,15 @@ Implements the SHRD instruction and side effects.
 ****************************************************************************/
 u32 shrd_long (x86emu_t *emu, u32 d, u32 fill, u8 s)
 {
+    s &= 31U;
+    if (!s) return d;
 	unsigned int cnt, res, cf;
 
 	if (s < 32) {
 		cnt = s % 32;
 		if (cnt > 0) {
-			cf = d & (1 << (cnt - 1));
-			res = (d >> cnt) | (fill << (32 - cnt));
+			cf = d & (1U << (cnt - 1));
+			res = (d >> cnt) | ((u32)fill << (32 - cnt));
 			CONDITIONAL_SET_FLAG(cf, F_CF);
 			CONDITIONAL_SET_FLAG((res & 0xffffffff) == 0, F_ZF);
 			CONDITIONAL_SET_FLAG(res & 0x80000000, F_SF);
@@ -2182,7 +2236,7 @@ void idiv_word(x86emu_t *emu, u16 s)
 	s32 dvd, div, mod;
 
 	dvd = ((u32) emu->x86.R_DX << 16) + (u32) emu->x86.R_AX;
-	if (s == 0) {
+	if (s == 0 || (dvd == INT32_MIN && (s16)s == -1)) {
 		INTR_RAISE_DIV0(emu);
 		return;
 	}
@@ -2206,7 +2260,7 @@ void idiv_long(x86emu_t *emu, u32 s)
 	s64 dvd, div, mod;
 
 	dvd = ((u64) emu->x86.R_EDX << 32) + (u64) emu->x86.R_EAX;
-	if (s == 0) {
+	if (s == 0 || (dvd == INT64_MIN && (s32)s == -1)) {
 		INTR_RAISE_DIV0(emu);
 		return;
 	}

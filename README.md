@@ -19,6 +19,7 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 | USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
 | Integer x86 execution | Version 0.4 adds a PE32 interpreter and four Win32 host calls for an embedded program; see scope in the runtime guide |
 | Bounded game startup trace | Version 0.5 interprets the selected PE32 entry point and stops at the first unsupported API/instruction; this is not gameplay |
+| Patched Win32Bridge | Version 0.6 adds the same PE32 interpreter to the upstream component; CI builds a companion and an ABI-checked desktop repack |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -95,6 +96,12 @@ up to 50,000 guest instructions. Unknown imports stop at their synthetic gates;
 no arbitrary native function is called. `game-startup.txt` records the actual
 stop reason. The trace runs automatically when a saved folder is available.
 This limited integer-only startup is not a game compatibility or gameplay pass.
+
+Version 0.6 loads that backend from the packaged **Win32Bridge.Runtime.dll**.
+The same overlay adds PE32 startup to the existing desktop's executable loader.
+CI also produces a separate **1.0.46.1** developer-signed desktop update after
+checking its WinRT ABI against the original package. It retains the original
+shell and Gecko binaries; a complete independent shell build is still pending.
 
 ## Development direction
 

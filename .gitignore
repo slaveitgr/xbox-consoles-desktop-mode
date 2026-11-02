@@ -7,6 +7,7 @@
 /app/x64/
 /app/Debug/
 /app/Release/
+/app/BridgeRuntime/
 .vs/
 *.vcxproj.user
 *.suo

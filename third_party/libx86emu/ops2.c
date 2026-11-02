@@ -1089,13 +1089,13 @@ static void x86emuOp2_bt_R(x86emu_t *emu, u8 op2)
     if(MODE_DATA32) {
       reg32 = decode_rm_long_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_long_register(emu, rh) & 0x1f);
+      mask = 1U << (*decode_rm_long_register(emu, rh) & 0x1f);
       CONDITIONAL_SET_FLAG(*reg32 & mask, F_CF);
     }
     else {
       reg16 = decode_rm_word_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_word_register(emu, rh) & 0x0f);
+      mask = 1U << (*decode_rm_word_register(emu, rh) & 0x0f);
       CONDITIONAL_SET_FLAG(*reg16 & mask, F_CF);
     }
   }
@@ -1105,14 +1105,14 @@ static void x86emuOp2_bt_R(x86emu_t *emu, u8 op2)
 
     if(MODE_DATA32) {
       disp = *decode_rm_long_register(emu, rh);
-      mask = 1 << (disp & 0x1f);
+      mask = 1U << (disp & 0x1f);
       disp >>= 5;
       val = fetch_data_long(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
     }
     else {
       disp = (s16) *decode_rm_word_register(emu, rh);
-      mask = 1 << (disp & 0x0f);
+      mask = 1U << (disp & 0x0f);
       disp >>= 4;
       val = fetch_data_word(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
@@ -1279,14 +1279,14 @@ static void x86emuOp2_bts_R(x86emu_t *emu, u8 op2)
     if(MODE_DATA32) {
       reg32 = decode_rm_long_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_long_register(emu, rh) & 0x1f);
+      mask = 1U << (*decode_rm_long_register(emu, rh) & 0x1f);
       CONDITIONAL_SET_FLAG(*reg32 & mask, F_CF);
       *reg32 |= mask;
     }
     else {
       reg16 = decode_rm_word_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_word_register(emu, rh) & 0x0f);
+      mask = 1U << (*decode_rm_word_register(emu, rh) & 0x0f);
       CONDITIONAL_SET_FLAG(*reg16 & mask, F_CF);
       *reg16 |= mask;
     }
@@ -1297,7 +1297,7 @@ static void x86emuOp2_bts_R(x86emu_t *emu, u8 op2)
 
     if(MODE_DATA32) {
       disp = *decode_rm_long_register(emu, rh);
-      mask = 1 << (disp & 0x1f);
+      mask = 1U << (disp & 0x1f);
       disp >>= 5;
       val = fetch_data_long(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
@@ -1305,7 +1305,7 @@ static void x86emuOp2_bts_R(x86emu_t *emu, u8 op2)
     }
     else {
       disp = (s16) *decode_rm_word_register(emu, rh);
-      mask = 1 << (disp & 0x0f);
+      mask = 1U << (disp & 0x0f);
       disp >>= 5;
       val = fetch_data_word(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
@@ -1566,14 +1566,14 @@ static void x86emuOp2_btr_R(x86emu_t *emu, u8 op2)
     if(MODE_DATA32) {
       reg32 = decode_rm_long_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_long_register(emu, rh) & 0x1f);
+      mask = 1U << (*decode_rm_long_register(emu, rh) & 0x1f);
       CONDITIONAL_SET_FLAG(*reg32 & mask, F_CF);
       *reg32 &= ~mask;
     }
     else {
       reg16 = decode_rm_word_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_word_register(emu, rh) & 0x0f);
+      mask = 1U << (*decode_rm_word_register(emu, rh) & 0x0f);
       CONDITIONAL_SET_FLAG(*reg16 & mask, F_CF);
       *reg16 &= ~mask;
     }
@@ -1584,7 +1584,7 @@ static void x86emuOp2_btr_R(x86emu_t *emu, u8 op2)
 
     if(MODE_DATA32) {
       disp = *decode_rm_long_register(emu, rh);
-      mask = 1 << (disp & 0x1f);
+      mask = 1U << (disp & 0x1f);
       disp >>= 5;
       val = fetch_data_long(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
@@ -1592,7 +1592,7 @@ static void x86emuOp2_btr_R(x86emu_t *emu, u8 op2)
     }
     else {
       disp = (s16) *decode_rm_word_register(emu, rh);
-      mask = 1 << (disp & 0x0f);
+      mask = 1U << (disp & 0x0f);
       disp >>= 5;
       val = fetch_data_word(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
@@ -1801,7 +1801,7 @@ static void x86emuOp2_btX_I(x86emu_t *emu, u8 op2)
       OP_DECODE(",");
       imm = fetch_byte(emu);
       DECODE_HEX2(imm);
-      mask = 1 << (imm & 0x1f);
+      mask = 1U << (imm & 0x1f);
       CONDITIONAL_SET_FLAG(*reg32 & mask, F_CF);
       switch(rh) {
         case 5:
@@ -1820,7 +1820,7 @@ static void x86emuOp2_btX_I(x86emu_t *emu, u8 op2)
       OP_DECODE(",");
       imm = fetch_byte(emu);
       DECODE_HEX2(imm);
-      mask = 1 << (imm & 0x1f);
+      mask = 1U << (imm & 0x1f);
       CONDITIONAL_SET_FLAG(*reg16 & mask, F_CF);
       switch(rh) {
         case 5:
@@ -1842,7 +1842,7 @@ static void x86emuOp2_btX_I(x86emu_t *emu, u8 op2)
     DECODE_HEX2(imm);
 
     if(MODE_DATA32) {
-      mask = 1 << (imm & 0x1f);
+      mask = 1U << (imm & 0x1f);
       val = fetch_data_long(emu, addr);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
       switch(rh) {
@@ -1858,7 +1858,7 @@ static void x86emuOp2_btX_I(x86emu_t *emu, u8 op2)
         }
     }
     else {
-      mask = 1 << (imm & 0x0f);
+      mask = 1U << (imm & 0x0f);
       val = fetch_data_word(emu, addr);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
       switch(rh) {
@@ -1895,14 +1895,14 @@ static void x86emuOp2_btc_R(x86emu_t *emu, u8 op2)
     if(MODE_DATA32) {
       reg32 = decode_rm_long_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_long_register(emu, rh) & 0x1f);
+      mask = 1U << (*decode_rm_long_register(emu, rh) & 0x1f);
       CONDITIONAL_SET_FLAG(*reg32 & mask, F_CF);
       *reg32 ^= mask;
     }
     else {
       reg16 = decode_rm_word_register(emu, rl);
       OP_DECODE(",");
-      mask = 1 << (*decode_rm_word_register(emu, rh) & 0x0f);
+      mask = 1U << (*decode_rm_word_register(emu, rh) & 0x0f);
       CONDITIONAL_SET_FLAG(*reg16 & mask, F_CF);
       *reg16 ^= mask;
     }
@@ -1913,7 +1913,7 @@ static void x86emuOp2_btc_R(x86emu_t *emu, u8 op2)
 
     if(MODE_DATA32) {
       disp = *decode_rm_long_register(emu, rh);
-      mask = 1 << (disp & 0x1f);
+      mask = 1U << (disp & 0x1f);
       disp >>= 5;
       val = fetch_data_long(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);
@@ -1921,7 +1921,7 @@ static void x86emuOp2_btc_R(x86emu_t *emu, u8 op2)
     }
     else {
       disp = (s16) *decode_rm_word_register(emu, rh);
-      mask = 1 << (disp & 0x0f);
+      mask = 1U << (disp & 0x0f);
       disp >>= 5;
       val = fetch_data_word(emu, addr + disp);
       CONDITIONAL_SET_FLAG(val & mask, F_CF);

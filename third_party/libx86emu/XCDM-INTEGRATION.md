@@ -11,6 +11,9 @@ Local changes for the Xbox UWP interpreter host:
   uses unsigned subtraction to preserve CPU behavior under MSVC `/sdl`.
 - Real host TSC and physical I/O support are disabled on every build. The
   adapter intercepts all guest memory and port accesses and supplies CPUID.
+- Integer division guards host overflow and zero-base AAM as guest divide exceptions.
+- Shift/rotate counts are masked to x86 width rules, with unsigned masks and
+  promoted operands to avoid undefined C shifts; zero counts preserve flags.
 - Initial emulator/memory allocations handle failure before dereferencing.
 - REP string/I/O loops observe the core's halted state, so callback faults
   and the adapter's finite memory-operation budget stop long REP operations.

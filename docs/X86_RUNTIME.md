@@ -4,6 +4,10 @@ Version 0.4 adds execution of an embedded, self-authored **PE32/i386** program.
 This is distinct from the existing PE32+ native return-42 probe and USB file
 inspection. Version 0.5 additionally passes the selected `gta_sa.exe` to a
 bounded startup-tracing profile, described below; it does not implement gameplay.
+Version 0.6 places that runtime in the patched upstream Win32Bridge DLL. The
+companion loads its packaged DLL explicitly and reports load/ABI failures;
+there is no direct-runtime fallback. The desktop overlay routes PE32 images
+through the same interpreter while retaining the existing native x64 path.
 
 ## Execution path
 
@@ -35,9 +39,10 @@ shows a separate execution result alongside USB metadata.
 - The only Win32 calls are the four above. Files, threads, callbacks, audio,
   DirectInput, Direct3D 9 and general DLL loading are not implemented.
 - The initial loader requires fixed-base PE32 executables, 4-KiB section and
-  512-byte file alignment. It rejects DLLs, TLS, relocations, CLR and
-  writable/executable guest sections. The strict fixture profile rejects delay
-  imports; the startup profile accepts bounded RVA/VA delay-import descriptors.
+  512-byte file alignment. It rejects DLLs, TLS, relocations and CLR. The strict
+  fixture profile also rejects writable/executable guest sections and delay
+  imports. Startup accepts guest W+X sections as interpreted byte data and
+  bounded RVA/VA delay-import descriptors; it never creates host RWX memory.
   This is a limited loader profile, without dependency loading or DLL initialization.
 - Guest memory is not cast to native pointers. The guest image, read-only
   sections, executable sections and non-executable stack are checked separately.
@@ -81,3 +86,21 @@ and released. Its result does not determine the integer smoke-test outcome.
 The earlier physical USB test on One X read the user's PE32 x86 San Andreas,
 including its delayed Direct3D 9, DirectInput and DirectSound imports. That test
 proves folder access and metadata inspection, not execution by this runtime.
+
+The physical 0.5 test passed the embedded integer program and simultaneous
+low-address reservations. Its San Andreas trace stopped before executing any
+game instructions because of guest section flags. The 0.6 startup-only change
+allows those guest flags; the next report must establish the actual stop point.
+
+## Build and desktop integration
+
+`tools/build-upstream.ps1 -WithX86Backend` applies the checked-in overlay to a
+disposable copy of the pinned bridge, builds it and stages the DLL for the UWP
+companion. The submodule itself remains unchanged. Public WinRT classes retain
+their existing ABI; two additional C exports support headless component tests.
+
+`tools/repack-desktop.ps1` verifies the original package block map and compares
+the replacement WinRT metadata contract before updating DesktopMode to 1.0.46.1.
+It retains the existing shell/Gecko payload and package identity, replaces the
+bridge, includes licenses and signs with a temporary community development
+certificate. This is a test repack, not an independently rebuilt full shell.

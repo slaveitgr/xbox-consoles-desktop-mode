@@ -13,7 +13,8 @@ separate integration work. This script never changes upstream source files.
 param(
     [ValidateSet('Debug', 'Release')][string]$Configuration = 'Release',
     [string]$WindowsSdkVersion,
-    [switch]$FullShell
+    [switch]$FullShell,
+    [switch]$WithX86Backend
 )
 
 Set-StrictMode -Version Latest
@@ -25,7 +26,7 @@ if (-not (Test-Path (Join-Path $upstream 'Win32Bridge\Win32Bridge.vcxproj'))) {
 }
 $toolchain = & (Join-Path $PSScriptRoot 'build-uwp.ps1') -CheckOnly -WindowsSdkVersion $WindowsSdkVersion
 $sdk = $toolchain.WindowsSdkVersion
-$outputKind = if ($FullShell) { 'upstream-shell-compile' } else { 'upstream-bridge' }
+$outputKind = if ($FullShell) { 'upstream-shell-compile' } elseif ($WithX86Backend) { 'upstream-bridge-x86' } else { 'upstream-bridge' }
 $outputDir = Join-Path $repoRoot "artifacts\$outputKind\$Configuration"
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 
@@ -47,6 +48,31 @@ if ($FullShell) {
     Write-Host 'Compiling the full upstream shell; no AppX package or signing will be performed.'
 } else {
     $project = Join-Path $upstream 'Win32Bridge\Win32Bridge.vcxproj'
+    if ($WithX86Backend) {
+        # Apply our overlay to a disposable source copy, never the pinned
+        # submodule. Keep existing public RuntimeSession/RuntimeHost ABI.
+        $relativeSource = 'artifacts/upstream-bridge-x86/source'
+        $sourceRoot = Join-Path $repoRoot $relativeSource
+        if (Test-Path $sourceRoot) { Remove-Item $sourceRoot -Recurse -Force }
+        New-Item -ItemType Directory -Force -Path $sourceRoot | Out-Null
+        Copy-Item (Join-Path $upstream 'Win32Bridge') $sourceRoot -Recurse
+        $patch = Join-Path $repoRoot 'patches\Win32Bridge-x86-startup.patch'
+        & git -C $repoRoot apply "--directory=$relativeSource" --check $patch
+        if ($LASTEXITCODE -ne 0) { throw 'The x86 bridge overlay does not apply to the pinned source.' }
+        & git -C $repoRoot apply "--directory=$relativeSource" $patch
+        if ($LASTEXITCODE -ne 0) { throw 'Applying the x86 bridge overlay failed.' }
+        $project = Join-Path $sourceRoot 'Win32Bridge\Win32Bridge.vcxproj'
+        [xml]$projectXml = Get-Content -Raw $project
+        $ns = New-Object System.Xml.XmlNamespaceManager($projectXml.NameTable)
+        $ns.AddNamespace('m', 'http://schemas.microsoft.com/developer/msbuild/2003')
+        $targetImport = $projectXml.SelectSingleNode("/m:Project/m:Import[contains(@Project, 'Microsoft.Cpp.targets')]", $ns)
+        if (-not $targetImport) { throw 'The upstream project has no C++ targets import.' }
+        $overlay = $projectXml.CreateElement('Import', $projectXml.DocumentElement.NamespaceURI)
+        $overlay.SetAttribute('Project', (Join-Path $PSScriptRoot 'Win32Bridge-x86.props'))
+        $projectXml.DocumentElement.InsertBefore($overlay, $targetImport) | Out-Null
+        $projectXml.Save($project)
+        Write-Host 'Building the patched bridge with PE32 interpreter startup support.'
+    }
     Write-Host 'Building the upstream Win32Bridge DLL only; no guest programs or shell package.'
 }
 $arguments = @(
@@ -65,6 +91,13 @@ else { $arguments += "/p:IntDir=$outputDir\obj\" }
 if ($LASTEXITCODE -ne 0) { throw "Upstream build failed (MSBuild exit $LASTEXITCODE). See $outputDir." }
 if (-not $FullShell -and @(Get-ChildItem $outputDir -Recurse -File -Filter 'Win32Bridge.Runtime.dll').Count -eq 0) {
     throw "The upstream build produced no Win32Bridge.Runtime.dll in $outputDir. Inspect the MSBuild log."
+}
+if ($WithX86Backend -and -not $FullShell) {
+    $component = Get-ChildItem $outputDir -Recurse -File -Filter 'Win32Bridge.Runtime.dll' | Select-Object -First 1
+    $destination = Join-Path $repoRoot 'app\BridgeRuntime'
+    New-Item -ItemType Directory -Force -Path $destination | Out-Null
+    Copy-Item $component.FullName (Join-Path $destination 'Win32Bridge.Runtime.dll') -Force
+    Write-Host 'Copied patched component into the UWP host package staging folder.'
 }
 Write-Host "Build outputs: $outputDir"
 Write-Host 'This compilation does not establish physical Xbox compatibility.'

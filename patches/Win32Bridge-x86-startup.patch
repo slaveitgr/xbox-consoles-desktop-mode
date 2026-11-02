@@ -1,0 +1,196 @@
+--- a/Win32Bridge/Bridge/GuestRuntime.h
++++ b/Win32Bridge/Bridge/GuestRuntime.h
+@@ -72,6 +72,10 @@
+         bool m_sharedWindowManager = false;
+         DWORD m_processId = 1;
+         DWORD m_mainThreadId = 0;
++        // PE32 uses a separate virtual-address interpreter. Never pass its
++        // image or IAT through the native x64 mapper and adapters.
++        bool m_interpretedPe32 = false;
++        std::vector<BYTE> m_pe32FileBytes;
+         bool m_ready = false;
+     };
+ 
+--- a/Win32Bridge/Bridge/GuestRuntime.cpp
++++ b/Win32Bridge/Bridge/GuestRuntime.cpp
+@@ -13,7 +13,11 @@
+ #include "Bridge/User32Shims.h"
+ #include "Bridge/Win32Shims.h"
+ 
++#include <Pe32Image.h>
++#include <Win32Probe32.h>
++
+ #include <atomic>
++#include <cstring>
+ #include <csetjmp>
+ #include <cwchar>
+ #include <fileapifromapp.h>
+@@ -25,6 +29,42 @@
+ 
+ namespace
+ {
++    // Only classify bounded DOS/COFF/optional-header fields here. The
++    // portable PE32 loader performs the complete validation before acceptance.
++    bool IsPe32Candidate(const BYTE* bytes, size_t size)
++    {
++        if (!bytes || size < 64 || bytes[0] != 'M' || bytes[1] != 'Z') return false;
++        DWORD ntOffset = 0;
++        std::memcpy(&ntOffset, bytes + 0x3c, sizeof(ntOffset));
++        if (ntOffset > size || size - ntOffset < 26) return false;
++        DWORD signature = 0;
++        WORD machine = 0;
++        WORD magic = 0;
++        std::memcpy(&signature, bytes + ntOffset, sizeof(signature));
++        std::memcpy(&machine, bytes + ntOffset + 4, sizeof(machine));
++        std::memcpy(&magic, bytes + ntOffset + 24, sizeof(magic));
++        return signature == IMAGE_NT_SIGNATURE && machine == IMAGE_FILE_MACHINE_I386 &&
++            magic == IMAGE_NT_OPTIONAL_HDR32_MAGIC;
++    }
++
++    std::wstring Pe32Text(const std::string& value)
++    {
++        std::wstring result;
++        result.reserve(value.size());
++        for (unsigned char character : value) result.push_back(static_cast<wchar_t>(character));
++        return result;
++    }
++
++    bool HasPe32HostAdapter(const xcdm::runtime::Pe32Import& symbol)
++    {
++        std::string library = symbol.library;
++        for (char& character : library)
++            if (character >= 'a' && character <= 'z') character -= 'a' - 'A';
++        return library == "KERNEL32.DLL" && !symbol.byOrdinal &&
++            (symbol.name == "SetLastError" || symbol.name == "GetLastError" ||
++             symbol.name == "OutputDebugStringA" || symbol.name == "ExitProcess");
++    }
++
+     constexpr DWORD GuestExitException = 0xE0424242u;
+     thread_local GuestRuntime* g_currentGuestRuntime = nullptr;
+     thread_local std::jmp_buf* g_guestExitTarget = nullptr;
+@@ -451,6 +491,8 @@
+ {
+     RuntimeDiagnostics::Record(L"PREPARE: inspecting main PE (" + std::to_wstring(fileSize) + L" bytes).");
+     m_ready = false;
++    m_interpretedPe32 = false;
++    m_pe32FileBytes.clear();
+     m_runtime.Release();
+     m_metadata = PeImageInfo{};
+     m_mapped = MappedPeImage{};
+@@ -459,6 +501,66 @@
+     m_modules.reset();
+     m_registry.reset();
+     m_resolver = resolver;
++
++    if (IsPe32Candidate(fileBytes, fileSize))
++    {
++        constexpr size_t maximumPe32FileBytes = 64U * 1024U * 1024U;
++        if (fileSize > maximumPe32FileBytes)
++        {
++            m_metadata.error = L"PE32 input exceeds the 64 MiB startup limit.";
++            SetError(error, m_metadata.error);
++            RuntimeDiagnostics::Record(L"PREPARE FAILED: " + m_metadata.error);
++            return false;
++        }
++        const auto loaded = xcdm::runtime::LoadPe32Image(
++            fileBytes, fileSize, xcdm::runtime::Pe32Profile::StartupTrace);
++        if (!loaded.ok)
++        {
++            m_metadata.error = L"PE32 validation failed: " + Pe32Text(loaded.message);
++            SetError(error, m_metadata.error);
++            RuntimeDiagnostics::Record(L"PREPARE FAILED: " + m_metadata.error);
++            return false;
++        }
++
++        m_metadata.machine = IMAGE_FILE_MACHINE_I386;
++        m_metadata.entryPointRva = loaded.image.entry - loaded.image.base;
++        for (const auto& symbol : loaded.image.imports)
++        {
++            ImportedSymbol imported;
++            imported.library = Pe32Text(symbol.library);
++            imported.name = Pe32Text(symbol.name);
++            imported.ordinal = symbol.ordinal;
++            imported.importedByOrdinal = symbol.byOrdinal;
++            imported.delayLoaded = symbol.delayed;
++            imported.iatRva = symbol.iatRva;
++            m_metadata.imports.push_back(std::move(imported));
++
++            ImportResolution resolution{};
++            if (HasPe32HostAdapter(symbol))
++            {
++                ++m_bindings.bound;
++                resolution.disposition = ImportDisposition::NeedsBridge;
++                resolution.note = L"Typed PE32 virtual import gate; no native pointer is written to its IAT.";
++            }
++            else
++            {
++                ++m_bindings.unresolved;
++                resolution.disposition = ImportDisposition::Unsupported;
++                resolution.note = L"PE32 stop gate: execution stops if this unimplemented API is called.";
++            }
++            m_bindings.resolutions.push_back(std::move(resolution));
++        }
++        m_pe32FileBytes.assign(fileBytes, fileBytes + fileSize);
++        m_metadata.valid = true;
++        m_interpretedPe32 = true;
++        m_ready = true;
++        RuntimeDiagnostics::Record(
++            L"PREPARE OK: PE32/i386 accepted for bounded integer startup; " +
++            std::to_wstring(m_bindings.bound) + L" typed host gates, " +
++            std::to_wstring(m_bindings.unresolved) + L" unsupported stop gates. "
++            L"No native PE32 execution, FPU/SSE or graphics support is implied.");
++        return true;
++    }
+ 
+     if (!PeImage::Inspect(fileBytes, fileSize, &m_metadata))
+     {
+@@ -515,6 +617,29 @@
+         RuntimeDiagnostics::Record(L"RUN FAILED: called before a successful prepare.");
+         return false;
+     }
++    if (m_interpretedPe32)
++    {
++        *exitCode = -1;
++        RuntimeDiagnostics::Record(
++            L"RUN: PE32/i386 bounded integer interpreter, 50,000 instructions/host gates. "
++            L"Unimplemented APIs stop; no host x64 import pointers are invoked.");
++        const auto result = xcdm::runtime::TraceWin32Startup32(
++            m_pe32FileBytes.data(), m_pe32FileBytes.size(), 50000);
++        RuntimeDiagnostics::Record(L"PE32 STARTUP REPORT:\n" + Pe32Text(result.report));
++        if (!result.passed)
++        {
++            SetError(error, result.summary.empty()
++                ? L"PE32 startup stopped without a successful guest exit; see Win32Bridge-runtime.log."
++                : Pe32Text(result.summary));
++            RuntimeDiagnostics::Record(L"RUN STOPPED: " + (error ? *error : Pe32Text(result.summary)));
++            return false;
++        }
++        *exitCode = 0;
++        RuntimeDiagnostics::Record(
++            L"RUN: interpreted PE32 reached guest ExitProcess(0). This does not establish game compatibility.");
++        return true;
++    }
++
+     if (m_mapped.entryPointRva == 0 ||
+         m_mapped.entryPointRva >= m_runtime.Size())
+     {
+--- a/Win32Bridge/RuntimeSession.cpp
++++ b/Win32Bridge/RuntimeSession.cpp
+@@ -253,12 +253,15 @@
+             if (resolution.disposition == ImportDisposition::Deferred) ++deferred;
+         }
+ 
+-        report += L"x64 PE accepted. " + std::to_wstring(image.imports.size()) +
++        const bool interpretedPe32 = image.machine == IMAGE_FILE_MACHINE_I386;
++        report += std::wstring(interpretedPe32 ? L"PE32/i386 startup accepted. " : L"x64 PE accepted. ") +
++            std::to_wstring(image.imports.size()) +
+             L" imports; IAT: " + std::to_wstring(binding.bound) + L" bound, " +
+             std::to_wstring(binding.unresolved) + L" unresolved. Catalog: " +
+             std::to_wstring(adapters) + L" adapter(s), " +
+             std::to_wstring(deferred) + L" pending.\n\n";
+-        report += L"PE32+ x64\nEntry point RVA (decimal): " +
++        report += std::wstring(interpretedPe32 ? L"PE32 i386 (integer interpreter)\n" : L"PE32+ x64\n") +
++            L"Entry point RVA (decimal): " +
+             std::to_wstring(image.entryPointRva) + L"\n\n";
+ 
+         for (size_t index = 0; index < image.imports.size(); ++index)

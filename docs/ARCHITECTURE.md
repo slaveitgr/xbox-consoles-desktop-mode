@@ -49,3 +49,10 @@ execution path separately from USB metadata and native x64 probes. Version 0.5
 adds a bounded USB-image entry-point trace with a virtual TEB/PEB, FS base,
 normal/delay-import gates and explicit stops at unknown APIs. FPU/MMX/SSE,
 game APIs and guest graphics are absent. See `X86_RUNTIME.md` for scope and tests.
+
+Version 0.6 integrates that path into a patched copy of the upstream bridge.
+Its private `GuestRuntime` chooses the interpreter for PE32 and the existing
+native mapper for PE32+. The diagnostics companion invokes the same packaged
+DLL through versioned C exports, without falling back to its own runtime copy.
+The desktop repack checks the original WinRT ABI before replacing the component
+in the existing shell; external Gecko compilation is still a separate task.

@@ -367,7 +367,11 @@ void StartupDelayImports() {
         RejectsStartup(bytes, "startup profile still rejects execution-affecting directory " + std::to_string(index));
     }
     bytes = DelayFixture(); Put32(bytes, Sections + 36, 0xe0000020U);
-    RejectsStartup(bytes, "startup profile still rejects writable/executable sections");
+    const auto writableCode = LoadStartup(bytes);
+    Check(writableCode.ok, "startup profile accepts interpreted writable/executable guest bytes");
+    Check(writableCode.ok && writableCode.image.sections.front().writable &&
+          writableCode.image.sections.front().executable,
+          "startup preserves guest permissions without native executable allocation");
     Check(!xcdm::runtime::LoadPe32Image(bytes.data(), bytes.size(), static_cast<xcdm::runtime::Pe32Profile>(99)).ok,
           "unrecognized profile cannot broaden loader behavior");
 }

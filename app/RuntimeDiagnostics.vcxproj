@@ -79,6 +79,7 @@
     <ClCompile Include="..\runtime\GamePreflight.cpp" />
     <ClCompile Include="..\runtime\Pe32Image.cpp" />
     <ClCompile Include="..\runtime\LowAddressProbe.cpp" />
+    <ClCompile Include="..\runtime\PackagedBridgeProbe.cpp" />
     <ClCompile Include="..\runtime\Win32Probe32.cpp" />
     <ClCompile Include="..\runtime\X86Execution.cpp" />
     <ClCompile Include="..\runtime\RuntimeProbe.cpp" />
@@ -88,6 +89,7 @@
     <ClInclude Include="..\runtime\GamePreflight.h" />
     <ClInclude Include="..\runtime\Pe32Image.h" />
     <ClInclude Include="..\runtime\LowAddressProbe.h" />
+    <ClInclude Include="..\runtime\PackagedBridgeProbe.h" />
     <ClInclude Include="..\runtime\Win32Probe32.h" />
     <ClInclude Include="..\runtime\X86Execution.h" />
     <ClInclude Include="..\samples\X86Win32Fixture.h" />
@@ -107,7 +109,8 @@
     <ClCompile Include="..\third_party\libx86emu\ops.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
     <ClCompile Include="..\third_party\libx86emu\ops2.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
     <ClCompile Include="..\third_party\libx86emu\prim_ops.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
-    <Content Include="..\third_party\libx86emu\LICENSE"><Link>ThirdParty\libx86emu-LICENSE.txt</Link><DeploymentContent>true</DeploymentContent></Content>
+    <Content Include="ThirdParty\libx86emu-LICENSE.txt"><DeploymentContent>true</DeploymentContent><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
+    <Content Include="BridgeRuntime\Win32Bridge.Runtime.dll"><DeploymentContent>true</DeploymentContent><CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory></Content>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

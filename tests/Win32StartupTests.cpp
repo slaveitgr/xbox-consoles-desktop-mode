@@ -41,6 +41,11 @@ int main() {
     const auto original = xcdm::samples::X86Win32PeBytes();
     const auto valid = Trace(original);
     Check(valid.passed && Has(valid.report, "Guest exit code: 0"), "known fixture also executes through startup profile");
+    auto virtualWx = original;
+    Put32(virtualWx, 0x178 + 36, 0xe0000020);
+    Check(Trace(virtualWx).passed, "guest W+X flags are accepted only as interpreted byte data");
+    Check(!xcdm::runtime::ExecuteWin32IntegerImage(virtualWx.data(), virtualWx.size()).passed,
+          "strict fixture mapping still rejects guest W+X flags");
     Check(Has(valid.report, "bounded supplied-image startup trace"), "trace identifies supplied-image scope");
     auto unknown = original;
     unknown[0x4b2] = 'X'; // GetLastError -> XetLastError, first unsupported call reached.

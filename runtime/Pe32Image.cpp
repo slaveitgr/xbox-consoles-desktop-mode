@@ -214,8 +214,14 @@ Pe32Image Map(const std::uint8_t* data, std::size_t size, Pe32Profile profile) {
         if (rawSize && ((rawAt & 511) || (rawSize & 511) || rawAt < image.headerSize || !Range(rawAt, rawSize, size)))
             Fail("Invalid PE32 section raw range.");
         Pe32Section section{rva, span, (flags & 0x40000000) != 0, (flags & 0x80000000) != 0, (flags & 0x20000000) != 0};
-        if (!section.readable || (section.writable && section.executable))
-            Fail("Guest sections require read access and cannot be writable and executable together.");
+        if (!section.readable)
+            Fail("Guest section does not declare read access.");
+        // Interpreter sections are ordinary host byte vectors. A guest W+X
+        // flag never creates executable/writable host memory. Keep the stricter
+        // fixture profile while allowing a real PE's self-modifying byte data
+        // in the bounded interpreter; the native x64 path remains W^X.
+        if (section.writable && section.executable && profile == Pe32Profile::Fixture)
+            Fail("The strict fixture profile rejects writable/executable guest sections.");
         for (std::size_t i = 0; i < image.sections.size(); ++i) {
             const auto& other = image.sections[i];
             if (static_cast<std::uint64_t>(rva) < static_cast<std::uint64_t>(other.rva) + other.size &&

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(XboxDesktopModeResearch VERSION 0.5.0 LANGUAGES C CXX)
+project(XboxDesktopModeResearch VERSION 0.6.0 LANGUAGES C CXX)
 
 include(CTest)
 option(XCDM_SANITIZERS "Enable address/undefined sanitizers for portable host tests" OFF)
@@ -18,6 +18,7 @@ add_library(xcdm_runtime STATIC
     runtime/GamePreflight.cpp
     runtime/Pe32Image.cpp
     runtime/LowAddressProbe.cpp
+    runtime/PackagedBridgeProbe.cpp
     runtime/Win32Probe32.cpp
     runtime/X86Execution.cpp
     runtime/RuntimeProbe.cpp

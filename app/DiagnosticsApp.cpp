@@ -35,6 +35,7 @@
 #include "runtime/RuntimeProbe.h"
 #include "runtime/GamePreflight.h"
 #include "runtime/Win32Probe32.h"
+#include "runtime/PackagedBridgeProbe.h"
 
 #include <algorithm>
 #include <array>
@@ -785,7 +786,7 @@ private:
                         std::vector<std::uint8_t> bytes(wanted);
                         reader.ReadBytes(bytes);
                         runnerInvoked = true;
-                        result = xcdm::runtime::TraceWin32Startup32(bytes.data(), bytes.size(), 50000);
+                        result = xcdm::runtime::TraceBridgeStartup32(bytes.data(), bytes.size(), 50000);
                         try {
                             const auto algorithm = Windows::Security::Cryptography::Core::HashAlgorithmProvider::OpenAlgorithm(
                                 Windows::Security::Cryptography::Core::HashAlgorithmNames::Sha256());
@@ -862,7 +863,7 @@ private:
         xcdm::runtime::Win32Probe32Result result;
         try {
             co_await resume_background();
-            result = xcdm::runtime::RunWin32Probe32();
+            result = xcdm::runtime::RunBridgeWin32Probe32();
         } catch (...) {
             result.passed = false;
             result.summary = "The x86 execution test could not complete.";

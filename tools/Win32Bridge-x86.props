@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup><XcdmRoot>$(MSBuildThisFileDirectory)..\</XcdmRoot></PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <AdditionalIncludeDirectories>$(XcdmRoot);$(XcdmRoot)runtime;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>NOMINMAX;WIN32_LEAN_AND_MEAN;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="$(XcdmRoot)bridge\BridgeProbeExports.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)runtime\Pe32Image.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)runtime\Win32Probe32.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)runtime\X86Execution.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)runtime\LowAddressProbe.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)samples\X86Win32Fixture.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)third_party\libx86emu\api.c"><CompileAsWinRT>false</CompileAsWinRT><CompileAs>CompileAsC</CompileAs><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)third_party\libx86emu\decode.c"><CompileAsWinRT>false</CompileAsWinRT><CompileAs>CompileAsC</CompileAs><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)third_party\libx86emu\mem.c"><CompileAsWinRT>false</CompileAsWinRT><CompileAs>CompileAsC</CompileAs><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)third_party\libx86emu\ops.c"><CompileAsWinRT>false</CompileAsWinRT><CompileAs>CompileAsC</CompileAs><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)third_party\libx86emu\ops2.c"><CompileAsWinRT>false</CompileAsWinRT><CompileAs>CompileAsC</CompileAs><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)third_party\libx86emu\prim_ops.c"><CompileAsWinRT>false</CompileAsWinRT><CompileAs>CompileAsC</CompileAs><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+  </ItemGroup>
+</Project>
