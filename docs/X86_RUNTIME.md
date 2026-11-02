@@ -43,6 +43,9 @@ shows a separate execution result alongside USB metadata.
   fixture profile also rejects writable/executable guest sections and delay
   imports. Startup accepts guest W+X sections as interpreted byte data and
   bounded RVA/VA delay-import descriptors; it never creates host RWX memory.
+  Version 0.7 permits loader-only IAT initialization in readable guest sections,
+  without granting guest stores write access. The strict fixture profile still
+  requires writable IAT slots. Diagnostics identify failing lookup/IAT RVAs.
   This is a limited loader profile, without dependency loading or DLL initialization.
 - Guest memory is not cast to native pointers. The guest image, read-only
   sections, executable sections and non-executable stack are checked separately.

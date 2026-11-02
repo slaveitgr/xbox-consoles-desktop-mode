@@ -2,13 +2,19 @@
 
 #include <algorithm>
 #include <cstring>
+#include <sstream>
 #include <utility>
 
 namespace xcdm::runtime {
 namespace {
 constexpr std::size_t MaxImage = 64U * 1024U * 1024U;
-struct Invalid { const char* text; };
-[[noreturn]] void Fail(const char* text) { throw Invalid{text}; }
+struct Invalid { std::string text; };
+[[noreturn]] void Fail(std::string text) { throw Invalid{std::move(text)}; }
+std::string HexRva(std::uint64_t value) {
+    std::ostringstream text;
+    text << "0x" << std::hex << value;
+    return text.str();
+}
 bool Range(std::size_t at, std::size_t length, std::size_t total) {
     return at <= total && length <= total - at;
 }
@@ -41,7 +47,8 @@ std::string Name(const Pe32Image& image, std::uint32_t rva) {
     for (std::uint32_t n = 0; n < 512; ++n) {
         const auto at = static_cast<std::uint64_t>(rva) + n;
         if (at > UINT32_MAX || !InSection(image, static_cast<std::uint32_t>(at), 1))
-            Fail("Import string is outside a readable guest section.");
+            Fail("PE32 import string byte RVA " + HexRva(at) + " (start " + HexRva(rva) +
+                 ") is outside a readable guest section.");
         const auto c = image.bytes[static_cast<std::size_t>(at)];
         if (!c) { if (name.empty()) Fail("Empty PE32 import name."); return name; }
         if (c < 0x20 || c > 0x7e) Fail("Import name is not bounded printable ASCII.");
@@ -52,8 +59,9 @@ std::string Name(const Pe32Image& image, std::uint32_t rva) {
 
 class ImportCollector {
 public:
-    explicit ImportCollector(Pe32Image& image)
-        : image_(image), mapped_(image.bytes.data(), image.bytes.size()) {}
+    ImportCollector(Pe32Image& image, Pe32Profile profile)
+        : image_(image), mapped_(image.bytes.data(), image.bytes.size()),
+          requireWritableIat_(profile == Pe32Profile::Fixture) {}
 
     void Collect(std::uint32_t rva, std::uint32_t size, bool delayed) {
         if (!rva) return;
@@ -94,11 +102,13 @@ public:
                 // declared pointer covers its bounded table in guest memory.
                 const auto module = AddressRva(mapped_.U32(at + 8), legacyVa);
                 if (module && !InSection(image_, module, 4, true))
-                    Fail("PE32 delay-import module handle is outside writable guest memory.");
+                    Fail("PE32 delay-import module handle RVA " + HexRva(module) +
+                         " requires a readable/writable 4-byte guest section range.");
                 for (const auto field : {20U, 24U}) {
                     const auto table = AddressRva(mapped_.U32(at + field), legacyVa);
                     if (table && !InSection(image_, table, tableSize))
-                        Fail("PE32 delay-import ancillary table leaves readable guest memory.");
+                        Fail("PE32 delay-import ancillary table RVA " + HexRva(table) +
+                             " does not cover its table and terminator in readable guest memory.");
                 }
             }
         }
@@ -120,10 +130,19 @@ private:
         for (std::uint32_t t = 0; t <= 8192; ++t) {
             const auto source = static_cast<std::uint64_t>(lookup) + t * 4ULL;
             const auto target = static_cast<std::uint64_t>(iat) + t * 4ULL;
-            if (source > UINT32_MAX || target > UINT32_MAX ||
-                !InSection(image_, static_cast<std::uint32_t>(source), 4) ||
-                !InSection(image_, static_cast<std::uint32_t>(target), 4, true))
-                Fail("PE32 lookup or IAT leaves its guest section.");
+            const auto locations = [source, target] {
+                return "lookup source RVA " + HexRva(source) + ", IAT target RVA " + HexRva(target);
+            };
+            if (source > UINT32_MAX || !InSection(image_, static_cast<std::uint32_t>(source), 4))
+                Fail("PE32 " + locations() + ": lookup requires a readable 4-byte guest section range.");
+            if (target > UINT32_MAX || !InSection(image_, static_cast<std::uint32_t>(target), 4))
+                Fail("PE32 " + locations() + ": IAT target requires a readable 4-byte guest section range.");
+            // A loader may initialize imports before the guest starts even
+            // when the PE declares the IAT read-only. StartupTrace only owns
+            // byte-vector data; accepting these slots never changes guest
+            // store permissions or grants native executable memory access.
+            if (requireWritableIat_ && !InSection(image_, static_cast<std::uint32_t>(target), 4, true))
+                Fail("PE32 " + locations() + ": IAT target requires writable guest memory in the strict fixture profile.");
             const auto value = mapped_.U32(static_cast<std::size_t>(source));
             const auto target32 = static_cast<std::uint32_t>(target);
             for (const auto previous : boundIats_)
@@ -140,7 +159,8 @@ private:
             } else {
                 const auto nameRva = AddressRva(value, legacyVa);
                 if (!InSection(image_, nameRva, 2) || nameRva > UINT32_MAX - 2)
-                    Fail("Invalid PE32 import-by-name hint.");
+                    Fail("PE32 import-by-name hint RVA " + HexRva(nameRva) +
+                         " requires a readable 2-byte guest section range (" + locations() + ").");
                 imported.name = Name(image_, nameRva + 2);
             }
             image_.imports.push_back(std::move(imported));
@@ -150,6 +170,7 @@ private:
 
     Pe32Image& image_;
     Reader mapped_;
+    bool requireWritableIat_;
     std::size_t libraries_ = 0;
     std::vector<std::uint32_t> boundIats_;
 };
@@ -247,7 +268,7 @@ Pe32Image Map(const std::uint8_t* data, std::size_t size, Pe32Profile profile) {
         static_cast<std::uint64_t>(importRva) < static_cast<std::uint64_t>(delayRva) + delaySize &&
         static_cast<std::uint64_t>(delayRva) < static_cast<std::uint64_t>(importRva) + importSize)
         Fail("Normal and delay-import descriptor directories overlap.");
-    ImportCollector imports(image);
+    ImportCollector imports(image, profile);
     imports.Collect(importRva, importSize, false);
     imports.Collect(delayRva, delaySize, true);
     return image;

@@ -351,7 +351,10 @@ void StartupDelayImports() {
     bytes = DelayFixture(); Put32(bytes, ImportFile + 0x108, 0x3000);
     RejectsStartup(bytes, "delay module handle pointer is not writable");
     bytes = DelayFixture(); Put32(bytes, ImportFile + 0x10c, 0x3000);
-    RejectsStartup(bytes, "delay IAT is not writable");
+    const auto readOnlyDelay = LoadStartup(bytes);
+    Check(readOnlyDelay.ok && readOnlyDelay.image.imports[4].iatRva == 0x3000 &&
+          !readOnlyDelay.image.sections[2].writable,
+          "startup permits loader initialization of a readable delay IAT without broadening its runtime permissions");
     for (std::uint32_t iat : {0x2060U, 0x2061U, 0x2070U}) {
         bytes = DelayFixture(); Put32(bytes, ImportFile + 0x10c, iat);
         RejectsStartup(bytes, "delay IAT overlaps normal slot, partial slot or terminator " + std::to_string(iat));
@@ -374,6 +377,64 @@ void StartupDelayImports() {
           "startup preserves guest permissions without native executable allocation");
     Check(!xcdm::runtime::LoadPe32Image(bytes.data(), bytes.size(), static_cast<xcdm::runtime::Pe32Profile>(99)).ok,
           "unrecognized profile cannot broaden loader behavior");
+}
+
+void ReadOnlyStartupIats() {
+    auto readOnly = Fixture();
+    Put32(readOnly, Sections + 40 + 36, 0x40000040); // .idata readable, no guest writes.
+    const auto strict = Load(readOnly);
+    Check(!strict.ok && Has(strict.message, "lookup source RVA 0x2040") &&
+          Has(strict.message, "IAT target RVA 0x2060") && Has(strict.message, "requires writable"),
+          "strict fixture retains writable-IAT requirement with exact source/target diagnostics");
+    const auto startup = LoadStartup(readOnly);
+    Check(startup.ok && startup.image.imports.size() == 4 && !startup.image.sections[1].writable,
+          "startup accepts an IAT in a read-only guest section and preserves read-only metadata");
+    if (startup.ok) {
+        Check(std::equal(readOnly.begin() + ImportFile + 0x60, readOnly.begin() + ImportFile + 0x74,
+                         startup.image.bytes.begin() + 0x2060),
+              "loader inspection preserves original read-only IAT bytes and terminator");
+    }
+    const auto executed = xcdm::runtime::TraceWin32Startup32(readOnly.data(), readOnly.size());
+    Check(executed.passed && Has(executed.report, "x86 Win32 host calls passed"),
+          "loader-owned gate initialization lets the real four-call fixture execute with a read-only IAT");
+
+    auto fallback = readOnly;
+    Put32(fallback, ImportFile, 0); // OriginalFirstThunk absent: read the IAT itself.
+    Check(LoadStartup(fallback).ok &&
+          xcdm::runtime::TraceWin32Startup32(fallback.data(), fallback.size()).passed,
+          "read-only IAT can also supply bounded lookup entries before initial binding");
+
+    Bytes code{0xc7, 0x05};
+    Append32(code, Base + 0x2060); Append32(code, 42); AppendExit(code);
+    auto write = Program(code);
+    Check(xcdm::runtime::TraceWin32Startup32(write.data(), write.size()).passed,
+          "positive writable-IAT control executes the same guest MOV instruction");
+    Put32(write, Sections + 40 + 36, 0x40000040);
+    const auto refused = xcdm::runtime::TraceWin32Startup32(write.data(), write.size());
+    Check(!refused.passed && Has(refused.report, "Guest data memory access was refused"),
+          "guest stores still fault on the read-only IAT after privileged initial gate binding");
+
+    auto invalid = readOnly;
+    Put32(invalid, ImportFile, 0x2200);
+    const auto badSource = LoadStartup(invalid);
+    Check(!badSource.ok && badSource.image.bytes.empty() && Has(badSource.message, "lookup source RVA 0x2200") &&
+          Has(badSource.message, "IAT target RVA 0x2060") && Has(badSource.message, "lookup requires a readable"),
+          "unmapped lookup diagnostic identifies the source, target and failed read requirement");
+    invalid = readOnly; Put32(invalid, ImportFile + 16, 0x21fe);
+    const auto badTarget = LoadStartup(invalid);
+    Check(!badTarget.ok && badTarget.image.bytes.empty() && Has(badTarget.message, "lookup source RVA 0x2040") &&
+          Has(badTarget.message, "IAT target RVA 0x21fe") && Has(badTarget.message, "IAT target requires a readable"),
+          "read-only startup allowance cannot cross the IAT section boundary");
+    invalid = readOnly; Put32(invalid, ImportFile + 16, 0x21f0);
+    const auto badTerminator = LoadStartup(invalid);
+    Check(!badTerminator.ok && Has(badTerminator.message, "lookup source RVA 0x2050") &&
+          Has(badTerminator.message, "IAT target RVA 0x2200"),
+          "read-only IAT terminator must remain inside its declared readable section");
+    invalid = readOnly; Put32(invalid, ImportFile + 16, 0xfffffffcU);
+    const auto highTarget = LoadStartup(invalid);
+    Check(!highTarget.ok && Has(highTarget.message, "IAT target RVA 0xfffffffc") &&
+          Has(highTarget.message, "IAT target requires a readable"),
+          "oversized IAT RVA is diagnosed before guest byte access");
 }
 
 void SharedStartupLimits() {
@@ -472,6 +533,7 @@ int main() {
     ImportBoundaries();
     SuccessfulAndFailedCalls();
     StartupDelayImports();
+    ReadOnlyStartupIats();
     SharedStartupLimits();
     RuntimeMemoryPermissions();
     std::cout << checks << " PE32 loader and Win32 execution checks; " << failures << " failures\n";

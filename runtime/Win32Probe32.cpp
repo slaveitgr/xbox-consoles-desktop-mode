@@ -196,8 +196,17 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
                 (imported.byOrdinal ? "#" + std::to_string(imported.ordinal) : imported.name) << '\n';
             return {false, "Unsupported PE32 import; guest execution was not started.", report.str()};
         }
-        if (!guest.Write32(guest.image.base + imported.iatRva, GateBase + static_cast<std::uint32_t>(i * 16)))
-            return {false, "PE32 IAT could not be bound in guest memory.", report.str()};
+        // Loader initialization is distinct from a guest instruction writing
+        // memory. Windows images may place the IAT in a read-only section.
+        // The loader already validated the entire slot; recheck vector bounds
+        // here and initialize only those four bytes without changing guest
+        // section permissions or making any host memory executable.
+        if (!Range(imported.iatRva, 4, guest.image.bytes.size()))
+            return {false, "PE32 loader IAT slot is outside the guest image at RVA " +
+                Hex(imported.iatRva) + ".", report.str()};
+        const auto gate = GateBase + static_cast<std::uint32_t>(i * 16);
+        for (unsigned byte = 0; byte < 4; ++byte)
+            guest.image.bytes[imported.iatRva + byte] = static_cast<std::uint8_t>(gate >> (byte * 8));
     }
     X86ExecutionConfig config;
     config.initial.eip = guest.image.entry;

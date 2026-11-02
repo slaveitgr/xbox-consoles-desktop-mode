@@ -44,7 +44,8 @@ struct Pe32LoadResult {
 // Maps a bounded PE32/i386 image into a guest byte vector, never native
 // executable memory. Both profiles reject DLLs, TLS, relocations and CLR.
 // Fixture rejects delay imports and writable/executable guest sections.
-// StartupTrace retains guest W+X flags only on interpreted host byte data and
+// StartupTrace permits initial binding into readable IAT sections, preserving
+// guest write permissions. It retains W+X flags only on interpreted byte data and
 // collects bounded normal and delay imports, retaining original IAT bytes.
 // Imports are not resolved to host pointers. This is not a general NT loader:
 // dependencies are not loaded and DLL initialization is not performed.
