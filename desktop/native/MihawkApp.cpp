@@ -935,14 +935,14 @@ task<void> WindowChromeSmoke(const std::shared_ptr<State>& state) {
     state->hostedWindow->ToggleFullscreen(); auto restoredMax=record(L"leave-fullscreen");
     state->hostedWindow->ToggleMaximize(); auto restoredNormal=record(L"restore-windowed");
     const auto bounds=Window::Current->Bounds;
-    const auto near=[](double a,double b) { return std::abs(a-b)<2; };
+    const auto dimensionsMatch=[](double a,double b) { return std::abs(a-b)<2; };
     const bool passed=normal->GetNamedNumber(L"width")<bounds.Width &&
-        near(maximum->GetNamedNumber(L"width"),bounds.Width) && near(maximum->GetNamedNumber(L"height"),bounds.Height-48) &&
-        near(full->GetNamedNumber(L"width"),bounds.Width) && near(full->GetNamedNumber(L"height"),bounds.Height) &&
+        dimensionsMatch(maximum->GetNamedNumber(L"width"),bounds.Width) && dimensionsMatch(maximum->GetNamedNumber(L"height"),bounds.Height-48) &&
+        dimensionsMatch(full->GetNamedNumber(L"width"),bounds.Width) && dimensionsMatch(full->GetNamedNumber(L"height"),bounds.Height) &&
         minimized->GetNamedBoolean(L"minimized") && !minimized->GetNamedBoolean(L"visible") && !minimized->GetNamedBoolean(L"inputActive") &&
         restoredFull->GetNamedString(L"mode")==L"fullscreen" && restoredMax->GetNamedString(L"mode")==L"maximized" &&
-        near(restoredNormal->GetNamedNumber(L"width"),normal->GetNamedNumber(L"width")) &&
-        near(restoredNormal->GetNamedNumber(L"height"),normal->GetNamedNumber(L"height"));
+        dimensionsMatch(restoredNormal->GetNamedNumber(L"width"),normal->GetNamedNumber(L"width")) &&
+        dimensionsMatch(restoredNormal->GetNamedNumber(L"height"),normal->GetNamedNumber(L"height"));
     Bool(report,L"passed",passed); report->SetNamedValue(L"snapshots",snapshots);
     return SmokeRecord(L"xwindows-window-smoke.json",report);
 }
