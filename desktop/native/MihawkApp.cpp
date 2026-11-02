@@ -81,9 +81,17 @@ struct Game {
 struct State {
     Grid^ root = nullptr;
     ShellView^ shell = nullptr;
+    CoreWebView2^ shellCore = nullptr;
+    bool lastEventSenderNull = false;
     Grid^ overlay = nullptr;
     Grid^ surface = nullptr;
     std::shared_ptr<MihawkModern::Browser> modernBrowser;
+    std::shared_ptr<MihawkModern::Browser> wineBrowser;
+    JsonObject^ wineViewResult = nullptr;
+    bool winePending = false, wineModeDesktop = false;
+    task<JsonObject^> wineLaunch = task_from_result<JsonObject^>(nullptr);
+    DispatcherTimer^ wineCaptureTimer = nullptr;
+    EventRegistrationToken wineCaptureTick{};
     std::shared_ptr<MihawkLan::Server> lan = std::make_shared<MihawkLan::Server>();
     TextBlock^ overlayTitle = nullptr;
     TextBlock^ fallback = nullptr;
@@ -125,6 +133,7 @@ task<void> Status(const std::shared_ptr<State>& state) {
     Text(status, L"lastNotifyUri", state->lastNotifyUri);
     Number(status, L"notifyCount", state->notifyCount);
     Number(status, L"rejectedNotifyCount", state->rejectedNotifyCount);
+    Bool(status, L"lastEventSenderNull", state->lastEventSenderNull);
     Text(status, L"shellProbe", state->shellProbe);
     Text(status, L"shellProbeError", state->shellProbeError);
     Text(status, L"shellEngine", L"WebView2 Edge/Chromium");
@@ -149,12 +158,12 @@ void Observe(task<void> operation) {
     operation.then([](task<void> done) { try { done.get(); } catch (...) { } });
 }
 void ProbeShell(const std::shared_ptr<State>& state) {
-    if (!state->shell || !Trusted(state->shell->Source) || !state->shell->CoreWebView2) return;
+    if (!state->shell || !Trusted(state->shell->Source) || !state->shellCore) return;
     // Fixed read-only diagnostic in our exact local virtual-host page. No
     // request strings, filenames or remote browser pages are evaluated.
     try {
         String^ script = L"({href:location.href,userAgent:navigator.userAgent,readyState:document.readyState,nativeReply:typeof window.MihawkNativeReply,transport:typeof window.chrome.webview.postMessage,icons:document.querySelectorAll('.desktop-icon').length,body:(document.body?document.body.innerText:'').slice(0,300),viewportWidth:innerWidth,viewportHeight:innerHeight,devicePixelRatio:devicePixelRatio})";
-        create_task(state->shell->CoreWebView2->ExecuteScriptAsync(script)).then([state](task<String^> result) {
+        create_task(state->shellCore->ExecuteScriptAsync(script)).then([state](task<String^> result) {
             try { state->shellProbe = result.get(); state->shellProbeError = L""; }
             catch (Exception^ error) { state->shellProbeError = error->Message; }
             catch (...) { state->shellProbeError = L"The read-only shell probe failed."; }
@@ -400,7 +409,15 @@ task<IBuffer^> CoverPreview(StorageFile^ file) {
         }, Ui());
     }, Ui());
 }
+void CancelWineCapture(const std::shared_ptr<State>& state) {
+    if (!state->wineCaptureTimer) return;
+    state->wineCaptureTimer->Stop();
+    state->wineCaptureTimer->Tick -= state->wineCaptureTick;
+    state->wineCaptureTimer = nullptr;
+}
 void CloseOverlay(const std::shared_ptr<State>& state) {
+    CancelWineCapture(state);
+    state->wineBrowser.reset(); state->wineViewResult = nullptr;
     if (state->session) {
         state->session->SetInputEnabled(false);
         state->session->Close();
@@ -446,6 +463,61 @@ task<JsonObject^> RunFile(const std::shared_ptr<State>& state, StorageFile^ file
         return result;
     }, Ui());
 }
+// This optional runtime is privately supplied to one fixed app-owned folder.
+// Presence checks are not content authentication or proof of Wine execution.
+constexpr wchar_t WineDesktopUrl[] = L"https://wine.local/boxedwine.html?root=wine-explorer.zip&p=explorer.exe&args=%2Fdesktop%3Dshell%2C1920x1080&resolution=1920x1080&auto=true&sound=false&storage=indexeddb&wine-override=nomono&embed=true";
+constexpr wchar_t WineExplorerUrl[] = L"https://wine.local/boxedwine.html?root=wine-explorer.zip&p=explorer.exe&args=%2Fe%2CC%3A%5C&resolution=1280x720&auto=true&sound=false&storage=indexeddb&wine-override=nomono";
+struct WinePayload {
+    StorageFolder^ folder = nullptr;
+    JsonObject^ status = ref new JsonObject();
+    JsonArray^ missing = ref new JsonArray();
+    bool installed = false;
+};
+task<std::shared_ptr<WinePayload>> CheckWinePayload() {
+    auto check = std::make_shared<WinePayload>();
+    Text(check->status, L"engine", L"BoxedWine single-threaded WASM interpreter");
+    Bool(check->status, L"contentsVerified", false);
+    Bool(check->status, L"wineExecutionVerified", false);
+    return create_task(ApplicationData::Current->LocalFolder->GetFolderAsync(L"WineRuntime"))
+        .then([check](task<StorageFolder^> obtained) -> task<void> {
+            try { check->folder = obtained.get(); }
+            catch (...) { check->missing->Append(JsonValue::CreateStringValue(L"WineRuntime")); return task_from_result(); }
+            static const wchar_t* files[] = {L"boxedwine.html", L"boxedwine.js", L"boxedwine.wasm", L"boxedwine.css",
+                L"boxedwine-shell.js", L"xbox-shell.js", L"fsfs.js", L"wine-explorer.zip", L"build-info.json", L"pins.json", L"SOURCE-NOTICE.md"};
+            task<void> pending = task_from_result();
+            for (const auto filename : files) {
+                auto name = ref new String(filename);
+                pending = pending.then([check, name] {
+                    return create_task(check->folder->TryGetItemAsync(name)).then([check, name](IStorageItem^ item) -> task<void> {
+                        auto file = dynamic_cast<StorageFile^>(item);
+                        if (!file) { check->missing->Append(JsonValue::CreateStringValue(name)); return task_from_result(); }
+                        return create_task(file->GetBasicPropertiesAsync()).then([check, name](Windows::Storage::FileProperties::BasicProperties^ info) {
+                            if (!info->Size || info->Size > 256ULL * 1024ULL * 1024ULL)
+                                check->missing->Append(JsonValue::CreateStringValue(name));
+                        }, Ui());
+                    }, Ui());
+                }, Ui());
+            }
+            return pending.then([check] {
+                return create_task(check->folder->TryGetItemAsync(L"licenses")).then([check](IStorageItem^ item) {
+                    if (!dynamic_cast<StorageFolder^>(item)) check->missing->Append(JsonValue::CreateStringValue(L"licenses"));
+                }, Ui());
+            }, Ui());
+        }, Ui()).then([check](task<void> checked) {
+            try { checked.get(); }
+            catch (Exception^ error) { Text(check->status, L"error", error->Message); check->missing->Append(JsonValue::CreateStringValue(L"payload could not be read")); }
+            catch (...) { check->missing->Append(JsonValue::CreateStringValue(L"payload could not be read")); }
+            check->installed = check->folder && check->missing->Size == 0;
+            Bool(check->status, L"installed", check->installed);
+            Text(check->status, L"status", check->installed ? L"files-present" : L"missing-payload");
+            Text(check->status, L"message", check->installed
+                ? L"Wine runtime files are present. Opening the view does not confirm Wine has finished starting."
+                : L"Install the private, source-built BoxedWine and Wine payload in this app's LocalState/WineRuntime folder, including its licenses. Xbox Tools remains available.");
+            check->status->SetNamedValue(L"missing", check->missing);
+            return check;
+        }, Ui());
+}
+task<void> SmokeRecord(String^ filename, JsonObject^ result);
 void NativeSmoke(const std::shared_ptr<State>& state);
 task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, JsonObject^ parameters) {
     const auto name = Wide(method);
@@ -627,6 +699,44 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
             return Entry(state, Str(state->usbId));
         }, Ui());
     }
+    if (name == L"wineStatus") {
+        return CheckWinePayload().then([](const std::shared_ptr<WinePayload>& check) { return check->status; }, Ui());
+    }
+    if (name == L"wineExplorer" || name == L"wineDesktop") {
+        const bool desktop = name == L"wineDesktop";
+        if (state->winePending) {
+            if (state->wineModeDesktop != desktop) Fail(L"A Wine view is already being initialized. Try again shortly.");
+            return state->wineLaunch;
+        }
+        if (state->wineViewResult && state->wineBrowser && state->modernBrowser == state->wineBrowser && state->wineModeDesktop == desktop) {
+            state->overlay->Visibility = Visibility::Visible;
+            return task_from_result(state->wineViewResult);
+        }
+        state->wineModeDesktop = desktop;
+        state->winePending = true;
+        auto opening = CheckWinePayload().then([state, desktop](const std::shared_ptr<WinePayload>& check) -> task<JsonObject^> {
+            if (!check->installed) Fail(L"The private Wine runtime payload is missing or incomplete. Install it in this app's WineRuntime folder first.");
+            OpenOverlay(state, desktop ? L"Initializing Wine desktop view" : L"Initializing Wine Explorer view", true);
+            auto browser = std::make_shared<MihawkModern::Browser>(); state->modernBrowser = browser;
+            browser->SetLocalFolder(L"wine.local", check->folder->Path);
+            return browser->OpenAsync(state->surface, ref new Uri(ref new String(desktop ? WineDesktopUrl : WineExplorerUrl)), state->overlayTitle)
+                .then([state, desktop, browser](JsonObject^ result) {
+                    if (state->modernBrowser != browser) throw ref new OperationCanceledException(L"The Wine view was replaced during initialization.");
+                    state->overlayTitle->Text = desktop ? L"Wine Desktop / BoxedWine" : L"Wine Explorer / BoxedWine";
+                    Text(result, L"mode", desktop ? L"desktop" : L"explorer");
+                    Text(result, L"status", L"view-initialized");
+                    Text(result, L"runtime", L"BoxedWine single-threaded WASM interpreter");
+                    Bool(result, L"wineExecutionVerified", false);
+                    state->wineBrowser = browser; state->wineViewResult = result;
+                    return SmokeRecord(L"mihawk-wine-view-status.json", result).then([result] { return result; }, Ui());
+                }, Ui());
+        }, Ui());
+        state->wineLaunch = opening.then([state](task<JsonObject^> completed) {
+            state->winePending = false;
+            return completed.get();
+        }, Ui());
+        return state->wineLaunch;
+    }
     if (name == L"lanStart") {
         return state->initialized.then([state](task<void> initialized) {
             initialized.get(); return state->lan->StartAsync(Folder(Find(state, L"workspace")));
@@ -651,11 +761,49 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
     Fail(L"This native method is not implemented.");
 }
 task<void> SmokeRecord(String^ filename, JsonObject^ result) {
-    // Pairing data stays in the app's private LocalState and is emitted only
-    // for an explicitly requested native smoke, never ordinary diagnostics.
+    // Operation results stay in private LocalState. LAN pairing data is emitted
+    // only for an explicitly requested native smoke, never ordinary diagnostics.
     auto buffer = CryptographicBuffer::ConvertStringToBinary(result->Stringify(), BinaryStringEncoding::Utf8);
     return create_task(ApplicationData::Current->LocalFolder->CreateFileAsync(filename, CreationCollisionOption::OpenIfExists))
         .then([buffer](StorageFile^ file) { return WriteBuffer(file, buffer); }, Ui());
+}
+void ScheduleWineCapture(const std::shared_ptr<State>& state, const std::shared_ptr<MihawkModern::Browser>& browser, double delay) {
+    if (!browser || state->modernBrowser != browser || state->wineBrowser != browser)
+        Fail(L"A Wine view must be initialized before its diagnostic capture.");
+    CancelWineCapture(state);
+    auto timer = ref new DispatcherTimer(); state->wineCaptureTimer = timer;
+    TimeSpan interval; interval.Duration = static_cast<long long>(delay * 10000000.0); timer->Interval = interval;
+    state->wineCaptureTick = timer->Tick += ref new EventHandler<Object^>([state, browser](Object^, Object^) {
+        CancelWineCapture(state);
+        auto report = ref new JsonObject(); Bool(report, L"wineExecutionVerified", false);
+        task<void> capture = task_from_result();
+        try {
+            if (state->modernBrowser != browser || state->wineBrowser != browser)
+                throw ref new OperationCanceledException(L"The Wine view was closed or replaced before capture.");
+            capture = browser->ProbeAsync().then([state, browser, report](String^ json) -> task<void> {
+                auto probe = JsonObject::Parse(json); report->SetNamedValue(L"probe", probe);
+                const auto url = Wide(probe->GetNamedString(L"url"));
+                if (state->modernBrowser != browser || state->wineBrowser != browser || (url != WineDesktopUrl && url != WineExplorerUrl))
+                    throw ref new OperationCanceledException(L"The active page is no longer the expected Wine view.");
+                Text(report, L"state", L"probed");
+                return SmokeRecord(L"mihawk-wine-probe.json", report).then([state, browser, report] {
+                    if (state->modernBrowser != browser || state->wineBrowser != browser)
+                        throw ref new OperationCanceledException(L"The Wine view was replaced before PNG capture.");
+                    return browser->CapturePreviewAsync(L"mihawk-wine-preview.png").then([report](JsonObject^ result) {
+                        report->SetNamedValue(L"capture", result); Text(report, L"state", L"captured");
+                    }, Ui());
+                }, Ui());
+            }, Ui());
+        } catch (Exception^ error) { Text(report, L"error", error->Message); Text(report, L"state", L"failed"); }
+        catch (...) { Text(report, L"error", L"Wine diagnostic capture could not start."); Text(report, L"state", L"failed"); }
+        Observe(capture.then([report](task<void> completed) {
+            try { completed.get(); }
+            catch (Exception^ error) { Text(report, L"error", error->Message); Text(report, L"state", L"failed"); }
+            catch (...) { Text(report, L"error", L"Wine diagnostic capture failed."); Text(report, L"state", L"failed"); }
+            return SmokeRecord(L"mihawk-wine-probe.json", report);
+        }, Ui()));
+    });
+    timer->Start();
 }
 void NativeSmoke(const std::shared_ptr<State>& state) {
     if (state->smokeStarted) return;
@@ -683,6 +831,16 @@ void NativeSmoke(const std::shared_ptr<State>& state) {
                         return SmokeRecord(L"mihawk-native-smoke-result.json", result);
                     }, Ui());
                 }, Ui());
+            const bool capture = config->HasKey(L"capture") && config->GetNamedBoolean(L"capture");
+            double delay = config->HasKey(L"captureDelaySeconds") ? config->GetNamedNumber(L"captureDelaySeconds") : 180.0;
+            if (!std::isfinite(delay)) Fail(L"The capture delay must be a finite number of seconds.");
+            delay = (std::max)(5.0, (std::min)(600.0, delay));
+            if (capture || (config->HasKey(L"wine") && config->GetNamedBoolean(L"wine")))
+                smoke = smoke.then([state, capture, delay] {
+                    return Dispatch(state, L"wineDesktop", ref new JsonObject()).then([state, capture, delay](JsonObject^) {
+                        if (capture) ScheduleWineCapture(state, state->wineBrowser, delay);
+                    }, Ui());
+                }, Ui());
             return smoke;
         }, Ui()).then([state](task<void> completed) {
             try { completed.get(); }
@@ -694,9 +852,9 @@ void Reply(const std::shared_ptr<State>& state, String^ id, JsonObject^ result, 
     auto response = ref new JsonObject(); Text(response, L"id", id); Bool(response, L"ok", !error);
     if (error) Text(response, L"error", error); else response->SetNamedValue(L"result", result ? result : ref new JsonObject());
     try {
-        if (!state->shell || !state->shell->CoreWebView2 || !Trusted(state->shell->Source))
+        if (!state->shell || !state->shellCore || !Trusted(state->shell->Source))
             Fail(L"The trusted desktop message channel is unavailable.");
-        state->shell->CoreWebView2->PostWebMessageAsJson(response->Stringify());
+        state->shellCore->PostWebMessageAsJson(response->Stringify());
     } catch (Exception^ exception) { HostError(state, L"Desktop reply failed: " + exception->Message); }
 }
 void Request(const std::shared_ptr<State>& state, String^ payload) {
@@ -727,9 +885,9 @@ void Request(const std::shared_ptr<State>& state, String^ payload) {
     } catch (Exception^ exception) { Reply(state, id, nullptr, exception->Message); }
     catch (...) { Reply(state, id, nullptr, L"Invalid native request."); }
 }
-void ShellMessage(const std::shared_ptr<State>& state, CoreWebView2^ sender, CoreWebView2WebMessageReceivedEventArgs^ args) {
+void ShellMessage(const std::shared_ptr<State>& state, CoreWebView2^ subscribedCore, CoreWebView2WebMessageReceivedEventArgs^ args) {
     ++state->notifyCount; state->lastNotifyUri = args->Source;
-    if (!state->shell || sender != state->shell->CoreWebView2 || Wide(args->Source) != ShellUrl) {
+    if (!state->shell || subscribedCore != state->shellCore || Wide(args->Source) != ShellUrl) {
         ++state->rejectedNotifyCount;
         if (state->rejectedNotifyCount <= 4) Observe(Status(state));
         return;
@@ -782,7 +940,10 @@ protected:
             state->initialized = create_task(ApplicationData::Current->LocalFolder->CreateFolderAsync(
                 L"MihawkFiles", CreationCollisionOption::OpenIfExists)).then([state](StorageFolder^ workspace) {
                     state->items.emplace(L"workspace", Item{workspace, nullptr, true});
-                    return Restore(state);
+                    return create_task(ApplicationData::Current->LocalFolder->CreateFolderAsync(
+                        L"WineRuntime", CreationCollisionOption::OpenIfExists)).then([state](StorageFolder^) {
+                            return Restore(state);
+                        }, Ui());
                 }, Ui());
             state->libraryInitialized = state->initialized.then([state] { return LoadLibrary(state); }, Ui());
             // Observing here prevents an unhandled-task exception; library RPCs
@@ -813,7 +974,7 @@ protected:
             state->overlay->RowDefinitions->Append(headerRow);
             state->overlay->RowDefinitions->Append(ref new RowDefinition());
             auto header = ref new StackPanel(); header->Orientation = Orientation::Horizontal;
-            auto close = Action(L"Back to desktop"); state->back = Action(L"Back");
+            auto close = Action(L"Xbox Tools"); state->back = Action(L"Back");
             close->Click += ref new RoutedEventHandler([state](Object^, RoutedEventArgs^) { CloseOverlay(state); });
             state->back->Click += ref new RoutedEventHandler([state](Object^, RoutedEventArgs^) {
                 if (state->modernBrowser && state->modernBrowser->CanGoBack()) state->modernBrowser->GoBack();
@@ -836,6 +997,7 @@ protected:
                     initialized.get();
                     auto core = state->shell->CoreWebView2;
                     if (!core) Fail(L"The desktop WebView2 engine did not initialize.");
+                    state->shellCore = core;
                     state->shellEngineVersion = core->Environment->BrowserVersionString;
                     core->Settings->IsWebMessageEnabled = true;
                     core->Settings->IsGeneralAutofillEnabled = false;
@@ -855,7 +1017,12 @@ protected:
                             else { Observe(Status(state)); ProbeShell(state); }
                         });
                     core->WebMessageReceived += ref new TypedEventHandler<CoreWebView2^, CoreWebView2WebMessageReceivedEventArgs^>(
-                        [state](CoreWebView2^ sender, CoreWebView2WebMessageReceivedEventArgs^ args) { ShellMessage(state, sender, args); });
+                        [state, core](CoreWebView2^ sender, CoreWebView2WebMessageReceivedEventArgs^ args) {
+                            // WinUI may forward a null/different event-sender wrapper.
+                            // Ownership is the immutable core on which we subscribed.
+                            state->lastEventSenderNull = !sender;
+                            ShellMessage(state, core, args);
+                        });
                     core->NewWindowRequested += ref new TypedEventHandler<CoreWebView2^, CoreWebView2NewWindowRequestedEventArgs^>(
                         [](CoreWebView2^, CoreWebView2NewWindowRequestedEventArgs^ args) { args->Handled = true; });
                     core->LaunchingExternalUriScheme += ref new TypedEventHandler<CoreWebView2^, CoreWebView2LaunchingExternalUriSchemeEventArgs^>(

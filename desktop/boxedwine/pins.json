@@ -1,0 +1,37 @@
+{
+  "schema": 1,
+  "engine": {
+    "repository": "https://github.com/danoon2/Boxedwine.git",
+    "commit": "9c64b2820477b3f11c95ea9b59ef99ecc1bbb763",
+    "license": "GPL-2.0-or-later",
+    "emscripten": "5.0.7",
+    "target": "release",
+    "cpu": "single-threaded interpreter",
+    "source_date_epoch": "1793491200"
+  },
+  "native_reference": {
+    "repository": "https://github.com/worleydl/Boxedwine-uwp.git",
+    "commit": "5514667573e8a9f370fbe9c542ab5c682c5f5200",
+    "branch": "uwp-compat",
+    "status": "Experimental reference only; no published AppX or Actions build. Native binary translator requests RWX pages and is not included."
+  },
+  "wine_filesystem": {
+    "url": "https://boxedwine.org/v2/24/TinyCore15Wine11.0-web.zip",
+    "size": 99512877,
+    "sha256": "ae2ed179324bde6e3605c2ddeb27406654790077f1885d670d1f402800dfbdf4",
+    "wine_version": "11.0",
+    "filesystem_version": "24",
+    "wine_repository": "https://github.com/wine-mirror/wine.git",
+    "wine_commit": "db11d0fe6a169c457e23d007e20404643d067aa8",
+    "profile": "tools/buildWine/filesystem_wine11.json",
+    "upstream_hash_manifest": "tools/buildWine/webgl_filesystems_v24.json",
+    "wine_license": "LGPL-2.1-or-later",
+    "linux_base": "TinyCore15 x86; component licenses retained in image",
+    "guest_executed": false,
+    "required_files": {
+      "opt/wine/bin/wine": "b66e135c2323a0d7d8aff0ad058c21a44a3a898dab0f704b676bc1ff2bac13b8",
+      "home/username/.wine/drive_c/windows/explorer.exe": "c29ce125d96fb39392fd594911652840d2e144c96dc5e26899ac3f0d8358f931",
+      "home/username/.wine/drive_c/windows/system32/shell32.dll": "4abb8f157658199c64f867be69af31a86e79c75f09d169b50facbdb4a122cadc"
+    }
+  }
+}

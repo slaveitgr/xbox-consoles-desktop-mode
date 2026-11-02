@@ -44,6 +44,8 @@ class Browser : public std::enable_shared_from_this<Browser> {
     std::vector<std::shared_ptr<Tab>> m_items;
     std::shared_ptr<Tab> m_active;
     bool m_closed = false;
+    String^ m_localHost = nullptr;
+    String^ m_localFolder = nullptr;
     task<void> m_statusTail = task_from_result();
     static task_continuation_context UI() { return task_continuation_context::use_current(); }
     static void Observe(task<void> operation) { operation.then([](task<void> done) { try { done.get(); } catch (...) {} }); }
@@ -140,6 +142,8 @@ class Browser : public std::enable_shared_from_this<Browser> {
                 auto core=tab->view->CoreWebView2;
                 if (!core) throw ref new FailureException(L"WebView2 did not provide an engine instance.");
                 tab->ready=true;
+                if (self->m_localHost && self->m_localFolder)
+                    core->SetVirtualHostNameToFolderMapping(self->m_localHost, self->m_localFolder, CoreWebView2HostResourceAccessKind::DenyCors);
                 core->Settings->IsWebMessageEnabled=false;
                 core->Settings->IsGeneralAutofillEnabled=false;
                 core->Settings->IsPasswordAutosaveEnabled=false;
@@ -169,12 +173,17 @@ class Browser : public std::enable_shared_from_this<Browser> {
         },UI());
     }
 public:
+    void SetLocalFolder(String^ host, String^ folder) {
+        if (host != L"wine.local" || !folder || folder->Length()==0)
+            throw ref new InvalidArgumentException(L"Only the app-owned Wine runtime mapping is supported.");
+        m_localHost=host; m_localFolder=folder;
+    }
     task<JsonObject^> OpenAsync(Panel^ surface,Uri^ uri,TextBlock^ title) {
         if (!Http(uri)) throw ref new InvalidArgumentException(L"The browser accepts HTTP and HTTPS addresses.");
         m_closed=false; m_parent=surface; m_title=title;
         auto self=shared_from_this();
         InitializeResources();
-        m_title->Text=L"Edge / Chromium Browser";
+        m_title->Text=m_localHost ? ref new String(L"Wine File Explorer") : ref new String(L"Edge / Chromium Browser");
         m_root=ref new Grid();
         for (unsigned i=0;i<4;++i) { auto row=ref new RowDefinition(); if (i!=2) row->Height=GridLengthHelper::Auto; m_root->RowDefinitions->Append(row); }
         m_tabs=ref new StackPanel();m_tabs->Orientation=Orientation::Horizontal;
@@ -191,11 +200,42 @@ public:
         addControl(ButtonFor(L"Go",ref new RoutedEventHandler([self](Object^,RoutedEventArgs^){self->Navigate();})),4);
         addControl(ButtonFor(L"+ Tab",ref new RoutedEventHandler([self](Object^,RoutedEventArgs^){try{Observe(self->AddTab(ref new Uri(L"https://www.bing.com")).then([](JsonObject^){}));}catch(Exception^ e){self->m_message->Text=e->Message;}})),5);
         m_root->Children->Append(toolbar);
+        if(m_localHost){m_tabs->Visibility=Visibility::Collapsed;toolbar->Visibility=Visibility::Collapsed;}
         m_pages=ref new Grid();Grid::SetRow(m_pages,2);m_root->Children->Append(m_pages);
         auto footer=ref new StackPanel();footer->Orientation=Orientation::Horizontal;Grid::SetRow(footer,3);
         footer->Children->Append(ButtonFor(L"Close tab",ref new RoutedEventHandler([self](Object^,RoutedEventArgs^){self->CloseTab();})));
         m_message=ref new TextBlock();m_message->Text=L"Starting Edge / Chromium...";m_message->Foreground=ref new SolidColorBrush(Windows::UI::Colors::White);m_message->VerticalAlignment=VerticalAlignment::Center;footer->Children->Append(m_message);m_root->Children->Append(footer);
         surface->Children->Append(m_root);Status(L"initializing");return AddTab(uri);
+    }
+    task<JsonObject^> CapturePreviewAsync(String^ filename) {
+        if (!m_active || !m_active->ready || m_closed)
+            throw ref new OperationCanceledException(L"No active browser view is ready to capture.");
+        if (filename != L"mihawk-wine-preview.png" && filename != L"mihawk-browser-preview.png")
+            throw ref new InvalidArgumentException(L"The diagnostic image filename is invalid.");
+        auto core=m_active->view->CoreWebView2;
+        return create_task(ApplicationData::Current->LocalFolder->CreateFileAsync(filename,CreationCollisionOption::ReplaceExisting))
+            .then([](StorageFile^ file){return file->OpenAsync(FileAccessMode::ReadWrite);},UI())
+            .then([core,filename](Windows::Storage::Streams::IRandomAccessStream^ stream){
+                return create_task(core->CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat::Png,stream))
+                    .then([stream,filename](task<void> captured)->task<JsonObject^>{
+                        try{captured.get();}catch(...){delete stream;throw;}
+                        return create_task(stream->FlushAsync()).then([stream,filename](task<bool> flushed){
+                            try{if(!flushed.get())throw ref new FailureException(L"Diagnostic capture could not be flushed.");}
+                            catch(...){delete stream;throw;}
+                            delete stream;
+                            auto result=ref new JsonObject();
+                            result->SetNamedValue(L"captured",JsonValue::CreateBooleanValue(true));
+                            result->SetNamedValue(L"file",JsonValue::CreateStringValue(filename));
+                            return result;
+                        });
+                    });
+            },UI());
+    }
+    task<String^> ProbeAsync() {
+        if(!m_active||!m_active->ready||m_closed)
+            throw ref new OperationCanceledException(L"No active browser view is ready to inspect.");
+        return create_task(m_active->view->CoreWebView2->ExecuteScriptAsync(
+            L"({url:location.href,readyState:document.readyState,viewportWidth:innerWidth,viewportHeight:innerHeight,devicePixelRatio:devicePixelRatio,engineCalledRun:typeof Module!=='undefined'&&!!Module.calledRun,canvasWidth:document.getElementById('canvas')?document.getElementById('canvas').width:0,canvasHeight:document.getElementById('canvas')?document.getElementById('canvas').height:0,status:document.getElementById('status')?document.getElementById('status').textContent:'',consoleTail:document.getElementById('output')?document.getElementById('output').value.slice(-10000):'',body:document.body?document.body.innerText.slice(0,1000):''})"));
     }
     bool CanGoBack(){return m_active&&m_active->ready&&m_active->view->CanGoBack;}
     void GoBack(){if(CanGoBack())m_active->view->GoBack();}

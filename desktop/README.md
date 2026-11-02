@@ -1,4 +1,21 @@
-# Mihawk desktop for Xbox
+# Wine desktop and Mihawk Xbox tools
+
+The requested primary environment is now a real Wine desktop session launched
+through the source-built BoxedWine interpreter in an isolated WebView2 view.
+The native UWP host supplies Xbox storage/setup, Game Library, LAN and browser
+tools. The HTML Mihawk adaptation remains the Xbox tools/setup view.
+
+The first backend uses stock Wine 11 Explorer, desktop, Start and taskbar.
+The original Mihawk native Explorer/style patches are pinned for porting in
+`wine-explorer/`; they are not yet applied to the runtime image. This does not
+establish game or Steam compatibility.
+
+Source build and image provenance: `boxedwine/README.md`. The privately supplied
+runtime goes in LocalState/WineRuntime; it is not included in the MSIX or Git.
+After validated native connection, the tools auto-open Wine Desktop when its
+required files are present. The user can disable this in Personalization.
+Wine's virtual filesystem currently remains separate from Xbox USB storage.
+
 
 Native x64 UWP host and a focused adaptation of MihawkOS visual design for
 Xbox One family Developer Mode. This replaces the compiled Gecko desktop UI;

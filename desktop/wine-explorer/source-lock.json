@@ -1,0 +1,398 @@
+{
+  "schema": 1,
+  "purpose": "Exact-source staging for the Wine Explorer Xbox port; this selection is not a standalone build or proof of Xbox execution.",
+  "projects": {
+    "wine": {
+      "repository": "https://github.com/ValveSoftware/wine",
+      "commit": "1c78596625336a73dbfc035dbbcf0dbdd95b06eb",
+      "license": "LGPL-2.1-or-later",
+      "license_file": "COPYING.LIB"
+    },
+    "mihawk": {
+      "repository": "https://github.com/mihawk-99/PS5_MihawkOS",
+      "commit": "f81a028a668b36f5bcb51b09e66d526979382f1d",
+      "license": "GPL-3.0-or-later; individual components retain their notices",
+      "license_file": "LICENSE"
+    }
+  },
+  "files": [
+    {
+      "project": "wine",
+      "path": "COPYING.LIB",
+      "size": 26434,
+      "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/Makefile.in",
+      "size": 258,
+      "sha256": "c8dafa854d739be556d1356938867ecaa18c6dde9f406b02a6c486304e6811b9"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/explorer.c",
+      "size": 30897,
+      "sha256": "0d68d5d2d760a0464924c27503404235527f132d287e7a9f3a8066bffda14b0d"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/explorer_private.h",
+      "size": 1295,
+      "sha256": "93f6eb6192107bbef1b6820b4b22326f71b00f30dd5e28572d5cb85d810dd86c"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/explorer.rc",
+      "size": 1534,
+      "sha256": "372cb1c49ab9615d36580cc8a58196ac9cab9d7b95a41d7b284aba70ef745138"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/resource.h",
+      "size": 1069,
+      "sha256": "1880d2f7f2324bffb7a37bb90481c2255433199d49fd5d2f258ff12e0a069bb6"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/explorer.manifest",
+      "size": 758,
+      "sha256": "1ca161c20ab037c327d50dd22340487015e7436ae94230bc97f8873b5938f3f2"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/desktop.c",
+      "size": 81298,
+      "sha256": "6cb097f9991c8edfc55a2853f077a6cbd6cb629a4dda23607f73dfd38e217374"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/appbar.c",
+      "size": 8887,
+      "sha256": "cf82b804617f3b58148fd4c450d643c8b3c224420b38586a867f76848bddb469"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/startmenu.c",
+      "size": 13853,
+      "sha256": "12a5a5a66b2a9e4de0c056041f13063b172f161201aa31092ce2188de29f04d0"
+    },
+    {
+      "project": "wine",
+      "path": "programs/explorer/systray.c",
+      "size": 39652,
+      "sha256": "5f0eabf271c7c450815db932c398d75c3ca2bd6211c59d9cb25f9b657a4d1e35"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/Makefile.in",
+      "size": 2043,
+      "sha256": "9e45c0116e775592a91f20b96231127b04bc59d19e3b237c97c72da8fe2862db"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shell32.spec",
+      "size": 23886,
+      "sha256": "ab877b14c5451e78977d7600e67bda52a23b62b6e94fd6ebc6f46508bac4adc5"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/ebrowser.c",
+      "size": 67491,
+      "sha256": "f39e6595808f028dfe1747d11d684536ef95691e315d680931d21abb45314a47"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shlview.c",
+      "size": 115260,
+      "sha256": "4b20865919d25e2eef04f9ee941cc0c729e0d524dfc49c2f3995c0272abd80ca"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shlview_cmenu.c",
+      "size": 48131,
+      "sha256": "e7128d7458ed4819719478529249bcf04b70cb8753fb504538d790f1f18b235e"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shfldr_fs.c",
+      "size": 60696,
+      "sha256": "3ceb913629c9e790968f916206a412c6b662ddf687116f334dffb2c162bfb4b3"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shfldr_desktop.c",
+      "size": 37002,
+      "sha256": "06977cb126dfe7c3fd62d3ec6e3d094471ca47c4bf9d95eadad083083489dc7e"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shfldr_mycomp.c",
+      "size": 31456,
+      "sha256": "f8cbbe971d46db6fab960be73b53b9b7971f7f44b82c69118af108a94c0cea3a"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/pidl.c",
+      "size": 66331,
+      "sha256": "b7b1e524e6dfa196468e11faac32baf42e81608a34fe0ff4ec3fc573d4b4f46c"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/pidl.h",
+      "size": 8816,
+      "sha256": "76b3a67ba504715da22ba3c8982dbfbcf449dd687d6dff17f94f7b9b4c2fd6bc"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shellfolder.h",
+      "size": 2497,
+      "sha256": "27f3f41effe82fe60e500ddcf95d282285f272727b69f3a739c2933cefd7fbc4"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shell32_main.h",
+      "size": 10589,
+      "sha256": "229d2530a7137fb9a53104fde22172bd84c8161d7eb5d738103a270406629faf"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shfldr.h",
+      "size": 3831,
+      "sha256": "59aa365dd6a6177deff54ea341bb42d5529ecc1d466f12a8b81a5297bc29cade"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/debughlp.c",
+      "size": 10981,
+      "sha256": "53ff8dd564ca27704386e19ebda200bb414bde9f24a02490286e0e3af01f5b25"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/debughlp.h",
+      "size": 1176,
+      "sha256": "9a411bc85a4432cc9816050f1c60d5450f80f4cb944fd5c1f1c9b929e5aad195"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shellitem.c",
+      "size": 47087,
+      "sha256": "452cf5b32ba2ad65e34e7582861b490e200d5acf24f2b2ad7cb1df39fb433960"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shellole.c",
+      "size": 36994,
+      "sha256": "6e5373571e9eb166a57076f93d0bfb33835c9cb4435e2dfb408bf38622b8aa22"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shell32_main.c",
+      "size": 37968,
+      "sha256": "a309013d82e88331c4bf17dd59bff0e75abfa1032649d2c2738a9242c812048a"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shell32_classes.idl",
+      "size": 5672,
+      "sha256": "dd47d11b5ff12fdc1b5ea630183cd57cad0fd4ebfb54767a0d3fc018aee14174"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/enumidlist.c",
+      "size": 8212,
+      "sha256": "fa9012167a2382a0ef8d70e6b315e23fe3c7ddeda1889a30bdcf1c743da71d28"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/enumobjects.c",
+      "size": 7142,
+      "sha256": "12c71f686c3d80c2242afc305ba7778f4df90539fa249e2f32bcf2de94bb1366"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shlfolder.c",
+      "size": 26813,
+      "sha256": "709303bad2e518e7110a0f06852148b3677e65f2e0c7fbc7f533c9e3ba6bc3fc"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shlfsbind.c",
+      "size": 4683,
+      "sha256": "c7bb6f6f8d4bf8905aca15f9033e11b8523d4a40f9200746bdceb7fadea375f9"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/dataobject.c",
+      "size": 13236,
+      "sha256": "0c634d879e6c0f9bf94dcefbc2a11d51893060dcb90973565dc6c21ae3e8dcda"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/clipboard.c",
+      "size": 5363,
+      "sha256": "6548779fb048c40527937eac2dbe4eb28a49a96d5b44bdf4f0d93570d9b44f98"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/changenotify.c",
+      "size": 14323,
+      "sha256": "5b2df0752e542ceef49d1a6d3481e1890c25fbc1995c06f87eb02d2dac107bb4"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/classes.c",
+      "size": 12606,
+      "sha256": "8f1d1fffe076c76269c1d4dfe0dcedc859d7de4e6ab5bca07c8bd27a675cabd3"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/iconcache.c",
+      "size": 36573,
+      "sha256": "fe083f18bdafa2480b6d6bdc78951a9b45548d4e2443840f20b0e6954e5ff5f0"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shlfileop.c",
+      "size": 71272,
+      "sha256": "d0bc1647973edc65b88125b7414c808851b1701a16298daef42d28c1ca5012a4"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shellpath.c",
+      "size": 147201,
+      "sha256": "70c880fb2ed4bc03bb63b8a4393ce9804799989cd651b6d09583d268d233e40b"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shellreg.c",
+      "size": 4808,
+      "sha256": "0169a7c762a86b6e5e25e35a6720753ed4720968b435975bc979c08c4f1ca103"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/shlmenu.c",
+      "size": 35396,
+      "sha256": "f79221a183c14c85c8af4ff09f3c42a1e62d6848e2ebbfc37fbd6520e28ae94c"
+    },
+    {
+      "project": "wine",
+      "path": "dlls/shell32/new_menu.c",
+      "size": 12479,
+      "sha256": "6b3a910c78392aee71fb0855967ae154061be5c38aa91b8adafdb6a25d3d83c5"
+    },
+    {
+      "project": "wine",
+      "path": "include/wine/list.h",
+      "size": 8183,
+      "sha256": "0a26ad30970b147c06f2068e6e419f88b638db03414aed653fc4df594ef73ae7"
+    },
+    {
+      "project": "wine",
+      "path": "include/wine/debug.h",
+      "size": 21011,
+      "sha256": "5823f496e3a0f6955cdb2d65ff1ce6a8269eb2ee0e0090ee2cbf64a2cdd33623"
+    },
+    {
+      "project": "mihawk",
+      "path": "LICENSE",
+      "size": 35149,
+      "sha256": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986"
+    },
+    {
+      "project": "mihawk",
+      "path": "LICENSING.md",
+      "size": 5031,
+      "sha256": "1e1e914a74a974a2c62f5d258332dad087c90d06d7bfa7ff86a57ff2148d0be8"
+    },
+    {
+      "project": "mihawk",
+      "path": "NOTICE.md",
+      "size": 65239,
+      "sha256": "9b5e47accd56a24463314918039df4acbc03d97d90cfc15dea7728242a4d6527"
+    },
+    {
+      "project": "mihawk",
+      "path": "docs/ARCHITECTURE.md",
+      "size": 19946,
+      "sha256": "de2ef142c5b437613feefbb6aacdfee07722020d63e5b44cfbe69234bd04aa55"
+    },
+    {
+      "project": "mihawk",
+      "path": "wine/ps5/pw_shell_explorer.h",
+      "size": 129365,
+      "sha256": "b7b9cf19cbf403c9a7c2b0a0ef0a96eddb401ab82329fb476c2544b357936646"
+    },
+    {
+      "project": "mihawk",
+      "path": "wine/ps5/pw_shell_style.h",
+      "size": 8658,
+      "sha256": "aa7425cfb515a2ac8cf0cecfb89be0aae0fa74103ad7e3d1d7c2f99ced59d6e7"
+    },
+    {
+      "project": "mihawk",
+      "path": "src/pw_explorer_layout.h",
+      "size": 13167,
+      "sha256": "f38b83c5ef3b00ee190704627a2ccd53394077bad6f560d0a3237b5ef8150a62"
+    },
+    {
+      "project": "mihawk",
+      "path": "tools/build-explorer-sprites.py",
+      "size": 4202,
+      "sha256": "c2374d3cdddcb7a6d3de65ece218b9bb3a1bf3932a4e328fc5c7be48fec782f1"
+    },
+    {
+      "project": "mihawk",
+      "path": "tools/build-shell-sprites.py",
+      "size": 8802,
+      "sha256": "e50a397b354637a69d282af3ad01a830cb9dc1814d4c048bd3aeb638ecb7fe9c"
+    },
+    {
+      "project": "mihawk",
+      "path": "themes/windows11/explorer/explorer-light.json.gz",
+      "size": 173507,
+      "sha256": "3c38f848f354e2d8e4466515bb6139b2ad9090b53d0f44480cccb6bf740132d9"
+    },
+    {
+      "project": "mihawk",
+      "path": "themes/windows11/explorer/explorer-dark.json.gz",
+      "size": 174071,
+      "sha256": "423cf1ef801fe23b302fce773ac4c4f0bebc87160caf7c8134aabed590382840"
+    },
+    {
+      "project": "mihawk",
+      "path": "themes/windows11/appearance.json",
+      "size": 6096,
+      "sha256": "8ba7c6836bc07f4ac75c80cfe731b9dd67901ca8a9b3913892de66aa3283dd45"
+    },
+    {
+      "project": "mihawk",
+      "path": "themes/windows11/COPYING.LIB",
+      "size": 26434,
+      "sha256": "e237fa56668030e928551ddd60f05df5fe957f75eab874bbd017e085ed722e7c"
+    },
+    {
+      "project": "mihawk",
+      "path": "wine/patches/0983-native-mihawk-explorer.patch",
+      "size": 6632,
+      "sha256": "f024a13e78414b35c709d9b8e5475c483ea23baa4930dd8be812645ec355b105"
+    },
+    {
+      "project": "mihawk",
+      "path": "wine/patches/1150-explorer-file-explorer-as-the-prototype-draws-it.patch",
+      "size": 7537,
+      "sha256": "328b85731d7459208dd67c959a132f3fb5339c2ad814f02ddb8732a4777b1ef5"
+    },
+    {
+      "project": "mihawk",
+      "path": "wine/patches/1151-shell32-ifolderview-itemcount-counts-the-selection-when-asked.patch",
+      "size": 1294,
+      "sha256": "72527023de1e235b564854bc4c64da816e965dac77b1446036f8c42562de6e62"
+    },
+    {
+      "project": "mihawk",
+      "path": "wine/patches/1152-explorer-navigations-show-the-new-folder-only-once-it-is-drawn.patch",
+      "size": 1829,
+      "sha256": "5b7c9cb638ef77fb1354431117f69487a77a377ec108b16e05c7bf4dbb2e2f4f"
+    }
+  ]
+}

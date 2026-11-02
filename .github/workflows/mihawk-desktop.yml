@@ -63,7 +63,7 @@ jobs:
       - name: Upload development desktop
         uses: actions/upload-artifact@v4
         with:
-          name: mihawk-xbox-x64-1.0.47.1-DEV-SIGNED
+          name: mihawk-xbox-x64-1.0.47.2-DEV-SIGNED
           path: |
             artifacts/mihawk-desktop/*.msix
             artifacts/mihawk-desktop/*.cer

@@ -63,3 +63,14 @@ WinUI framework AppX is supplied as a dependency. No Edge desktop EXE is
 repackaged. See https://github.com/microsoft/Media-App-Samples-for-Xbox/tree/main/WebView2.
 The native LAN server and browser integration code are authored here under
 MIT; the Mihawk-derived frontend keeps GPL-3.0-or-later.
+
+## BoxedWine and optional Wine desktop
+
+`desktop/boxedwine` records the exact source-built BoxedWine commit and
+Emscripten toolchain, plus the separately acquired Wine filesystem's digest,
+component hashes, licenses and corresponding-source recipes. The engine is
+GPL-2.0-or-later; Wine is LGPL-2.1-or-later with the image's component-specific
+notices retained. Runtime binaries/images are generated or privately supplied,
+not committed or silently included in the Mihawk MSIX. The standalone Wine
+source selection in `desktop/wine-explorer` retains upstream licenses and
+pins; it is reference/input material, not a completed native shell32 port.
