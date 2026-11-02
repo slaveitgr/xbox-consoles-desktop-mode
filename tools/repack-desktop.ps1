@@ -88,6 +88,12 @@ function Test-SourceBlockMap([string]$Path) {
             foreach ($file in $map.DocumentElement.SelectNodes("*[local-name()='File']")) {
                 $name = $file.GetAttribute('Name').Replace('\', '/')
                 $item = $archive.GetEntry($name)
+                if ($null -eq $item) {
+                    # OPC ZIP part names escape reserved URI characters, while
+                    # AppxBlockMap uses the decoded Windows filename (@ -> %40).
+                    $partName = ($name.Split('/') | ForEach-Object { [Uri]::EscapeDataString($_) }) -join '/'
+                    $item = $archive.GetEntry($partName)
+                }
                 if ($null -eq $item) { throw "Block-map file is missing: $name" }
                 $inputStream = $item.Open()
                 try {
@@ -208,8 +214,10 @@ public static class WinmdContract {
         using (var stream = File.OpenRead(path)) using (var pe = new PEReader(stream)) {
             var r = pe.GetMetadataReader(MetadataReaderOptions.None); var p = new SignatureNames(); var rows = new List<string>();
             foreach (var h in r.TypeDefinitions) {
-                var t = r.GetTypeDefinition(h); var access = t.Attributes & TypeAttributes.VisibilityMask;
-                if (access != TypeAttributes.Public && access != TypeAttributes.NestedPublic) continue;
+                var t = r.GetTypeDefinition(h);
+                if (r.GetString(t.Name) == "<Module>") continue;
+                // C++/CX's generated default/factory interfaces are nonpublic,
+                // but their IIDs and vtable slots are part of the shell ABI.
                 var name = p.Name(r, h); rows.Add("type " + name + " " + (int)t.Attributes + " base=" + p.Name(r, t.BaseType));
                 foreach (var a in t.GetCustomAttributes()) rows.Add(name + " attribute " + Attribute(r, a, p));
                 foreach (var i in t.GetInterfaceImplementations()) rows.Add(name + " implements " + p.Name(r, r.GetInterfaceImplementation(i).Interface));
