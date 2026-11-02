@@ -4,10 +4,25 @@ Native x64 UWP host and a focused adaptation of MihawkOS visual design for
 Xbox One family Developer Mode. This replaces the compiled Gecko desktop UI;
 it does not port the PS5 Wine/Proton backend.
 
+The desktop includes a persistent local Game Library with user-selected EXEs,
+cover images and per-game notes/input settings. Importing a title does not
+establish runtime compatibility. LAN Transfer is opt-in and uses a random
+pairing token for actual file APIs, writes only Files/LAN Inbox, preserves
+existing filenames and currently limits each file to 16 MiB.
+
+The browser overlay uses official Edge/Chromium WebView2 with tabs, address
+bar and navigation controls. It receives no desktop RPC or host objects.
+The trusted desktop remains on its separate packaged platform WebView.
+The official Microsoft Xbox sample is the integration reference:
+https://github.com/microsoft/Media-App-Samples-for-Xbox/tree/main/WebView2
+
 The frontend is GPL-3.0-or-later; see `mihawk/COPYING`. Other repository code
 keeps its existing licenses. The native host uses C++/CX to consume the pinned
 Win32Bridge WinRT metadata directly and platform UWP XAML WebView; it does not
-require WebView2 or desktop window/process APIs.
+use desktop window/process APIs. The browser consumes official WinUI 2 and
+WebView2 WinRT metadata; SDK archives are pinned by SHA-256 and their runtime
+license notices are packaged. The WinUI framework dependency is supplied
+beside the main package.
 
 Initialize submodules, install Python Pillow/numpy, then run
 `python tools/stage-mihawk.py --assets-only` for local UI inspection.
@@ -30,3 +45,9 @@ not used. `tools/stage-mihawk.py` copies the relevant licenses into the MSIX.
 `LocalState/mihawk-desktop-status.json` records native start, page navigation,
 JavaScript readiness, platform WebView user agent and any startup error.
 Browser mock checks are UI checks, separate from physical Xbox validation.
+
+Opt-in native integration smoke tests are requested only by a local
+`mihawk-native-smoke.json` file containing explicit `lan`/`browser` booleans.
+They are off by default and never triggered by a website. Remove the file
+after testing. Separate desktop, browser and smoke status JSON files under
+LocalState record actual results; a successful build is not hardware proof.

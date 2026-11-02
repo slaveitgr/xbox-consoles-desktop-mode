@@ -3,12 +3,13 @@
  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
  IgnorableNamespaces="uap rescap">
-  <Identity Name="Microsoft.MicrosoftEdge.CoreShell" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" Version="1.0.47.0" ProcessorArchitecture="x64" />
+  <Identity Name="Microsoft.MicrosoftEdge.CoreShell" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" Version="1.0.47.1" ProcessorArchitecture="x64" />
   <Properties><DisplayName>MihawkOS Xbox</DisplayName><PublisherDisplayName>SlaveIT Community</PublisherDisplayName><Logo>Assets\StoreLogo.png</Logo></Properties>
   <Dependencies>
     <TargetDeviceFamily Name="Windows.Universal" MinVersion="10.0.18362.0" MaxVersionTested="10.0.26100.0" />
     <PackageDependency Name="Microsoft.VCLibs.140.00" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" MinVersion="14.0.33519.0" />
     <PackageDependency Name="Microsoft.VCLibs.140.00.UWPDesktop" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" MinVersion="14.0.33728.0" />
+    <PackageDependency Name="Microsoft.UI.Xaml.2.8" Publisher="CN=Microsoft Corporation, O=Microsoft Corporation, L=Redmond, S=Washington, C=US" MinVersion="8.2501.31001.0" />
   </Dependencies>
   <Resources><Resource Language="en-US" /></Resources>
   <Applications>

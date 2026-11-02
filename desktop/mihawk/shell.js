@@ -23,11 +23,13 @@
   } catch (ignored) {}
 
   var apps = [
+    { id: 'library', name: 'Game Library', icon: 'games', glyph: '\u25b6', description: 'Your saved Windows programs and launch settings' },
     { id: 'files', name: 'Files', icon: 'folder', glyph: '\u25a3', description: 'Browse your workspace and USB folders' },
     { id: 'notepad', name: 'Notepad', icon: 'app-notepad', glyph: '\u270e', description: 'Open and save text files' },
     { id: 'calculator', name: 'Calculator', icon: 'app-calculator', glyph: '\u229e', description: 'Everyday arithmetic' },
     { id: 'browser', name: 'Browser', icon: 'app-browser', glyph: '\u25ce', description: 'Open a website in the native browser view' },
     { id: 'settings', name: 'Personalization', icon: 'app-settings', glyph: '\u2699', description: 'Theme, accent and wallpaper' },
+    { id: 'transfer', name: 'LAN Transfer', icon: 'downloads', glyph: '\u21c4', description: 'Send files from a phone or computer' },
     { id: 'about', name: 'About', icon: 'this-pc', glyph: 'i', description: 'Desktop and connection details' }
   ];
 
@@ -189,6 +191,7 @@
   function finishClose(win) {
     var index = windows.indexOf(win); if (index === -1) return;
     windows.splice(index, 1); win.closed = true;
+    if (win.onClose) win.onClose();
     if (win.node.parentNode) win.node.parentNode.removeChild(win.node);
     if (windows.length) focusWindow(windows[windows.length - 1]); else refreshTaskbar();
   }
@@ -278,10 +281,20 @@
     roots.push({ id: entry.id, name: entry.name || 'Selected folder', writable: entry.writable !== false });
   }
 
-  function openFiles(initial, chooseFile) {
+  function openFiles(initial, chooseFile, options) {
+    options = options || {};
     var win = createWindow('files', 'Files', 830, 535), selected = null, entries = [], trail = [], loading = false, generation = 0;
     var toolbar = add(win.body, el('div', 'toolbar'));
-    var openButton = add(toolbar, button(chooseFile ? 'Open text file' : 'Open', openSelected, 'primary'));
+    var openButton = add(toolbar, button(chooseFile ? (options.chooseLabel || 'Open text file') : 'Open', openSelected, 'primary'));
+    var libraryButton = add(toolbar, button('Add to Library', function () {
+      if (!selected || !/\.exe$/i.test(selected.name)) return;
+      libraryButton.disabled = true; setStatus(win, 'Saving program to Game Library…');
+      rpc('libraryAdd', { file: selected.id }).then(function (game) {
+        setStatus(win, 'Added ' + (game && game.name ? game.name : selected.name) + ' to Game Library.');
+        refreshLibraries();
+      }).catch(function (error) { setStatus(win, errorText(error), true); }).then(controls);
+    }));
+    if (chooseFile) libraryButton.classList.add('hidden');
     var newFolder = add(toolbar, button('New folder', function () { makeItem(true); }));
     var newText = add(toolbar, button('New text file', function () { makeItem(false); }));
     add(toolbar, button('Refresh', function () { loadFolder(trail[trail.length - 1], false); }));
@@ -302,6 +315,7 @@
     function current() { return trail.length ? trail[trail.length - 1] : null; }
     function controls() {
       var folder = current(); openButton.disabled = !selected || loading;
+      libraryButton.disabled = !connected || loading || !selected || selected.kind !== 'file' || !/\.exe$/i.test(selected.name);
       newFolder.disabled = newText.disabled = !folder || folder.writable === false || loading || !connected;
       importButton.disabled = !connected || loading;
     }
@@ -375,7 +389,10 @@
     function openSelected() {
       if (!selected) return;
       if (selected.kind === 'folder') { loadFolder(selected, true); return; }
-      if (chooseFile) { chooseFile(selected, current()); finishClose(win); return; }
+      if (chooseFile) {
+        if (options.filter && !options.filter(selected)) { setStatus(win, options.filterMessage || 'Choose a supported file.', true); return; }
+        chooseFile(selected, current()); finishClose(win); return;
+      }
       if (/\.exe$/i.test(selected.name)) {
         setStatus(win, 'Preparing ' + selected.name + ' in the native runtime…');
         rpc('run', { file: selected.id }, 120000).then(function (result) {
@@ -537,6 +554,202 @@
     setStatus(win, 'Standard calculator'); return win;
   }
 
+  function refreshLibraries() {
+    for (var i = 0; i < windows.length; i++) if (windows[i].kind === 'library' && windows[i].refreshLibrary) windows[i].refreshLibrary();
+  }
+  function openLibrary() {
+    var win = createWindow('library', 'Game Library', 940, 600), games = [], selected = null, loading = false, request = 0;
+    var toolbar = add(win.body, el('div', 'toolbar'));
+    var addButton = add(toolbar, button('Add a program…', function () {
+      if (draftDirty()) { setStatus(win, 'Save the changed launch settings before adding another program.', true); return; }
+      openFiles(null, function (file) {
+        setStatus(win, 'Adding ' + file.name + '…');
+        rpc('libraryAdd', { file: file.id }).then(function (game) {
+          selected = game; load(); refreshLibrariesExceptSelf();
+        }).catch(function (error) { setStatus(win, errorText(error), true); });
+      }, { chooseLabel: 'Add to Library', filter: function (file) { return /\.exe$/i.test(file.name); }, filterMessage: 'Select a Windows .exe program to add to your library.' });
+    }, 'primary'));
+    add(toolbar, button('Refresh', load));
+    add(toolbar, el('span', 'toolbar-spacer')); add(toolbar, el('span', 'muted library-caption', 'Saved programs \u00b7 Native runtime'));
+    var area = add(win.body, el('div', 'library-workspace'));
+    var grid = add(area, el('div', 'library-grid')); grid.setAttribute('aria-label', 'Saved programs');
+    var details = add(area, el('aside', 'library-details')); details.setAttribute('aria-label', 'Program settings');
+    var titleInput = null, notesInput = null, inputToggle = null, saveButton = null;
+    function draftDirty() {
+      return selected && titleInput && (titleInput.value !== selected.name || notesInput.value !== (selected.notes || '') || inputToggle.checked !== (selected.inputEnabled !== false));
+    }
+    function refreshLibrariesExceptSelf() {
+      for (var i = 0; i < windows.length; i++) if (windows[i] !== win && windows[i].refreshLibrary) windows[i].refreshLibrary();
+    }
+    function cover(game, className) {
+      var node = el('div', className || 'library-cover');
+      add(node, icon(appById('library')));
+      if (game.cover && /^data:image\/(png|jpe?g|webp|gif|bmp);base64,/i.test(game.cover)) {
+        var image = el('img'); image.alt = ''; image.src = game.cover;
+        image.addEventListener('error', function () { if (image.parentNode) image.parentNode.removeChild(image); });
+        add(node, image);
+      }
+      return node;
+    }
+    function renderCards() {
+      clear(grid);
+      if (!games.length) {
+        var empty = add(grid, el('div', 'empty-state')); add(empty, el('strong', '', connected ? 'Your library starts here' : 'Connect to your Xbox library'));
+        add(empty, el('div', '', connected ? 'Add an .exe from Files or a selected USB folder. Programs remain on their original storage.' : 'Saved programs are read from the native host. No sample games are shown.'));
+        return;
+      }
+      for (var i = 0; i < games.length; i++) (function (game) {
+        var card = button('', function () { selectGame(game); }, 'library-card' + (selected && selected.id === game.id ? ' selected' : ''));
+        card.setAttribute('data-game-id', game.id); add(card, cover(game));
+        add(card, el('strong', '', game.name));
+        add(card, el('span', 'muted', game.available === false ? 'Storage unavailable' : 'Saved Windows program'));
+        add(grid, card);
+      }(games[i]));
+    }
+    function selectGame(game) {
+      if (selected && selected.id === game.id) return;
+      if (selected && selected.id !== game.id && draftDirty()) {
+        modal('Unsaved launch settings', 'Save your changes before selecting another program, or discard them.', [
+          { label: 'Keep editing', value: 'cancel', primary: true }, { label: 'Discard changes', value: 'discard' }
+        ]).then(function (answer) { if (answer === 'discard') { selected = game; renderCards(); renderDetails(); } });
+        return;
+      }
+      selected = game; renderCards(); renderDetails();
+    }
+    function renderDetails() {
+      clear(details); titleInput = notesInput = inputToggle = saveButton = null;
+      if (!selected) { add(details, el('p', 'muted', 'Select a program to edit its cover and launch settings.')); return; }
+      var game = selected;
+      add(details, cover(game, 'library-detail-cover'));
+      var nameLabel = add(details, el('label', '', 'Display name'));
+      titleInput = add(details, el('input')); titleInput.type = 'text'; titleInput.maxLength = 120; titleInput.value = game.name;
+      titleInput.setAttribute('aria-label', 'Display name'); nameLabel.setAttribute('for', win.id + '-game-name'); titleInput.id = win.id + '-game-name';
+      if (game.executable) add(details, el('div', 'library-executable muted', game.executable));
+      var notesLabel = add(details, el('label', '', 'Notes'));
+      notesInput = add(details, el('textarea', 'library-notes')); notesInput.value = game.notes || ''; notesInput.maxLength = 4096;
+      notesInput.setAttribute('aria-label', 'Program notes'); notesLabel.setAttribute('for', win.id + '-game-notes'); notesInput.id = win.id + '-game-notes';
+      var inputLabel = add(details, el('label', 'library-input-toggle'));
+      inputToggle = add(inputLabel, el('input')); inputToggle.type = 'checkbox'; inputToggle.checked = game.inputEnabled !== false;
+      add(inputLabel, el('span', '', 'Forward input to this program'));
+      var actions = add(details, el('div', 'library-actions'));
+      saveButton = add(actions, button('Save settings', saveGame));
+      var launch = add(actions, button('Launch', function () {
+        if (draftDirty()) { setStatus(win, 'Save the changed launch settings before launching.', true); return; }
+        launch.disabled = true; setStatus(win, 'Preparing ' + game.name + '…');
+        rpc('libraryRun', { game: game.id }, 120000).then(function (result) {
+          setStatus(win, result && result.started ? 'Execution dispatched. The native view shows the actual result.' : 'Native launch request completed.');
+        }).catch(function (error) { setStatus(win, errorText(error), true); }).then(function () { launch.disabled = game.available === false; });
+      }, 'primary')); launch.disabled = game.available === false || !connected;
+      var changeCover = add(details, button('Choose cover image…', function () {
+        openFiles(null, function (file) {
+          setStatus(win, 'Preparing cover image…');
+          rpc('libraryCover', { game: game.id, file: file.id }, 60000).then(function () { load(); refreshLibrariesExceptSelf(); })
+            .catch(function (error) { setStatus(win, errorText(error), true); });
+        }, { chooseLabel: 'Use as cover', filter: function (file) { return /\.(png|jpe?g|bmp|gif|webp)$/i.test(file.name); }, filterMessage: 'Choose a PNG, JPEG, BMP, GIF or WebP image.' });
+      })); changeCover.disabled = !connected;
+      add(details, button('Remove from library', function () {
+        modal('Remove ' + game.name + '?', 'This removes the saved library entry. The original program files remain on their storage.', [
+          { label: 'Cancel', value: 'cancel', primary: true }, { label: 'Remove entry', value: 'remove' }
+        ]).then(function (answer) {
+          if (answer !== 'remove') return;
+          rpc('libraryRemove', { game: game.id }).then(function () { selected = null; load(); refreshLibrariesExceptSelf(); })
+            .catch(function (error) { setStatus(win, errorText(error), true); });
+        });
+      }, 'library-remove'));
+      if (game.available === false) add(details, el('p', 'library-note', 'Reconnect the original storage and refresh the library.'));
+      add(details, el('p', 'library-note muted', 'A saved entry does not establish compatibility. Launch shows the native runtime result.'));
+    }
+    function saveGame() {
+      if (!selected || !titleInput || !titleInput.value.trim()) { setStatus(win, 'Enter a display name.', true); return; }
+      var id = selected.id, name = titleInput.value.trim(), notes = notesInput.value, enabled = inputToggle.checked;
+      saveButton.disabled = true; setStatus(win, 'Saving launch settings…');
+      rpc('libraryUpdate', { game: id, name: name, notes: notes, inputEnabled: enabled }).then(function (game) {
+        if (!game || !game.id) throw new Error('The host did not return the saved program.');
+        selected = game;
+        for (var i = 0; i < games.length; i++) if (games[i].id === id) games[i] = game;
+        renderCards(); renderDetails(); setStatus(win, 'Launch settings saved.'); refreshLibrariesExceptSelf();
+      }).catch(function (error) { if (saveButton) saveButton.disabled = false; setStatus(win, 'Settings were not saved: ' + errorText(error), true); });
+    }
+    function load() {
+      if (win.closed || loading) return;
+      addButton.disabled = !connected;
+      if (!connected) { renderCards(); renderDetails(); setStatus(win, 'Native host unavailable', true); return; }
+      loading = true; var token = ++request, oldId = selected && selected.id, preserveDraft = draftDirty();
+      setStatus(win, 'Reading saved programs…');
+      rpc('libraryList', {}).then(function (result) {
+        if (win.closed || token !== request) return;
+        if (!result || !Array.isArray(result.games)) throw new Error('The host returned an invalid library.');
+        games = result.games; var next = null;
+        for (var i = 0; i < games.length; i++) if (games[i].id === oldId) next = games[i];
+        selected = next || (games.length ? games[0] : null);
+        renderCards();
+        if (!preserveDraft || !next) renderDetails();
+        setStatus(win, games.length + ' saved program' + (games.length === 1 ? '' : 's') + (preserveDraft && next ? ' \u00b7 Unsaved launch settings retained' : ''));
+      }).catch(function (error) { setStatus(win, errorText(error), true); }).then(function () { loading = false; });
+    }
+    win.refreshLibrary = load; win.onConnected = load;
+    win.beforeClose = function (done) {
+      if (!draftDirty()) { done(); return; }
+      modal('Unsaved launch settings', 'Keep this window open to save your changes, or discard them and close.', [
+        { label: 'Keep editing', value: 'cancel', primary: true }, { label: 'Discard and close', value: 'discard' }
+      ]).then(function (answer) { if (answer === 'discard') done(); });
+    };
+    addButton.disabled = !connected; load(); return win;
+  }
+
+  function openTransfer() {
+    var win = createWindow('transfer', 'LAN Transfer', 700, 540), busy = false, timer = null;
+    var panel = add(win.body, el('div', 'content-pad'));
+    add(panel, el('h1', '', 'Send files to your Xbox'));
+    add(panel, el('p', 'muted', 'Start the transfer service, then open the pairing link on a phone or computer on the same local network.'));
+    var actions = add(panel, el('div', 'transfer-actions'));
+    var start = add(actions, button('Start transfer service', function () { perform('lanStart'); }, 'primary'));
+    var stop = add(actions, button('Stop service', function () { perform('lanStop'); })); stop.disabled = true;
+    add(actions, button('Refresh status', function () { perform('lanStatus'); }));
+    var info = add(panel, el('div', 'info-card transfer-info'));
+    var stateLabel = add(info, el('strong', '', 'Reading transfer status…'));
+    var details = add(info, el('div', 'transfer-details hidden'));
+    add(details, el('label', '', 'Pairing link'));
+    var pairing = add(details, el('input')); pairing.type = 'text'; pairing.readOnly = true; pairing.setAttribute('aria-label', 'Pairing link');
+    add(details, el('label', '', 'Pairing code'));
+    var code = add(details, el('input', 'pairing-code')); code.type = 'text'; code.readOnly = true; code.setAttribute('aria-label', 'Pairing code');
+    var address = add(details, el('p', 'muted'));
+    var stats = add(panel, el('div', 'transfer-stats'));
+    var warning = add(panel, el('p', 'transfer-error hidden')); warning.setAttribute('role', 'status');
+    add(panel, el('p', 'muted', 'Uploads go to Files / LAN Inbox. Maximum file size: 16 MiB. Received programs never launch automatically.'));
+    add(panel, el('p', 'muted', 'The pairing link gives access to the transfer inbox. Share it only with the device you are using, and stop the service when finished.'));
+    add(panel, button('Open Files', function () { openFiles(); }));
+    function count(value) { return typeof value === 'number' && isFinite(value) && value >= 0 ? String(value) : '\u2014'; }
+    function bytes(value) { return typeof value === 'number' && isFinite(value) && value >= 0 ? humanSize(value) : '\u2014'; }
+    function render(result) {
+      if (!result || typeof result.running !== 'boolean') throw new Error('The host returned an invalid transfer status.');
+      var running = result.running;
+      stateLabel.textContent = running ? 'Transfer service is running' : 'Transfer service is stopped';
+      start.disabled = running || busy || !connected; stop.disabled = !running || busy;
+      details.classList.toggle('hidden', !running);
+      pairing.value = running && typeof result.pairingUrl === 'string' ? result.pairingUrl : '';
+      code.value = running && typeof result.token === 'string' ? result.token : '';
+      address.textContent = running && typeof result.url === 'string' ? result.url : '';
+      clear(stats);
+      add(stats, el('span', '', count(result.uploadedFiles) + ' files received \u00b7 ' + bytes(result.uploadedBytes)));
+      add(stats, el('span', '', count(result.downloadedFiles) + ' files downloaded \u00b7 ' + bytes(result.downloadedBytes)));
+      warning.textContent = result.lastError || ''; warning.classList.toggle('hidden', !result.lastError);
+      setStatus(win, running ? 'Authenticated local transfer service active' : 'Start the service when you want to transfer files.');
+    }
+    function perform(method) {
+      if (busy || win.closed) return; busy = true; start.disabled = stop.disabled = true;
+      rpc(method, {}, 30000).then(function (result) { busy = false; render(result); }).catch(function (error) {
+        busy = false; details.classList.add('hidden'); pairing.value = code.value = ''; address.textContent = '';
+        stateLabel.textContent = 'Transfer status unavailable'; start.disabled = !connected; stop.disabled = false;
+        setStatus(win, errorText(error), true);
+      });
+    }
+    win.onConnected = function () { perform('lanStatus'); };
+    win.onClose = function () { if (timer) clearInterval(timer); };
+    perform('lanStatus'); timer = setInterval(function () { perform('lanStatus'); }, 3000);
+    return win;
+  }
+
   function openSettings() {
     var win = createWindow('settings', 'Personalization', 620, 445), panel = add(win.body, el('div', 'content-pad'));
     add(panel, el('h1', '', 'Make it yours')); add(panel, el('p', 'muted', 'These settings personalize your Mihawk desktop.'));
@@ -583,12 +796,14 @@
     function card(title, text) { var node = add(panel, el('div', 'info-card')); add(node, el('strong', '', title)); add(node, el('span', '', text)); }
     card('Native host', connected ? (hostInfo.platform || 'Xbox') + (hostInfo.version ? ' \u00b7 ' + hostInfo.version : '') : (hostInfo && hostInfo.error ? hostInfo.error : 'Not connected'));
     card('Your files', 'Files and Notepad use native Xbox storage. Add a folder or USB location through the system picker. Personalization stays on this device.');
+    card('Game Library and transfers', 'Save programs with a cover, notes and input forwarding settings. LAN Transfer receives files into LAN Inbox from your paired phone or computer.');
     card('Windows programs', 'The experimental Win32 bridge attempts .exe files from Files. Its native view shows actual startup errors and results. Steam and PC game support are not established by this desktop.');
     card('Credits and license', 'MihawkOS by mihawk-99; Xbox adaptation by SlaveIT contributors. Frontend source: GPL-3.0-or-later. Original icons, fonts and artwork retain their component licenses in the package.');
     add(panel, button('Reconnect native host', function () { connect().then(function () { toast('Native host', connected ? 'Connected to Xbox storage.' : 'The host is still unavailable.'); }); }));
     setStatus(win, 'Runs inside a UWP app; Xbox Home remains available.'); return win;
   }
   function openApp(id) {
+    if (id === 'library') return openLibrary(); if (id === 'transfer') return openTransfer();
     if (id === 'files') return openFiles(); if (id === 'notepad') return openNotepad();
     if (id === 'calculator') return openCalculator(); if (id === 'settings') return openSettings();
     if (id === 'browser') return openBrowser(); return openAbout();
@@ -601,6 +816,7 @@
   }
   for (var i = 0; i < apps.length; i++) add(desktop, appButton(apps[i], 'desktop-icon'));
   var pinned = document.getElementById('pinned-apps');
+  add(pinned, appButton(appById('library'), 'taskbar-button'));
   add(pinned, appButton(appById('files'), 'taskbar-button')); add(pinned, appButton(appById('notepad'), 'taskbar-button')); add(pinned, appButton(appById('browser'), 'taskbar-button'));
   startButton.addEventListener('click', function () { showStart(); });
   document.getElementById('start-search').addEventListener('input', function (event) { renderStart(event.target.value); });

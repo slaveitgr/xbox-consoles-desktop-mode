@@ -94,6 +94,7 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--host', type=Path)
     parser.add_argument('--bridge', type=Path)
+    parser.add_argument('--webview2', type=Path)
     args = parser.parse_args()
     if args.assets_only:
         assets(args.output or ROOT / 'desktop/mihawk/assets')
@@ -111,6 +112,21 @@ def main():
         copy(args.bridge / name, out / name)
     copy(ROOT / 'desktop/native/Package.appxmanifest', out / 'AppxManifest.xml')
     notices(out / 'ThirdParty')
+    source_commit = subprocess.check_output(['git', '-C', str(ROOT), 'rev-parse', 'HEAD'], text=True).strip()
+    (out / 'ThirdParty/SOURCE-COMMIT.txt').write_text(source_commit + '\n', encoding='utf-8')
+    if args.webview2:
+        sdk = args.webview2
+        for source, target in [
+            ('microsoft.web.webview2/runtimes/win-x64/native_uap/Microsoft.Web.WebView2.Core.dll', 'Microsoft.Web.WebView2.Core.dll'),
+            ('microsoft.web.webview2/lib/Microsoft.Web.WebView2.Core.winmd', 'Microsoft.Web.WebView2.Core.winmd'),
+            ('microsoft.web.webview2/LICENSE.txt', 'ThirdParty/WebView2-LICENSE.txt'),
+            ('microsoft.web.webview2/NOTICE.txt', 'ThirdParty/WebView2-NOTICE.txt'),
+            ('microsoft.ui.xaml/license.txt', 'ThirdParty/WinUI-MIT-LICENSE.txt'),
+            ('sdk-pins.json', 'ThirdParty/WebView2-sdk-pins.json'),
+        ]:
+            copy(sdk / source, out / target)
+        copy(sdk / 'microsoft.ui.xaml/tools/AppX/x64/Release/Microsoft.UI.Xaml.2.8.appx',
+             out.parent / 'Dependencies/Microsoft.UI.Xaml.2.8.x64.appx')
     records = {str(p.relative_to(out)).replace('\\', '/'): hashlib.sha256(p.read_bytes()).hexdigest()
                for p in sorted(out.rglob('*')) if p.is_file()}
     (out.parent / 'payload-files.json').write_text(json.dumps(records, indent=2) + '\n', encoding='utf-8')

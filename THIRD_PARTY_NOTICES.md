@@ -52,3 +52,14 @@ The staging script includes all relevant license texts and provenance. No
 Bubble City artwork, Wine/Proton binary, PS5 runtime or commercial game is
 bundled. The host and Win32Bridge remain source-built, separate from the web
 frontend. This integration does not establish PC game compatibility.
+
+## WebView2 browser integration
+
+The separate browser uses official Microsoft.UI.Xaml 2.8.7 and
+Microsoft.Web.WebView2 1.0.3719.77 packages, matching Microsoft's Xbox sample.
+`tools/prepare-webview2.py` pins the downloaded NuGet SHA-256 digests. WinUI
+and WebView2 license/notice texts are included with the app, and the signed
+WinUI framework AppX is supplied as a dependency. No Edge desktop EXE is
+repackaged. See https://github.com/microsoft/Media-App-Samples-for-Xbox/tree/main/WebView2.
+The native LAN server and browser integration code are authored here under
+MIT; the Mihawk-derived frontend keeps GPL-3.0-or-later.

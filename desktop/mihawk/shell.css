@@ -98,6 +98,44 @@ body.dark .window-status.error { color: #ffb0a8; }
 .swatch.selected { border-color: #fff; box-shadow: 0 0 0 2px #5c6672; }
 .browser-form { display: flex; margin: 20px 0 18px; }
 .browser-form input { flex: 1 1 auto; min-width: 0; margin-right: 8px; }
+.library-caption { font-size: 12px; }
+.library-workspace { display: flex; flex: 1 1 auto; min-height: 0; background: #fff; background: var(--panel, #fff); }
+.library-grid { display: flex; flex-wrap: wrap; align-content: flex-start; flex: 1 1 auto; min-width: 0; padding: 15px; overflow: auto; }
+.library-grid > .empty-state { width: 100%; }
+.library-card { width: 166px; padding: 8px; margin: 0 11px 13px 0; text-align: left; background: transparent; border: 1px solid transparent; }
+.library-card.selected { border-color: #87b8df; background: #e5ecf4; background: var(--hover, #e5ecf4); }
+.library-card > strong { display: block; margin-top: 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; font-size: 14px; }
+.library-card > span { display: block; font-size: 11px; margin-top: 3px; }
+.library-cover, .library-detail-cover { position: relative; background: #dce8f3; background: var(--hover, #dce8f3); overflow: hidden; display: flex; align-items: center; justify-content: center; border-radius: 5px; }
+.library-cover { height: 176px; width: 148px; }
+.library-cover > .app-icon { width: 48px; height: 48px; }
+.library-cover > img, .library-detail-cover > img { position: absolute; top: 0; right: 0; bottom: 0; left: 0; width: 100%; height: 100%; object-fit: cover; }
+.library-details { width: 280px; flex: none; padding: 18px; border-left: 1px solid #d5dce5; border-color: var(--line, #d5dce5); overflow: auto; background: #f5f7fa; background: var(--surface, #f5f7fa); }
+.library-detail-cover { height: 104px; width: 100%; margin-bottom: 16px; }
+.library-detail-cover > .app-icon { width: 40px; height: 40px; }
+.library-details > label { display: block; font-size: 12px; font-weight: 600; margin: 12px 0 5px; }
+.library-details > input, .library-notes { width: 100%; }
+.library-notes { min-height: 86px; resize: vertical; padding: 8px; border: 1px solid #d5dce5; border-color: var(--line, #d5dce5); border-radius: 4px; background: #fff; background: var(--panel, #fff); color: inherit; }
+.library-executable { margin-top: 5px; overflow: hidden; text-overflow: ellipsis; font-size: 11px; }
+.library-details .library-input-toggle { display: flex; align-items: flex-start; font-weight: 400; }
+.library-input-toggle input { min-height: 0; margin: 3px 8px 0 0; }
+.library-actions { display: flex; margin: 14px 0 9px; }
+.library-actions > button { flex: 1 1 auto; padding: 6px; margin-right: 5px; }
+.library-details > button { margin: 4px 0; width: 100%; padding: 6px; }
+.library-remove { color: #b12323; }
+body.dark .library-remove { color: #ffb0a8; }
+.library-note { font-size: 11px; margin: 10px 0 0; }
+.transfer-actions { display: flex; flex-wrap: wrap; margin: 18px 0 14px; }
+.transfer-actions button { margin: 0 8px 7px 0; }
+.transfer-info { margin-bottom: 15px; }
+.transfer-details label { display: block; font-size: 12px; margin: 13px 0 5px; }
+.transfer-details input { width: 100%; font-family: Consolas, "Courier New", monospace; font-size: 12px; }
+.transfer-details .pairing-code { letter-spacing: 1px; }
+.transfer-details p { font-size: 11px; margin-top: 7px; word-break: break-all; }
+.transfer-stats { margin: 12px 0 15px; }
+.transfer-stats span { display: block; font-size: 12px; margin-top: 4px; }
+.transfer-error { color: #b12323; }
+body.dark .transfer-error { color: #ffb0a8; }
 .calculator { padding: 13px; height: 100%; display: flex; flex-direction: column; }
 .calc-expression { min-height: 22px; text-align: right; color: #5c6672; color: var(--muted, #5c6672); padding: 0 7px; }
 .calc-display { text-align: right; font-size: 42px; font-weight: 500; padding: 2px 7px 14px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
@@ -148,3 +186,4 @@ body.dark .taskbar-button:hover, body.dark .taskbar-button.active { background: 
 .modal-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; }
 .modal-actions button { margin: 4px 0 0 7px; }
 @media (max-width: 700px) { .connection-status #connection-label { display: none; } .file-sidebar { width: 112px; } .file-type { display: none; } .desktop-wordmark { display: none; } .pinned-apps .taskbar-button { width: 36px; padding: 6px; } .window { min-width: 280px; } }
+@media (max-width: 700px) { .library-details { width: 220px; padding: 12px; } .library-card { width: 124px; } .library-cover { width: 106px; height: 136px; } .library-caption { display: none; } }

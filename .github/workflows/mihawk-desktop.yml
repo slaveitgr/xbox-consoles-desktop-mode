@@ -63,11 +63,12 @@ jobs:
       - name: Upload development desktop
         uses: actions/upload-artifact@v4
         with:
-          name: mihawk-xbox-x64-1.0.47.0-DEV-SIGNED
+          name: mihawk-xbox-x64-1.0.47.1-DEV-SIGNED
           path: |
             artifacts/mihawk-desktop/*.msix
             artifacts/mihawk-desktop/*.cer
             artifacts/mihawk-desktop/*.json
+            artifacts/mihawk-desktop/Dependencies/*.appx
           if-no-files-found: error
       - name: Upload build and test logs
         if: always()

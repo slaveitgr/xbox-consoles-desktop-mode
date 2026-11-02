@@ -42,7 +42,7 @@
       <ConformanceMode>false</ConformanceMode>
       <ExceptionHandling>Sync</ExceptionHandling>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
-      <ForcedUsingFiles>$(BridgeWinmdPath);%(ForcedUsingFiles)</ForcedUsingFiles>
+      <ForcedUsingFiles>$(BridgeWinmdPath);$(WinUIWinmdPath);$(WebView2WinmdPath);%(ForcedUsingFiles)</ForcedUsingFiles>
       <WarningLevel>Level4</WarningLevel>
       <SDLCheck>true</SDLCheck>
       <AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions>

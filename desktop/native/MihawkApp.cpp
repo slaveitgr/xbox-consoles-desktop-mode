@@ -4,18 +4,24 @@
 #include <ppltasks.h>
 #include <collection.h>
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <map>
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
+
+#include "LanTransfer.h"
+#include "ModernBrowser.h"
 
 using namespace concurrency;
 using namespace Platform;
 using namespace Windows::Data::Json;
 using namespace Windows::Foundation;
 using namespace Windows::Foundation::Collections;
+using namespace Windows::Graphics::Imaging;
 using namespace Windows::Security::Cryptography;
 using namespace Windows::Storage;
 using namespace Windows::Storage::AccessCache;
@@ -53,8 +59,23 @@ void Basename(String^ name) {
             Fail(L"File and folder names cannot contain paths or reserved characters.");
 }
 bool Trusted(Uri^ uri) {
-    return uri && Wide(uri->SchemeName) == L"ms-appx-web" &&
-        Wide(uri->Host).empty() && Wide(uri->Path) == L"/Mihawk/index.html";
+    if (!uri || Wide(uri->SchemeName) != L"ms-appx-web" || Wide(uri->Path) != L"/Mihawk/index.html") return false;
+    const auto authority = Wide(uri->Host);
+    if (authority.empty()) return true;
+    // An omitted ms-appx-web authority can be canonicalized to the current
+    // package identity. Accept that exact package, never another package/host.
+    const auto identity = Windows::ApplicationModel::Package::Current->Id;
+    for (auto candidate : {identity->Name, identity->FamilyName, identity->FullName}) {
+        const auto package = Wide(candidate);
+        if (authority.size() != package.size()) continue;
+        bool equal = true;
+        for (std::size_t n = 0; n < authority.size(); ++n) {
+            const auto fold = [](wchar_t c) { return c >= L'A' && c <= L'Z' ? c - L'A' + L'a' : c; };
+            if (fold(authority[n]) != fold(package[n])) { equal = false; break; }
+        }
+        if (equal) return true;
+    }
+    return false;
 }
 bool WebAddress(Uri^ uri) {
     const auto scheme = uri ? Wide(uri->SchemeName) : std::wstring();
@@ -65,24 +86,39 @@ struct Item {
     StorageFolder^ parent = nullptr;
     bool writable = false;
 };
+struct Game {
+    std::wstring id, name, executable, notes, coverFile;
+    String^ cover = L"";
+    bool inputEnabled = true, available = false;
+    StorageFile^ file = nullptr;
+    StorageFolder^ parent = nullptr;
+};
 struct State {
     Grid^ root = nullptr;
     WebView^ shell = nullptr;
     Grid^ overlay = nullptr;
     Grid^ surface = nullptr;
-    WebView^ browser = nullptr;
+    std::shared_ptr<MihawkModern::Browser> modernBrowser;
+    std::shared_ptr<MihawkLan::Server> lan = std::make_shared<MihawkLan::Server>();
     TextBlock^ overlayTitle = nullptr;
     TextBlock^ fallback = nullptr;
     Button^ back = nullptr;
     Win32Bridge::RuntimeSession^ session = nullptr;
+    DispatcherTimer^ inputTimer = nullptr;
+    bool runtimeInput = true, libraryBusy = false;
+    std::vector<Game> games;
+    StorageFolder^ coversFolder = nullptr;
     std::map<std::wstring, Item> items;
     std::wstring usbId;
-    unsigned nextId = 1, pending = 0;
-    bool javascriptReady = false;
+    unsigned nextId = 1, pending = 0, notifyCount = 0, rejectedNotifyCount = 0;
+    String^ lastNotifyUri = L"", shellProbe = L"", shellProbeError = L"";
+    bool javascriptReady = false, smokeStarted = false;
     String^ userAgent = L"";
     String^ navigation = L"starting";
     String^ lastError = L"";
     task<void> initialized = task_from_result();
+    task<void> libraryInitialized = task_from_result();
+    task<void> libraryTail = task_from_result();
     task<void> statusTail = task_from_result();
 };
 
@@ -95,6 +131,12 @@ task<void> Status(const std::shared_ptr<State>& state) {
     Text(status, L"navigation", state->navigation);
     Text(status, L"userAgent", state->userAgent);
     Text(status, L"lastError", state->lastError);
+    Text(status, L"shellSource", state->shell && state->shell->Source ? state->shell->Source->AbsoluteUri : L"");
+    Text(status, L"lastNotifyUri", state->lastNotifyUri);
+    Number(status, L"notifyCount", state->notifyCount);
+    Number(status, L"rejectedNotifyCount", state->rejectedNotifyCount);
+    Text(status, L"shellProbe", state->shellProbe);
+    Text(status, L"shellProbeError", state->shellProbeError);
     const auto snapshot = status->Stringify();
     const auto local = ApplicationData::Current->LocalFolder;
     state->statusTail = state->statusTail.then([local, snapshot](task<void> previous) {
@@ -106,6 +148,21 @@ task<void> Status(const std::shared_ptr<State>& state) {
 }
 void Observe(task<void> operation) {
     operation.then([](task<void> done) { try { done.get(); } catch (...) { } });
+}
+void ProbeShell(const std::shared_ptr<State>& state) {
+    if (!state->shell || !Trusted(state->shell->Source)) return;
+    // This fixed diagnostic is read-only and runs only in our packaged shell.
+    // Request strings, filenames and browser pages are never evaluated.
+    auto arguments = ref new Platform::Collections::Vector<String^>();
+    arguments->Append(L"JSON.stringify({href:location.href,userAgent:navigator.userAgent,readyState:document.readyState,nativeReply:typeof window.MihawkNativeReply,notify:typeof window.external.notify,icons:document.querySelectorAll('.desktop-icon').length,body:(document.body?document.body.innerText:'').slice(0,300)})");
+    try {
+        create_task(state->shell->InvokeScriptAsync(L"eval", arguments)).then([state](task<String^> result) {
+            try { state->shellProbe = result.get(); state->shellProbeError = L""; }
+            catch (Exception^ error) { state->shellProbeError = error->Message; }
+            catch (...) { state->shellProbeError = L"The read-only shell probe failed."; }
+            Observe(Status(state));
+        }, Ui());
+    } catch (Exception^ error) { state->shellProbeError = error->Message; Observe(Status(state)); }
 }
 void HostError(const std::shared_ptr<State>& state, String^ error) {
     state->lastError = error ? error : L"Native host error.";
@@ -197,13 +254,161 @@ IBuffer^ TextBuffer(JsonObject^ parameters) {
     if (buffer->Length > WriteLimit) Fail(L"Text writes are limited to 256 KiB of UTF-8 data.");
     return buffer;
 }
+task<String^> ReadText(StorageFile^ file, unsigned limit) {
+    return create_task(file->OpenReadAsync()).then([limit](IRandomAccessStreamWithContentType^ stream) {
+        if (stream->Size > limit) { delete stream; Fail(L"This text file exceeds the supported read limit."); }
+        auto reader = ref new DataReader(stream->GetInputStreamAt(0)); reader->UnicodeEncoding = UnicodeEncoding::Utf8;
+        return create_task(reader->LoadAsync(static_cast<unsigned>(stream->Size))).then([reader, stream](unsigned loaded) {
+            String^ result;
+            try { result = reader->ReadString(loaded); }
+            catch (...) { delete reader; delete stream; throw; }
+            delete reader; delete stream; return result;
+        });
+    });
+}
+bool GameId(const std::wstring& id) {
+    if (id.size() != 37 || id.compare(0, 5, L"game-") != 0) return false;
+    for (std::size_t n = 5; n < id.size(); ++n)
+        if (!((id[n] >= L'0' && id[n] <= L'9') || (id[n] >= L'a' && id[n] <= L'f'))) return false;
+    return true;
+}
+bool CoverName(const std::wstring& id, const std::wstring& filename) {
+    if (filename == id + L".png") return true;
+    return filename.size() == 74 && filename.compare(0, 38, id + L"-") == 0 &&
+        filename.compare(70, 4, L".png") == 0 && GameId(L"game-" + filename.substr(38, 32));
+}
+String^ GameGrant(const std::wstring& id, bool parent) { return Str(L"Mihawk." + id + (parent ? L".Folder" : L".File")); }
+Game& FindGame(const std::shared_ptr<State>& state, String^ id) {
+    for (auto& game : state->games) if (game.id == Wide(id)) return game;
+    Fail(L"This library shortcut no longer exists.");
+}
+JsonObject^ GameJson(const Game& game, bool stored = false) {
+    auto result = ref new JsonObject(); Text(result, L"id", Str(game.id));
+    Text(result, L"name", Str(game.name)); Text(result, L"executable", Str(game.executable));
+    Text(result, L"notes", Str(game.notes)); Bool(result, L"inputEnabled", game.inputEnabled);
+    if (stored) Text(result, L"coverFile", Str(game.coverFile));
+    else {
+        Bool(result, L"available", game.available);
+        if (game.cover && game.cover->Length()) Text(result, L"cover", game.cover);
+    }
+    return result;
+}
+task<void> SaveLibrary(const std::shared_ptr<State>& state) {
+    auto object = ref new JsonObject(); auto games = ref new JsonArray();
+    for (const auto& game : state->games) games->Append(GameJson(game, true));
+    object->SetNamedValue(L"games", games); Number(object, L"version", 1);
+    auto buffer = CryptographicBuffer::ConvertStringToBinary(object->Stringify(), BinaryStringEncoding::Utf8);
+    const auto local = ApplicationData::Current->LocalFolder;
+    state->libraryTail = state->libraryTail.then([local, buffer](task<void> previous) {
+        try { previous.get(); } catch (...) { }
+        return create_task(local->CreateFileAsync(L"mihawk-library.json", CreationCollisionOption::OpenIfExists))
+            .then([buffer](StorageFile^ file) { return WriteBuffer(file, buffer); });
+    }, Ui());
+    return state->libraryTail;
+}
+task<void> RestoreCover(const std::shared_ptr<State>& state, String^ id) {
+    const auto filename = FindGame(state, id).coverFile;
+    if (filename.empty()) return task_from_result();
+    return create_task(state->coversFolder->GetFileAsync(Str(filename))).then([](StorageFile^ file) {
+        return create_task(file->OpenReadAsync());
+    }).then([](IRandomAccessStreamWithContentType^ stream) {
+        if (stream->Size > 256U * 1024U) { delete stream; Fail(L"Stored cover exceeds the preview limit."); }
+        auto reader = ref new DataReader(stream->GetInputStreamAt(0));
+        return create_task(reader->LoadAsync(static_cast<unsigned>(stream->Size))).then([reader, stream](unsigned count) {
+            auto buffer = reader->ReadBuffer(count); delete reader; delete stream;
+            return L"data:image/png;base64," + CryptographicBuffer::EncodeToBase64String(buffer);
+        });
+    }).then([state, id](task<String^> cover) {
+        try { FindGame(state, id).cover = cover.get(); }
+        catch (...) { FindGame(state, id).cover = L""; }
+    }, Ui());
+}
+task<void> RestoreGame(const std::shared_ptr<State>& state, String^ id) {
+    auto access = StorageApplicationPermissions::FutureAccessList;
+    const auto key = Wide(id);
+    try {
+        return create_task(access->GetFileAsync(GameGrant(key, false))).then([state, id, access, key](StorageFile^ file) {
+            return create_task(access->GetFolderAsync(GameGrant(key, true))).then([state, id, file](StorageFolder^ parent) {
+                auto& game = FindGame(state, id); game.file = file; game.parent = parent;
+                game.executable = Wide(file->Name); game.available = true;
+            }, Ui());
+        }, Ui()).then([state, id](task<void> restored) {
+            try { restored.get(); } catch (...) { FindGame(state, id).available = false; }
+            return RestoreCover(state, id);
+        }, Ui());
+    } catch (...) { return RestoreCover(state, id); }
+}
+task<void> LoadLibrary(const std::shared_ptr<State>& state) {
+    auto local = ApplicationData::Current->LocalFolder;
+    return create_task(local->CreateFolderAsync(L"MihawkCovers", CreationCollisionOption::OpenIfExists))
+        .then([state, local](StorageFolder^ covers) {
+            state->coversFolder = covers; return local->TryGetItemAsync(L"mihawk-library.json");
+        }, Ui()).then([](IStorageItem^ item) -> task<String^> {
+            auto file = dynamic_cast<StorageFile^>(item);
+            return file ? ReadText(file, 2U * 1024U * 1024U) : task_from_result<String^>(nullptr);
+        }, Ui()).then([state](String^ text) -> task<void> {
+            if (!text) return task_from_result();
+            auto object = JsonObject::Parse(text); auto games = object->GetNamedArray(L"games");
+            if (games->Size > 64) Fail(L"The library exceeds its 64-shortcut limit.");
+            for (unsigned n = 0; n < games->Size; ++n) {
+                auto json = games->GetObjectAt(n); Game game;
+                game.id = Wide(Required(json, L"id"));
+                if (!GameId(game.id)) Fail(L"Library contains an invalid shortcut ID.");
+                for (const auto& previous : state->games)
+                    if (previous.id == game.id) Fail(L"Library contains duplicate shortcut IDs.");
+                game.name = Wide(Required(json, L"name", 128));
+                game.executable = Wide(Required(json, L"executable", 260));
+                game.notes = json->HasKey(L"notes") ? Wide(Required(json, L"notes", 4096)) : L"";
+                game.inputEnabled = json->HasKey(L"inputEnabled") ? json->GetNamedBoolean(L"inputEnabled") : true;
+                game.coverFile = json->HasKey(L"coverFile") ? Wide(Required(json, L"coverFile", 80)) : L"";
+                if (!game.coverFile.empty() && !CoverName(game.id, game.coverFile)) Fail(L"Library contains an invalid cover filename.");
+                state->games.push_back(std::move(game));
+            }
+            task<void> restored = task_from_result();
+            for (const auto& game : state->games) {
+                auto id = Str(game.id);
+                restored = restored.then([state, id] { return RestoreGame(state, id); }, Ui());
+            }
+            return restored;
+        }, Ui());
+}
+task<IBuffer^> CoverPreview(StorageFile^ file) {
+    return create_task(file->OpenReadAsync()).then([](IRandomAccessStreamWithContentType^ input) {
+        if (!input->Size || input->Size > 4U * 1024U * 1024U) { delete input; Fail(L"Choose an image no larger than 4 MiB."); }
+        return create_task(BitmapDecoder::CreateAsync(input)).then([input](BitmapDecoder^ decoder) {
+            const auto width = decoder->PixelWidth, height = decoder->PixelHeight;
+            if (!width || !height || width > 4096 || height > 4096) Fail(L"Cover images are limited to 4096 pixels per side.");
+            auto transform = ref new BitmapTransform();
+            const double scale = (std::max)(1.0, (std::max)(static_cast<double>(width), static_cast<double>(height)) / 192.0);
+            transform->ScaledWidth = (std::max)(1U, static_cast<unsigned>(width / scale));
+            transform->ScaledHeight = (std::max)(1U, static_cast<unsigned>(height / scale));
+            return create_task(decoder->GetSoftwareBitmapAsync(BitmapPixelFormat::Bgra8, BitmapAlphaMode::Premultiplied,
+                transform, ExifOrientationMode::RespectExifOrientation, ColorManagementMode::ColorManageToSRgb));
+        }, Ui()).then([input](SoftwareBitmap^ bitmap) {
+            delete input;
+            auto output = ref new InMemoryRandomAccessStream();
+            return create_task(BitmapEncoder::CreateAsync(BitmapEncoder::PngEncoderId, output))
+                .then([bitmap, output](BitmapEncoder^ encoder) {
+                    encoder->SetSoftwareBitmap(bitmap);
+                    return create_task(encoder->FlushAsync()).then([bitmap, output] {
+                        delete bitmap;
+                        if (output->Size > 256U * 1024U) Fail(L"The image preview exceeds its storage limit.");
+                        auto reader = ref new DataReader(output->GetInputStreamAt(0));
+                        return create_task(reader->LoadAsync(static_cast<unsigned>(output->Size))).then([reader, output](unsigned count) {
+                            auto result = reader->ReadBuffer(count); delete reader; delete output; return result;
+                        });
+                    });
+                });
+        }, Ui());
+    }, Ui());
+}
 void CloseOverlay(const std::shared_ptr<State>& state) {
     if (state->session) {
         state->session->SetInputEnabled(false);
         state->session->Close();
         state->session = nullptr;
     }
-    if (state->browser) { state->browser->Stop(); state->browser = nullptr; }
+    if (state->modernBrowser) { state->modernBrowser->Close(); state->modernBrowser.reset(); }
     state->surface->Children->Clear();
     state->overlay->Visibility = Visibility::Collapsed;
 }
@@ -213,6 +418,37 @@ void OpenOverlay(const std::shared_ptr<State>& state, String^ title, bool browse
     state->back->Visibility = browser ? Visibility::Visible : Visibility::Collapsed;
     state->overlay->Visibility = Visibility::Visible;
 }
+task<JsonObject^> RunFile(const std::shared_ptr<State>& state, StorageFile^ file, StorageFolder^ parent, bool inputEnabled) {
+    if (!parent) Fail(L"Open the executable from its containing folder first.");
+    OpenOverlay(state, L"Preparing " + file->Name, false);
+    state->runtimeInput = inputEnabled;
+    auto session = ref new Win32Bridge::RuntimeSession(state->surface); state->session = session;
+    return create_task(session->PrepareAsync(file, parent)).then([state, session, file, inputEnabled](bool prepared) {
+        if (state->session != session) Fail(L"Execution was canceled before startup.");
+        if (!prepared) { state->overlayTitle->Text = L"Stopped: " + session->LastError; Fail(session->LastError); }
+        session->SetInputEnabled(inputEnabled);
+        state->overlayTitle->Text = L"Running " + file->Name;
+        auto running = create_task(session->RunAsync());
+        session->SetInputEnabled(inputEnabled);
+        running.then([state, session, file](task<int> finished) {
+            try {
+                const auto exit = finished.get();
+                if (state->session == session)
+                    state->overlayTitle->Text = session->LastError && session->LastError->Length()
+                        ? L"Stopped: " + session->LastError : file->Name + L" exited " + Str(std::to_wstring(exit));
+                session->FlushDiagnostics();
+            } catch (Exception^ error) {
+                if (state->session == session) state->overlayTitle->Text = L"Stopped: " + error->Message;
+            } catch (...) {
+                if (state->session == session) state->overlayTitle->Text = L"Runtime stopped unexpectedly.";
+            }
+        }, Ui());
+        auto result = ref new JsonObject(); Bool(result, L"started", true); Bool(result, L"inputEnabled", inputEnabled);
+        Text(result, L"name", file->Name); Text(result, L"importSummary", session->ImportSummary);
+        return result;
+    }, Ui());
+}
+void NativeSmoke(const std::shared_ptr<State>& state);
 task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, JsonObject^ parameters) {
     const auto name = Wide(method);
     if (name == L"ready") {
@@ -221,6 +457,7 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
         state->navigation = L"ready";
         state->lastError = L"";
         state->fallback->Visibility = Visibility::Collapsed;
+        NativeSmoke(state);
         return Status(state).then([] { return ref new JsonObject(); }, Ui());
     }
     if (name == L"hello") {
@@ -234,6 +471,101 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
             result->SetNamedValue(L"roots", roots);
             return result;
         }, Ui());
+    }
+    if (name == L"libraryList") {
+        auto result = ref new JsonObject(); auto games = ref new JsonArray();
+        for (const auto& game : state->games) games->Append(GameJson(game));
+        result->SetNamedValue(L"games", games); return task_from_result(result);
+    }
+    if (name == L"libraryAdd") {
+        const auto item = Find(state, Required(parameters, L"file")); auto file = File(item);
+        if (!item.parent) Fail(L"Open the containing folder before creating a library shortcut.");
+        const auto path = Wide(file->Path);
+        for (const auto& existing : state->games)
+            if (!path.empty() && existing.file && Wide(existing.file->Path) == path) return task_from_result(GameJson(existing));
+        if (state->games.size() >= 64) Fail(L"The library is limited to 64 shortcuts.");
+        Game game;
+        game.id = L"game-" + Wide(CryptographicBuffer::EncodeToHexString(CryptographicBuffer::GenerateRandom(16)));
+        game.name = parameters->HasKey(L"name") ? Wide(Required(parameters, L"name", 128)) : Wide(file->DisplayName);
+        if (game.name.empty()) Fail(L"A game name is required.");
+        game.file = file; game.parent = item.parent; game.available = true; game.executable = Wide(file->Name);
+        auto access = StorageApplicationPermissions::FutureAccessList;
+        access->AddOrReplace(GameGrant(game.id, false), file);
+        try { access->AddOrReplace(GameGrant(game.id, true), item.parent); }
+        catch (...) { access->Remove(GameGrant(game.id, false)); throw; }
+        const auto id = Str(game.id); state->games.push_back(game);
+        return SaveLibrary(state).then([state, id](task<void> saved) {
+            try { saved.get(); }
+            catch (...) {
+                auto access = StorageApplicationPermissions::FutureAccessList;
+                try { access->Remove(GameGrant(Wide(id), false)); access->Remove(GameGrant(Wide(id), true)); } catch (...) { }
+                state->games.erase(std::remove_if(state->games.begin(), state->games.end(), [id](const Game& item) { return item.id == Wide(id); }), state->games.end());
+                throw;
+            }
+            return GameJson(FindGame(state, id));
+        }, Ui());
+    }
+    if (name == L"libraryUpdate") {
+        auto id = Required(parameters, L"game"); auto& game = FindGame(state, id); const auto previous = game;
+        const auto title = parameters->HasKey(L"name") ? Wide(Required(parameters, L"name", 128)) : game.name;
+        if (title.empty()) Fail(L"A game name is required.");
+        const auto notes = parameters->HasKey(L"notes") ? Wide(Required(parameters, L"notes", 4096)) : game.notes;
+        const auto input = parameters->HasKey(L"inputEnabled") ? parameters->GetNamedBoolean(L"inputEnabled") : game.inputEnabled;
+        if (parameters->HasKey(L"cover")) {
+            if (Required(parameters, L"cover", 0)->Length()) Fail(L"Use the local image picker to change a cover.");
+            game.coverFile.clear(); game.cover = L"";
+        }
+        game.name = title; game.notes = notes; game.inputEnabled = input;
+        return SaveLibrary(state).then([state, id, previous](task<void> saved) {
+            try { saved.get(); } catch (...) { FindGame(state, id) = previous; throw; }
+            return GameJson(FindGame(state, id));
+        }, Ui());
+    }
+    if (name == L"libraryRemove") {
+        auto id = Required(parameters, L"game"); const auto removed = FindGame(state, id);
+        state->games.erase(std::remove_if(state->games.begin(), state->games.end(), [id](const Game& item) { return item.id == Wide(id); }), state->games.end());
+        return SaveLibrary(state).then([state, removed](task<void> saved) {
+            try { saved.get(); } catch (...) { state->games.push_back(removed); throw; }
+            auto access = StorageApplicationPermissions::FutureAccessList;
+            for (bool parent : {false, true}) {
+                try { auto key = GameGrant(removed.id, parent); if (access->ContainsItem(key)) access->Remove(key); } catch (...) { }
+            }
+            if (!removed.coverFile.empty()) {
+                Observe(create_task(state->coversFolder->GetFileAsync(Str(removed.coverFile)))
+                    .then([](StorageFile^ file) { return file->DeleteAsync(); }));
+            }
+            return ref new JsonObject();
+        }, Ui());
+    }
+    if (name == L"libraryCover") {
+        auto id = Required(parameters, L"game"); const auto previous = FindGame(state, id);
+        auto file = File(Find(state, Required(parameters, L"file")));
+        return CoverPreview(file).then([state, id, previous](IBuffer^ preview) {
+            // A new app-owned preview is committed before metadata points to it.
+            // Failure preserves both the previous shortcut and previous cover.
+            const auto filename = Wide(id) + L"-" + Wide(CryptographicBuffer::EncodeToHexString(
+                CryptographicBuffer::GenerateRandom(16))) + L".png";
+            auto cover = L"data:image/png;base64," + CryptographicBuffer::EncodeToBase64String(preview);
+            return create_task(state->coversFolder->CreateFileAsync(Str(filename), CreationCollisionOption::FailIfExists))
+                .then([state, id, previous, preview, filename, cover](StorageFile^ target) {
+                    return WriteBuffer(target, preview).then([state, id, filename, cover] {
+                        auto& game = FindGame(state, id); game.coverFile = filename; game.cover = cover;
+                        return SaveLibrary(state);
+                    }, Ui()).then([state, id, previous, target](task<void> saved) {
+                        try { saved.get(); }
+                        catch (...) { FindGame(state, id) = previous; Observe(create_task(target->DeleteAsync())); throw; }
+                        if (!previous.coverFile.empty())
+                            Observe(create_task(state->coversFolder->GetFileAsync(Str(previous.coverFile)))
+                                .then([](StorageFile^ old) { return old->DeleteAsync(); }));
+                        return GameJson(FindGame(state, id));
+                    }, Ui());
+                }, Ui());
+        }, Ui());
+    }
+    if (name == L"libraryRun") {
+        const auto game = FindGame(state, Required(parameters, L"game"));
+        if (!game.available || !game.file || !game.parent) Fail(L"The game file is unavailable. Reconnect its drive or add it again.");
+        return RunFile(state, game.file, game.parent, game.inputEnabled);
     }
     if (name == L"list") {
         const auto item = Find(state, Required(parameters, L"folder"));
@@ -297,60 +629,57 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
             return Entry(state, Str(state->usbId));
         }, Ui());
     }
+    if (name == L"lanStart") {
+        return state->initialized.then([state](task<void> initialized) {
+            initialized.get(); return state->lan->StartAsync(Folder(Find(state, L"workspace")));
+        }, Ui());
+    }
+    if (name == L"lanStop") return task_from_result(state->lan->Stop());
+    if (name == L"lanStatus") return task_from_result(state->lan->Status());
     if (name == L"browser") {
         auto uri = ref new Uri(Required(parameters, L"url", 4096));
         if (!WebAddress(uri)) Fail(L"The browser accepts only HTTP and HTTPS addresses.");
-        OpenOverlay(state, L"Browser", true);
-        auto browser = ref new WebView(); state->browser = browser;
-        // This WebView has no ScriptNotify handler or injected native object.
-        browser->NavigationStarting += ref new TypedEventHandler<WebView^, WebViewNavigationStartingEventArgs^>(
-            [](WebView^, WebViewNavigationStartingEventArgs^ args) {
-                if (!WebAddress(args->Uri)) args->Cancel = true;
-            });
-        browser->NewWindowRequested += ref new TypedEventHandler<WebView^, WebViewNewWindowRequestedEventArgs^>(
-            [](WebView^ sender, WebViewNewWindowRequestedEventArgs^ args) {
-                args->Handled = true;
-                if (WebAddress(args->Uri)) sender->Navigate(args->Uri);
-            });
-        state->surface->Children->Append(browser); browser->Navigate(uri);
-        auto result = ref new JsonObject(); Bool(result, L"opened", true); return task_from_result(result);
+        OpenOverlay(state, L"Starting Edge / Chromium", true);
+        auto browser = std::make_shared<MihawkModern::Browser>(); state->modernBrowser = browser;
+        return browser->OpenAsync(state->surface, uri, state->overlayTitle);
     }
     if (name == L"closeRuntime") {
         CloseOverlay(state); return task_from_result(ref new JsonObject());
     }
     if (name == L"run") {
         const auto item = Find(state, Required(parameters, L"file")); auto file = File(item);
-        if (!item.parent) Fail(L"Open the executable from its containing folder first.");
-        OpenOverlay(state, L"Preparing " + file->Name, false);
-        auto session = ref new Win32Bridge::RuntimeSession(state->surface); state->session = session;
-        return create_task(session->PrepareAsync(file, item.parent)).then([state, session, file](bool prepared) {
-            if (state->session != session) Fail(L"Execution was canceled before startup.");
-            if (!prepared) {
-                state->overlayTitle->Text = L"Stopped: " + session->LastError;
-                Fail(session->LastError);
-            }
-            session->SetInputEnabled(true);
-            state->overlayTitle->Text = L"Running " + file->Name;
-            auto running = create_task(session->RunAsync());
-            running.then([state, session, file](task<int> finished) {
-                try {
-                    const auto exit = finished.get();
-                    if (state->session == session)
-                        state->overlayTitle->Text = session->LastError && session->LastError->Length()
-                            ? L"Stopped: " + session->LastError : file->Name + L" exited " + Str(std::to_wstring(exit));
-                    session->FlushDiagnostics();
-                } catch (Exception^ error) {
-                    if (state->session == session) state->overlayTitle->Text = L"Stopped: " + error->Message;
-                } catch (...) {
-                    if (state->session == session) state->overlayTitle->Text = L"Runtime stopped unexpectedly.";
-                }
-            }, Ui());
-            auto result = ref new JsonObject(); Bool(result, L"started", true);
-            Text(result, L"name", file->Name); Text(result, L"importSummary", session->ImportSummary);
-            return result;
-        }, Ui());
+        return RunFile(state, file, item.parent, true);
     }
     Fail(L"This native method is not implemented.");
+}
+void NativeSmoke(const std::shared_ptr<State>& state) {
+    if (state->smokeStarted) return;
+    state->smokeStarted = true;
+    // Only an explicit app-local test configuration enables network/browser
+    // smoke actions. An ordinary launch neither listens nor opens a web page.
+    Observe(create_task(ApplicationData::Current->LocalFolder->TryGetItemAsync(L"mihawk-native-smoke.json"))
+        .then([](IStorageItem^ item) -> task<String^> {
+            auto file = dynamic_cast<StorageFile^>(item);
+            return file ? ReadText(file, 4096) : task_from_result<String^>(nullptr);
+        }, Ui()).then([state](String^ text) -> task<void> {
+            if (!text) return task_from_result();
+            auto config = JsonObject::Parse(text);
+            task<void> smoke = task_from_result();
+            if (config->HasKey(L"lan") && config->GetNamedBoolean(L"lan"))
+                smoke = smoke.then([state] {
+                    return Dispatch(state, L"lanStart", ref new JsonObject()).then([](JsonObject^) {});
+                }, Ui());
+            if (config->HasKey(L"browser") && config->GetNamedBoolean(L"browser"))
+                smoke = smoke.then([state] {
+                    auto parameters = ref new JsonObject(); Text(parameters, L"url", L"https://example.com");
+                    return Dispatch(state, L"browser", parameters).then([](JsonObject^) {});
+                }, Ui());
+            return smoke;
+        }, Ui()).then([state](task<void> completed) {
+            try { completed.get(); }
+            catch (Exception^ error) { HostError(state, L"Native smoke: " + error->Message); }
+            catch (...) { HostError(state, L"Native smoke failed."); }
+        }, Ui()));
 }
 void Reply(const std::shared_ptr<State>& state, String^ id, JsonObject^ result, String^ error) {
     auto response = ref new JsonObject(); Text(response, L"id", id); Bool(response, L"ok", !error);
@@ -364,7 +693,13 @@ void Reply(const std::shared_ptr<State>& state, String^ id, JsonObject^ result, 
     } catch (Exception^ exception) { HostError(state, exception->Message); }
 }
 void Request(const std::shared_ptr<State>& state, Object^ sender, NotifyEventArgs^ args) {
-    if (sender != state->shell || !Trusted(state->shell->Source)) return;
+    ++state->notifyCount;
+    state->lastNotifyUri = state->shell && state->shell->Source ? state->shell->Source->AbsoluteUri : L"";
+    if (sender != state->shell || !Trusted(state->shell->Source)) {
+        ++state->rejectedNotifyCount;
+        if (state->rejectedNotifyCount <= 4) Observe(Status(state));
+        return;
+    }
     String^ id = L"";
     try {
         if (!args->Value || args->Value->Length() > 2U * 1024U * 1024U) Fail(L"Native request is too large.");
@@ -373,10 +708,18 @@ void Request(const std::shared_ptr<State>& state, Object^ sender, NotifyEventArg
         auto method = Required(request, L"method", 64);
         auto parameters = request->HasKey(L"params") ? request->GetNamedObject(L"params") : ref new JsonObject();
         if (state->pending >= 8) Fail(L"Too many pending native requests. Try again shortly.");
-        auto operation = Dispatch(state, method, parameters);
+        const auto name = Wide(method);
+        const bool library = name.compare(0, 7, L"library") == 0;
+        const bool mutation = name == L"libraryAdd" || name == L"libraryUpdate" || name == L"libraryRemove" || name == L"libraryCover";
+        if (library && state->libraryBusy) Fail(L"A library change is still being saved. Try again shortly.");
+        auto operation = library ? state->libraryInitialized.then([state, method, parameters](task<void> ready) {
+            ready.get(); return Dispatch(state, method, parameters);
+        }, Ui()) : Dispatch(state, method, parameters);
+        if (mutation) state->libraryBusy = true;
         ++state->pending;
-        operation.then([state, id](task<JsonObject^> completed) {
+        operation.then([state, id, mutation](task<JsonObject^> completed) {
             --state->pending;
+            if (mutation) state->libraryBusy = false;
             try { Reply(state, id, completed.get(), nullptr); }
             catch (Exception^ exception) { Reply(state, id, nullptr, exception->Message); }
             catch (...) { Reply(state, id, nullptr, L"The native operation failed."); }
@@ -391,7 +734,17 @@ Button^ Action(String^ title) {
 }
 
 namespace MihawkXbox {
-ref class App sealed : public Application {
+ref class App sealed : public Application, public Windows::UI::Xaml::Markup::IXamlMetadataProvider {
+public:
+    virtual Windows::UI::Xaml::Markup::IXamlType^ GetXamlType(Windows::UI::Xaml::Interop::TypeName type) {
+        return Metadata()->GetXamlType(type);
+    }
+    virtual Windows::UI::Xaml::Markup::IXamlType^ GetXamlType(String^ fullName) {
+        return Metadata()->GetXamlType(fullName);
+    }
+    virtual Platform::Array<Windows::UI::Xaml::Markup::XmlnsDefinition>^ GetXmlnsDefinitions() {
+        return Metadata()->GetXmlnsDefinitions();
+    }
 internal:
     App() { }
 protected:
@@ -413,6 +766,29 @@ protected:
                     state->items.emplace(L"workspace", Item{workspace, nullptr, true});
                     return Restore(state);
                 }, Ui());
+            state->libraryInitialized = state->initialized.then([state] { return LoadLibrary(state); }, Ui());
+            // Observing here prevents an unhandled-task exception; library RPCs
+            // still await the original task and receive the concrete load error.
+            Observe(state->libraryInitialized.then([state](task<void> initialized) {
+                try { initialized.get(); }
+                catch (Exception^ error) { state->lastError = L"Library restore: " + error->Message; Observe(Status(state)); }
+                catch (...) { state->lastError = L"Library could not be restored."; Observe(Status(state)); }
+            }, Ui()));
+            state->inputTimer = ref new DispatcherTimer();
+            TimeSpan inputInterval; inputInterval.Duration = 1000000;
+            state->inputTimer->Interval = inputInterval;
+            state->inputTimer->Tick += ref new EventHandler<Object^>([state](Object^, Object^) {
+                // The bridge worker enables input as it starts. Reapply an
+                // explicitly disabled per-game setting while that worker runs.
+                try { if (state->session && !state->runtimeInput) state->session->SetInputEnabled(false); }
+                catch (...) { }
+            });
+            state->inputTimer->Start();
+            Suspending += ref new Windows::ApplicationModel::SuspendingEventHandler(
+                [state](Object^, Windows::ApplicationModel::SuspendingEventArgs^) {
+                    try { state->lan->Stop(); } catch (...) { }
+                    try { if (state->session) state->session->SetInputEnabled(false); } catch (...) { }
+                });
             state->overlay = ref new Grid(); state->overlay->Visibility = Visibility::Collapsed;
             state->overlay->Background = ref new SolidColorBrush(Colors::Black);
             auto headerRow = ref new RowDefinition(); headerRow->Height = GridLengthHelper::Auto;
@@ -422,7 +798,7 @@ protected:
             auto close = Action(L"Back to desktop"); state->back = Action(L"Back");
             close->Click += ref new RoutedEventHandler([state](Object^, RoutedEventArgs^) { CloseOverlay(state); });
             state->back->Click += ref new RoutedEventHandler([state](Object^, RoutedEventArgs^) {
-                if (state->browser && state->browser->CanGoBack) state->browser->GoBack();
+                if (state->modernBrowser && state->modernBrowser->CanGoBack()) state->modernBrowser->GoBack();
             });
             state->overlayTitle = ref new TextBlock();
             state->overlayTitle->Foreground = ref new SolidColorBrush(Colors::White);
@@ -443,7 +819,7 @@ protected:
                 [state](WebView^, WebViewNavigationCompletedEventArgs^ args) {
                     state->navigation = Str(args->IsSuccess ? (state->javascriptReady ? L"ready" : L"loaded") : L"failed");
                     if (!args->IsSuccess) HostError(state, L"The packaged desktop page could not load. Web error " + Str(std::to_wstring(static_cast<int>(args->WebErrorStatus))));
-                    else Observe(Status(state));
+                    else { Observe(Status(state)); ProbeShell(state); }
                 });
             state->shell->ScriptNotify += ref new NotifyEventHandler([state](Object^ sender, NotifyEventArgs^ args) { Request(state, sender, args); });
             state->root->Children->InsertAt(0, state->shell);
@@ -453,6 +829,11 @@ protected:
         catch (...) { HostError(state, L"Native desktop initialization failed."); }
     }
 private:
+    Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider^ Metadata() {
+        if (!m_metadata) m_metadata = ref new Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider();
+        return m_metadata;
+    }
+    Microsoft::UI::Xaml::XamlTypeInfo::XamlControlsXamlMetaDataProvider^ m_metadata;
     std::shared_ptr<State> m_state;
 };
 }
