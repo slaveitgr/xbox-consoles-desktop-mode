@@ -64,3 +64,23 @@ methods (source inventory, not a final-link error report): `nativeSocketPair`,
 `setCpuAffinityForThread`. Some relate only to disabled UI/JIT paths. Real
 process/socket/procfs users must be resolved with implementations or an explicit
 supported-profile policy before the Wine backend is considered available.
+
+## Next-port constraints from the verified link report
+
+Implement portable `platform_strcasestr` and explicit capability gates first,
+then the real socket wake channel and CPU/proc policy, then repeat the genuine
+UWP link and packaged execution checks. `nativeSocketPair` must provide actual
+`select`/`recv`/`send` descriptors and its caller must handle failure; the pinned
+`knativesocket.cpp` currently ignores that return value.
+
+CPU affinity is optional and guarded by `KSystem::cpuAffinityCountForApp`.
+Host telemetry must use supported measurements or deliberately omit unsupported
+proc/sys nodes; do not copy desktop `NtQuerySystemInformation` calls unchanged.
+The shared heap's code-memory branches remain rejected by the interpreter
+profile rather than granting executable host pages.
+
+Do not fix `initWindowsAudio` by blindly selecting upstream SDL audio: that
+route includes upstream **Fake Midi** success responses. The initial audio-off
+profile needs an explicit unsupported capability boundary. `BOXEDWINE_MSVC` is
+currently conflated with desktop Windows audio/graphics paths and must be split
+from the actual UWP host capabilities.
