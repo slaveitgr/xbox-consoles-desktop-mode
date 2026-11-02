@@ -16,6 +16,8 @@ def once(text, before, after):
 
 
 def startup(cpp, header):
+    cpp = once(cpp, "char* base = getcwd(curdir, sizeof(curdir));",
+        "char* base = platform_getcwd(curdir, sizeof(curdir));")
     begin = cpp.index("bool StartUpArgs::apply() {")
     end = cpp.index("    x11_init();", begin) + len("    x11_init();")
     prepare = cpp[begin:end]

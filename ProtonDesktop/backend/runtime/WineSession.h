@@ -25,6 +25,8 @@ namespace protondesktop::runtime
         std::vector<std::string> argv;
         std::vector<std::string> environment;
         std::uint32_t width = 1920, height = 1080;
+        // Runs Wine's idempotent --init path even when hives already exist.
+        // This does not force a wine.inf update or reset user data.
         bool initializePrefixIfNeeded = true;
     };
 
@@ -49,7 +51,7 @@ namespace protondesktop::runtime
 
     // Synchronous, one session per process, called on SDL/WinRT's owner thread.
     // Owns SDL, the pinned kernel, ZIP handles and guest workers until teardown.
-    // Runs real Wine --version, initializes a missing prefix with wineboot,
+    // Runs real Wine --version and, when requested, Wine's --init prefix check,
     // then starts argv in that SAME kernel. Keeps pumping the desktop after
     // its launcher exits, until stop is set, SDL closes, or a real failure.
     // The observer runs on this same thread and must not throw or start SDL.

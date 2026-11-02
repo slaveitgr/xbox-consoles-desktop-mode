@@ -1,4 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0-only
+#ifdef _WIN32
+// Windows establishes SDK architecture macros; load all SDK/WinRT headers
+// before X11's Status macro and SIMDe's intrinsic aliases enter this TU.
+#include <windows.h>
+#include <fileapifromapp.h>
+#include <winrt/Windows.Storage.h>
+#endif
 #include "backend/runtime/WineSession.h"
 #include "backend/uwp/UwpGuestWorkers.h"
 #include "boxedwine.h"
@@ -20,10 +27,6 @@
 #include <stdexcept>
 #include <thread>
 #include <unordered_set>
-#ifdef _WIN32
-#include <fileapifromapp.h>
-#include <winrt/Windows.Storage.h>
-#endif
 
 #ifndef BOXEDWINE_GUEST_X64
 #error WineSession requires the actual pinned x64 guest interpreter.
@@ -347,13 +350,16 @@ namespace protondesktop::runtime
                     Require(state.result.version.exitCode == 0, "Real Wine --version returned a failure status");
                     state.Note(SessionPhase::WineVersion, "Real Wine --version exited with status 0");
                     state.result.prefixFilesPresent = PrefixFilesPresent(nativeRoot);
-                    if (!state.result.prefixFilesPresent)
+                    if (request.initializePrefixIfNeeded)
                     {
-                        Require(request.initializePrefixIfNeeded, "A Wine prefix is missing and initialization is disabled");
-                        state.Note(SessionPhase::PrefixInitialization, "Starting real wineboot.exe --init in the same owned kernel");
+                        // Existing hives may come from an interrupted first
+                        // boot. Always let Wine run its own initialization
+                        // path; file presence cannot establish completion.
+                        state.Note(SessionPhase::PrefixInitialization, "Starting real wineboot.exe --init to initialize/check the existing prefix in the same owned kernel");
                         prefixProcess = Launch(state.result.prefix, {WineLoader, "wineboot.exe", "--init"}, environment);
                         phaseStarted = Clock::now();
                     }
+                    else Require(state.result.prefixFilesPresent, "A Wine prefix is missing and initialization is disabled");
                 }
                 if (prefixProcess && !state.result.prefix.exited)
                 {

@@ -261,6 +261,7 @@ namespace
             request.environment = {"HOME=/home/username", "USER=username", "WINEARCH=win64",
                 "WINEPREFIX=/home/username/.wine", "WINELOADER=/usr/lib/wine/wine64",
                 "WINESERVER=/usr/lib/wine/wineserver64", "WINEDLLPATH=/usr/lib/x86_64-linux-gnu/wine",
+                "WINESYSTEMDLLPATH=\\??\\Z:\\usr\\x86_64-w64-mingw32\\lib",
                 "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu/wine/x86_64-unix:/lib/x86_64-linux-gnu:/usr/lib/x86_64-linux-gnu",
                 "DISPLAY=:0", "WINEDLLOVERRIDES=mscoree,mshtml="};
             // Wine 8 enables its real taskbar/Start shell by default for the

@@ -54,8 +54,20 @@ runtime loading. The ZIPs also contain the ELF interpreter, Wine NLS data,
 Explorer/shell DLLs, fontconfig configuration and fonts. No fontconfig-path
 override is needed for their installed layout.
 
-The session performs Wine version validation, initializes a missing prefix and
-requests Explorer within the same guest kernel. Neither a loaded process nor a
+`WINESYSTEMDLLPATH=\??\Z:\usr\x86_64-w64-mingw32\lib` supplies Wine 8's
+additional **NT-format PE DLL search directory**. This is separate from the
+ELF `LD_LIBRARY_PATH` above. The fixed ZIP already contains the genuine x64
+`zlib1.dll` there; without this route, user32's zlib import fails and Wine's
+delay-load failure hook misleadingly names `CreateDialogParamW`. A real Linux
+guest trace confirmed that this environment-only change loads zlib, loads
+user32 and resolves that function successfully, without changing either ZIP.
+This is not proof of a completed prefix or a desktop on Xbox.
+
+The app performs Wine version validation, runs Wine's non-resetting `--init`
+path on each start, then requests Explorer within the same guest kernel.
+Existing hive files can be left by an interrupted boot and do not bypass that
+initialization. This does not force a `wine.inf` update or guarantee repair of
+an interrupted INF update. Neither a loaded process nor a
 successful build is evidence of desktop pixels or a stable running app. Read
 the actual phase log/result and validate presentation separately.
 
