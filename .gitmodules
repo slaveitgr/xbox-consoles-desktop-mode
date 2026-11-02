@@ -1,3 +1,6 @@
 [submodule "external/DesktopMode_uwp"]
 	path = external/DesktopMode_uwp
 	url = https://github.com/Pedro1234-code/DesktopMode_uwp.git
+[submodule "MihawkOS"]
+	path = external/MihawkOS
+	url = https://github.com/mihawk-99/PS5_MihawkOS.git

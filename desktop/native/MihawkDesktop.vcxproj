@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+    <ProjectConfiguration Include="Debug|x64"><Configuration>Debug</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{74E12AF5-DCA1-491C-9665-FA8AB29CBDB1}</ProjectGuid>
+    <RootNamespace>MihawkXbox</RootNamespace>
+    <ProjectName>MihawkDesktop</ProjectName>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>17.0</MinimumVisualStudioVersion>
+    <AppContainerApplication>true</AppContainerApplication>
+    <ApplicationType>Windows Store</ApplicationType>
+    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)' == ''">10.0.26100.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.18362.0</WindowsTargetPlatformMinVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <PreferredToolArchitecture>x64</PreferredToolArchitecture>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries Condition="'$(Configuration)' == 'Debug'">true</UseDebugLibraries>
+    <UseDebugLibraries Condition="'$(Configuration)' != 'Debug'">false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <OutDir>$(ProjectDir)..\..\artifacts\mihawk-host\bin\$(Platform)\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)..\..\artifacts\mihawk-host\obj\$(Platform)\$(Configuration)\</IntDir>
+    <TargetName>MihawkDesktop</TargetName>
+    <BridgeWinmdPath Condition="'$(BridgeWinmdPath)' == ''">$(ProjectDir)..\..\artifacts\upstream-bridge-x86\$(Configuration)\Win32Bridge.winmd</BridgeWinmdPath>
+    <AppxPackage>false</AppxPackage>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <GenerateAppxPackageOnBuild>false</GenerateAppxPackageOnBuild>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <CompileAsWinRT>true</CompileAsWinRT>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <ConformanceMode>false</ConformanceMode>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <ForcedUsingFiles>$(BridgeWinmdPath);%(ForcedUsingFiles)</ForcedUsingFiles>
+      <WarningLevel>Level4</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <AdditionalOptions>/bigobj /utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;UNICODE;_UNICODE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary Condition="'$(Configuration)' == 'Debug'">MultiThreadedDebugDLL</RuntimeLibrary>
+      <RuntimeLibrary Condition="'$(Configuration)' != 'Debug'">MultiThreadedDLL</RuntimeLibrary>
+      <Optimization Condition="'$(Configuration)' != 'Debug'">MaxSpeed</Optimization>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <AdditionalDependencies>windowsapp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup><ClCompile Include="MihawkApp.cpp" /></ItemGroup>
+  <Target Name="CheckBridgeMetadata" BeforeTargets="ClCompile">
+    <Error Condition="!Exists('$(BridgeWinmdPath)')" Text="Supply BridgeWinmdPath pointing to the packaged Win32Bridge.winmd." />
+  </Target>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

@@ -80,13 +80,16 @@ struct GuestAssertions {
 };
 
 void Push(Bytes& code, std::uint32_t value) { code.push_back(0x68); Dword(code, value); }
-void BeginSingleArgumentCall(GuestAssertions& guest, std::uint32_t pointer, std::uint32_t base = 0x400000) {
+void PrepareApiState(GuestAssertions& guest, std::uint32_t base = 0x400000) {
     Push(guest.code, InitialError); Call(guest.code, base + 0x2060);
     for (const auto reg : {3U, 5U, 6U, 7U}) {
         guest.code.push_back(static_cast<std::uint8_t>(0xb8U + reg));
         Dword(guest.code, 0x11223300U + reg);
     }
     guest.code.insert(guest.code.end(), {0x89, 0x25}); Dword(guest.code, base + 0x2100); // mov [saved],esp
+}
+void BeginSingleArgumentCall(GuestAssertions& guest, std::uint32_t pointer, std::uint32_t base = 0x400000) {
+    PrepareApiState(guest, base);
     Push(guest.code, pointer); Call(guest.code, base + 0x2068);
 }
 void CheckApiReturn(GuestAssertions& guest, std::uint32_t value, std::uint32_t error, std::uint32_t base = 0x400000) {
@@ -188,7 +191,7 @@ void GetVersionExTests() {
 }
 
 Bytes ModuleProgram(Bytes code) { return ThirdImportProgram(std::move(code), "GetModuleHandleA"); }
-void ModuleNull(std::uint32_t base, const char* label) {
+void ModuleNull(std::uint32_t base, const char* label, const std::string& api = "GetModuleHandleA") {
     GuestAssertions guest; BeginSingleArgumentCall(guest, 0, base);
     guest.Eax(base);
     guest.code.push_back(0xa3); Dword(guest.code, base + 0x2104); // save returned guest handle
@@ -199,18 +202,18 @@ void ModuleNull(std::uint32_t base, const char* label) {
     guest.code.push_back(0xa1); Dword(guest.code, base + 0x2104);
     guest.code.insert(guest.code.end(), {0x8b, 0x50, 0x3c, 0x01, 0xd0, 0x8b, 0x00}); // handle + e_lfanew -> PE signature
     guest.Eax(0x4550);
-    auto image = ModuleProgram(guest.Finish(base));
+    auto image = ThirdImportProgram(guest.Finish(base), api);
     Put32(image, 0xb4, base); // a second fixed preferred base, not relocation support
     const auto result = Trace(image);
     Check(result.passed, label);
     if (!result.passed) std::cerr << result.report;
 }
-void ModuleName(const Bytes& name, const char* label) {
-    GuestAssertions guest; BeginSingleArgumentCall(guest, 0x403020);
+void ModuleName(const Bytes& name, const char* label, const std::string& api = "GetModuleHandleA", std::uint32_t pointer = 0x403020) {
+    GuestAssertions guest; BeginSingleArgumentCall(guest, pointer);
     CheckApiReturn(guest, 0, 126);
-    guest.Memory(0x403020, ExpectedBuffer, static_cast<std::uint32_t>(name.size()));
-    auto image = ModuleProgram(guest.Finish());
-    Place(image, 0x620, name); Place(image, 0x700, name);
+    guest.Memory(pointer, ExpectedBuffer, static_cast<std::uint32_t>(name.size()));
+    auto image = ThirdImportProgram(guest.Finish(), api);
+    Place(image, 0x600 + pointer - 0x403000, name); Place(image, 0x700, name);
     const auto result = Trace(image);
     Check(result.passed, label);
     if (!result.passed) std::cerr << result.report;
@@ -264,6 +267,136 @@ void GetModuleHandleTests() {
     image[0x800] = 0;
     ModuleFault(image, "GetModuleHandleA rejects NUL at offset 512 even when that byte is readable");
 }
+
+void CheckedTrace(const Bytes& image, const char* label) {
+    const auto result = Trace(image);
+    Check(result.passed, label);
+    if (!result.passed) std::cerr << result.report;
+}
+void ScalarStartupApis() {
+    for (const auto& api : {std::pair<const char*, std::uint32_t>{"GetErrorMode", 0},
+                           {"GetVersion", 0x4a65000a}, {"GetCurrentProcessId", 1}, {"GetCurrentThreadId", 1},
+                           {"GetCurrentProcess", 0xffffffffU}, {"GetCurrentThread", 0xfffffffeU},
+                           {"GetACP", 1252}, {"GetOEMCP", 437}}) {
+        GuestAssertions guest; PrepareApiState(guest);
+        Call(guest.code, VersionIat); // No argument: only the return address belongs to this call.
+        CheckApiReturn(guest, api.second, InitialError);
+        const auto image = ThirdImportProgram(guest.Finish(), api.first);
+        const auto result = Trace(image);
+        Check(result.passed, "scalar startup API returns its declared guest value, preserves last-error/registers and pops only its return address");
+        if (!result.passed) std::cerr << api.first << ":\n" << result.report;
+    }
+    // IDs must come from the virtual TEB, rather than returning either a host
+    // identity or a hard-coded initial value after guest state changes.
+    for (const auto& api : {std::pair<const char*, std::uint32_t>{"GetCurrentProcessId", 0x20}, {"GetCurrentThreadId", 0x24}}) {
+        GuestAssertions guest;
+        guest.code.insert(guest.code.end(), {0x64, 0xc7, 0x05}); Dword(guest.code, api.second); Dword(guest.code, 0x31415926);
+        PrepareApiState(guest); Call(guest.code, VersionIat);
+        CheckApiReturn(guest, 0x31415926, InitialError);
+        guest.code.insert(guest.code.end(), {0x64, 0xa1}); Dword(guest.code, api.second); guest.Eax(0x31415926);
+        CheckedTrace(ThirdImportProgram(guest.Finish(), api.first), "virtual process/thread ID query agrees with the guest TEB ClientId field");
+    }
+    // A zero-argument gate is valid with exactly four stack bytes available.
+    // Restore an ordinary stack before the later argument-taking exit call.
+    GuestAssertions boundary;
+    boundary.code.push_back(0xbc); Dword(boundary.code, 0x10000004);
+    Call(boundary.code, VersionIat); boundary.Eax(0x4a65000a);
+    boundary.code.push_back(0xbc); Dword(boundary.code, 0x1000fff0);
+    CheckedTrace(ThirdImportProgram(boundary.Finish(), "GetVersion"), "zero-argument gate does not require an unread argument slot beyond its four-byte return frame");
+}
+Bytes ErrorModeProgram(Bytes code) {
+    auto image = ThirdImportProgram(std::move(code), "SetErrorMode");
+    // Add GetErrorMode after the original four imports, preserving all their
+    // IAT slots. The two API calls share one real guest process state.
+    Put32(image, 0x450, 0x2120); Put32(image, 0x454, 0);
+    Put32(image, 0x470, 0x2120); Put32(image, 0x474, 0);
+    Put32(image, 0x98 + 100 + 12 * 8, 24);
+    const std::string name = "GetErrorMode";
+    std::copy(name.begin(), name.end(), image.begin() + 0x522);
+    return image;
+}
+void ErrorModeTests() {
+    GuestAssertions guest; PrepareApiState(guest);
+    const auto set = [&guest](std::uint32_t requested, std::uint32_t previous) {
+        Push(guest.code, requested); Call(guest.code, VersionIat); guest.Eax(previous);
+    };
+    const auto get = [&guest](std::uint32_t expected) {
+        Call(guest.code, 0x402070); guest.Eax(expected);
+    };
+    get(0);
+    set(0x8001, 0); get(0x8001);
+    set(2, 0x8001); get(2);
+    set(4, 2); get(4);
+    set(0, 4); get(4); // SEM_NOALIGNMENTFAULTEXCEPT remains set.
+    set(0x8000, 4); get(0x8004);
+    set(1, 0x8004); get(5);
+    set(0x8007, 5); get(0x8007);
+    set(0, 0x8007); get(4);
+    CheckApiReturn(guest, 4, InitialError);
+    const auto image = ErrorModeProgram(guest.Finish());
+    CheckedTrace(image, "SetErrorMode returns previous mode, replaces supported flags, keeps alignment flag sticky and shares state with GetErrorMode");
+    CheckedTrace(image, "error mode starts at zero in another run after the previous guest changed it");
+
+    for (const auto flags : {8U, 0x10U, 0x80000000U, 0xffffffffU}) {
+        GuestAssertions invalid; BeginSingleArgumentCall(invalid, flags); Exit(invalid.code, 0);
+        const auto result = Trace(ThirdImportProgram(invalid.code, "SetErrorMode"));
+        const bool faulted = !result.passed && Has(result.report, "SetErrorMode flags contain unsupported reserved bits") &&
+            Has(result.report, "Guest last error: 0x1234abcd") && Has(result.report, "Guest error mode: 0x0") &&
+            Has(result.report, "Guest ExitProcess reached: no");
+        Check(faulted, "reserved SetErrorMode flags fault without changing virtual error mode or last-error");
+        if (!faulted) std::cerr << result.report;
+    }
+}
+void WideModuleFault(const Bytes& image, const char* label) {
+    const auto result = Trace(image);
+    const bool faulted = !result.passed && Has(result.report, "Host-call failure: GetModuleHandleW") &&
+        Has(result.report, "readable NUL-terminated UTF-16 guest name within 512 code units") &&
+        Has(result.report, "Guest last error: 0x1234abcd") && Has(result.report, "Guest ExitProcess reached: no");
+    Check(faulted, label);
+    if (!faulted) std::cerr << result.report;
+}
+void ExpandReadOnlySection(Bytes& image, std::uint32_t size) {
+    image.resize(0x600 + size, 0);
+    Put32(image, 0x178 + 80 + 8, size); Put32(image, 0x178 + 80 + 16, size);
+}
+void WideModuleTests() {
+    ModuleNull(0x400000, "GetModuleHandleW(NULL) returns a readable guest image handle with the ordinary stdcall contract", "GetModuleHandleW");
+    ModuleNull(0x5100000, "GetModuleHandleW(NULL) follows another fixed preferred guest base", "GetModuleHandleW");
+    ModuleName(Bytes{0, 0}, "GetModuleHandleW empty UTF-16 name returns NULL/error 126", "GetModuleHandleW");
+    ModuleName(Bytes{'k', 0, 'e', 0, 'r', 0, 'n', 0, 'e', 0, 'l', 0, '3', 0, '2', 0, 0, 0},
+               "GetModuleHandleW validates little-endian code units without exposing named host modules", "GetModuleHandleW");
+    ModuleName(Bytes{0, 0xff, 0x34, 0x12, 0, 0xd8, 0, 0},
+               "GetModuleHandleW accepts opaque non-ASCII and surrogate code units without modifying the input", "GetModuleHandleW");
+    ModuleName(Bytes{'a', 0, 0, 0}, "GetModuleHandleW marshals unaligned UTF-16 guest data", "GetModuleHandleW", 0x403021);
+
+    GuestAssertions terminal; BeginSingleArgumentCall(terminal, 0x4031fe);
+    CheckApiReturn(terminal, 0, 126);
+    auto image = ThirdImportProgram(terminal.Finish(), "GetModuleHandleW");
+    image[0x7fe] = 0; image[0x7ff] = 0;
+    CheckedTrace(image, "GetModuleHandleW accepts a two-byte NUL at the final readable word");
+
+    GuestAssertions longest; BeginSingleArgumentCall(longest, 0x403000); CheckApiReturn(longest, 0, 126);
+    image = ThirdImportProgram(longest.Finish(), "GetModuleHandleW"); ExpandReadOnlySection(image, 0x400);
+    std::fill(image.begin() + 0x600, image.end(), 'x'); image[0x9fe] = 0; image[0x9ff] = 0;
+    CheckedTrace(image, "GetModuleHandleW accepts NUL code unit 511 within its 1024-byte readable buffer");
+    for (const auto pointer : {0x20000000U, 0xffffffffU, 0xfffffffeU, 0x403200U, 0x4031ffU}) {
+        GuestAssertions invalid; BeginSingleArgumentCall(invalid, pointer); Exit(invalid.code, 0);
+        image = ThirdImportProgram(invalid.code, "GetModuleHandleW"); image[0x7ff] = 0;
+        WideModuleFault(image, "GetModuleHandleW faults on unmapped, wrapping or partial two-byte code units");
+    }
+    for (const auto lowByte : {0U, static_cast<unsigned>('a')}) {
+        GuestAssertions invalid; BeginSingleArgumentCall(invalid, 0x4031fe); Exit(invalid.code, 0);
+        image = ThirdImportProgram(invalid.code, "GetModuleHandleW");
+        image[0x7fe] = static_cast<std::uint8_t>(lowByte); image[0x7ff] = lowByte == 0 ? 0xff : 0;
+        WideModuleFault(image, "GetModuleHandleW does not confuse a zero byte inside a nonzero UTF-16 code unit with a terminator");
+    }
+    GuestAssertions invalid; BeginSingleArgumentCall(invalid, 0x403000); Exit(invalid.code, 0);
+    image = ThirdImportProgram(invalid.code, "GetModuleHandleW"); ExpandReadOnlySection(image, 0x400);
+    std::fill(image.begin() + 0x600, image.end(), 'x');
+    WideModuleFault(image, "GetModuleHandleW faults after 512 nonzero readable code units");
+    ExpandReadOnlySection(image, 0x600); image[0xa00] = 0; image[0xa01] = 0;
+    WideModuleFault(image, "GetModuleHandleW rejects NUL code unit 512 even when the bytes are mapped");
+}
 }
 int main() {
     const auto original = xcdm::samples::X86Win32PeBytes();
@@ -311,6 +444,9 @@ int main() {
     Check(!bad.passed && Has(bad.report, "Loader stopped"), "startup refuses invalid file input with a useful report");
     GetVersionExTests();
     GetModuleHandleTests();
+    ScalarStartupApis();
+    ErrorModeTests();
+    WideModuleTests();
     std::cout << checks << " bounded Win32 startup checks; " << failures << " failures\n";
     return failures ? 1 : 0;
 }

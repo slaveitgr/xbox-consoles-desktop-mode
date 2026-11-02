@@ -32,6 +32,9 @@ jobs:
           if-no-files-found: ignore
 
   windows-uwp:
+    # The Mihawk workflow builds the current desktop on push. Retain this legacy
+    # Gecko desktop/diagnostics packaging path for explicit historical builds.
+    if: github.event_name == 'workflow_dispatch'
     name: Windows x64 UWP packages and upstream bridge DLL
     # VS 2022 is required for the v143 UWP toolset; do not use windows-latest.
     runs-on: windows-2022

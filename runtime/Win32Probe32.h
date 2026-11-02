@@ -6,6 +6,13 @@
 
 namespace xcdm::runtime {
 
+struct Pe32Import;
+
+// The shared catalog for typed PE32 guest adapters. DLL names are matched
+// case-insensitively, export names exactly; ordinal imports remain unsupported.
+// This describes adapter availability, not complete API/Windows compatibility.
+bool HasWin32IntegerAdapter(const Pe32Import& imported) noexcept;
+
 struct Win32Probe32Result {
     bool passed = false;
     std::string summary;
@@ -19,8 +26,11 @@ Win32Probe32Result RunWin32Probe32() noexcept;
 // Bounded integer-only guest runner with SetLastError, GetLastError,
 // OutputDebugStringA, guest-only ExitProcess and bounded ANSI GetVersionExA
 // (virtual Windows 10.0.19045 profile). GetModuleHandleA(NULL) returns the guest
-// image base; readable named queries (NUL within 512 bytes) fail with error 126
-// until a guest module registry exists. Other imports fail closed.
+// image base; GetModuleHandleW provides the same guest-only policy with bounded
+// UTF-16 names. Named queries (NUL within 512 bytes/code units) fail with error
+// 126 until a guest module registry exists. The scalar bootstrap profile adds
+// guest-local error mode, version, identity/pseudohandles and code-page queries;
+// none changes host state. Other imports fail closed.
 // Exposed for malformed-image/host-call regression tests. The UWP app does not
 // pass USB executables here. A successful exit is not game compatibility.
 Win32Probe32Result ExecuteWin32IntegerImage(const std::uint8_t* bytes,

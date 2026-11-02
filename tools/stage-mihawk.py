@@ -1,0 +1,121 @@
+#!/usr/bin/env python3
+"""Stage the Mihawk Xbox frontend and its explicitly licensed, pinned assets."""
+from pathlib import Path
+import argparse
+import hashlib
+import json
+import shutil
+import subprocess
+import sys
+from PIL import Image, ImageDraw
+
+ROOT = Path(__file__).resolve().parents[1]
+UPSTREAM = ROOT / 'external/MihawkOS'
+PIN = 'f81a028a668b36f5bcb51b09e66d526979382f1d'
+
+
+def copy(source, destination):
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+
+
+def assets(destination):
+    actual = subprocess.check_output(['git', '-C', str(UPSTREAM), 'rev-parse', 'HEAD'], text=True).strip()
+    if actual != PIN:
+        raise SystemExit(f'Mihawk asset pin mismatch: {actual}')
+    destination.mkdir(parents=True, exist_ok=True)
+    copy(UPSTREAM / 'themes/windows11/start.svg', destination / 'start.svg')
+    copy(UPSTREAM / 'prototypes/windows11-shell/css/tokens.css', destination / 'tokens.css')
+    for icon in (UPSTREAM / 'prototypes/windows11-shell/assets/icons/object').glob('*.svg'):
+        copy(icon, destination / 'icons' / icon.name)
+    copy(UPSTREAM / 'themes/windows11/fonts/upstream/selawk.ttf', destination / 'fonts/selawk.ttf')
+    (destination / 'fonts.css').write_text('@font-face{font-family:Selawik;src:url("fonts/selawk.ttf") format("truetype");font-style:normal;font-weight:100 900;}\n', encoding='utf-8')
+    for name, flags in [('wallpaper.png', []), ('wallpaper-dark.png', ['--dark'])]:
+        if not (destination / name).is_file():
+            subprocess.run([sys.executable, str(UPSTREAM / 'tools/make-mihawk-wallpaper.py'),
+                            str(destination / name), '--size', '1920x1080', *flags], check=True)
+
+
+def mark(size):
+    # Rasterize Mihawk's original start.svg geometry (LGPL-2.1-or-later).
+    scale = size * 4 / 100
+    im = Image.new('RGBA', (size * 4, size * 4))
+    draw = ImageDraw.Draw(im)
+    box = lambda values: tuple(round(v * scale) for v in values)
+    draw.rounded_rectangle(box((1, 1, 99, 99)), radius=round(30 * scale), fill='white', outline='#c9d3dd', width=max(1, round(2 * scale)))
+    draw.rounded_rectangle(box((6, 6, 94, 94)), radius=round(25 * scale), outline='#ffb020', width=max(1, round(2 * scale)))
+    draw.line([box(p) for p in [(25, 80.5), (25, 34.5), (50, 64.5), (75, 34.5), (75, 80.5)]], fill='#0e2b46', width=round(11 * scale), joint='curve')
+    return im.resize((size, size), Image.Resampling.LANCZOS)
+
+
+def package_icons(destination):
+    destination.mkdir(parents=True, exist_ok=True)
+    for name, width, height, glyph in [('Square44x44Logo.png', 44, 44, 40), ('Square150x150Logo.png', 150, 150, 120),
+        ('StoreLogo.png', 50, 50, 46), ('Wide310x150Logo.png', 310, 150, 120), ('SplashScreen.png', 620, 300, 150)]:
+        im = Image.new('RGBA', (width, height), '#173f66')
+        icon = mark(glyph)
+        im.alpha_composite(icon, ((width - glyph) // 2, (height - glyph) // 2))
+        im.save(destination / name)
+
+
+def notices(destination):
+    files = {
+        'Mihawk-GPL-3.0.txt': UPSTREAM / 'LICENSE',
+        'Mihawk-NOTICE.md': UPSTREAM / 'NOTICE.md',
+        'Mihawk-LICENSING.md': UPSTREAM / 'LICENSING.md',
+        'Mihawk-art-LGPL-2.1.txt': UPSTREAM / 'themes/windows11/COPYING.LIB',
+        'Selawik-OFL.txt': UPSTREAM / 'themes/windows11/fonts/upstream/LICENSE.txt',
+        'Object-icons-provenance.json': UPSTREAM / 'prototypes/windows11-shell/assets/icons/object/provenance.json',
+        'Fluent-MIT-LICENSE.txt': UPSTREAM / 'themes/windows11/icons/fluent/LICENSE',
+        'Fluent-NOTICE.txt': UPSTREAM / 'themes/windows11/icons/fluent/NOTICE',
+        'DesktopMode-MIT.txt': ROOT / 'external/DesktopMode_uwp/LICENSE',
+        'XboxDesktop-MIT.txt': ROOT / 'LICENSE',
+    }
+    for name in ['LICENSE', 'LICENSE_INFO', 'XCDM-INTEGRATION.md']:
+        files['libx86emu-' + name + '.txt'] = ROOT / 'third_party/libx86emu' / name
+    for name, source in files.items():
+        copy(source, destination / name)
+    (destination / 'MIHAWK-XBOX.txt').write_text(
+        'Mihawk Desktop for Xbox, a community UWP adaptation.\n'
+        f'MihawkOS asset/source pin: {PIN}\n'
+        'https://github.com/mihawk-99/PS5_MihawkOS\n'
+        'Corresponding Xbox source and build scripts:\n'
+        'https://github.com/slaveitgr/xbox-consoles-desktop-mode/tree/codex/x86-runtime\n'
+        'The desktop adaptation is GPL-3.0-or-later. Upstream assets keep their licenses.\n'
+        'Start mark and generated Aero Meadow artwork: LGPL-2.1-or-later. Selawik: OFL-1.1.\n'
+        'No Bubble City artist artwork, PS5 runtime, Wine/Proton binary or game is included.\n'
+        'Package identity is retained for community DesktopMode update compatibility.\n'
+        'This development signature is not an official Microsoft signature.\n', encoding='utf-8')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--assets-only', action='store_true')
+    parser.add_argument('--output', type=Path)
+    parser.add_argument('--host', type=Path)
+    parser.add_argument('--bridge', type=Path)
+    args = parser.parse_args()
+    if args.assets_only:
+        assets(args.output or ROOT / 'desktop/mihawk/assets')
+        return
+    if not args.output or not args.host or not args.bridge:
+        parser.error('Package staging requires --output, --host and --bridge')
+    out = args.output.resolve()
+    out.mkdir(parents=True, exist_ok=True)
+    for name in ['index.html', 'shell.css', 'shell.js']:
+        copy(ROOT / 'desktop/mihawk' / name, out / 'Mihawk' / name)
+    assets(out / 'Mihawk/assets')
+    package_icons(out / 'Assets')
+    copy(args.host, out / 'MihawkDesktop.exe')
+    for name in ['Win32Bridge.Runtime.dll', 'Win32Bridge.winmd']:
+        copy(args.bridge / name, out / name)
+    copy(ROOT / 'desktop/native/Package.appxmanifest', out / 'AppxManifest.xml')
+    notices(out / 'ThirdParty')
+    records = {str(p.relative_to(out)).replace('\\', '/'): hashlib.sha256(p.read_bytes()).hexdigest()
+               for p in sorted(out.rglob('*')) if p.is_file()}
+    (out.parent / 'payload-files.json').write_text(json.dumps(records, indent=2) + '\n', encoding='utf-8')
+    print(f'Staged {len(records)} files; Mihawk pin {PIN}')
+
+
+if __name__ == '__main__':
+    main()

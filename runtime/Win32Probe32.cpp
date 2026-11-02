@@ -5,7 +5,6 @@
 #include "LowAddressProbe.h"
 #include "../samples/X86Win32Fixture.h"
 
-#include <algorithm>
 #include <array>
 #include <cstring>
 #include <iomanip>
@@ -19,6 +18,36 @@ constexpr std::uint32_t StackBase = 0x10000000;
 constexpr std::uint32_t StackSize = 64 * 1024;
 constexpr std::uint32_t GateBase = 0x7ff00000;
 constexpr std::uint32_t TebBase = 0x7ffde000;
+constexpr std::uint32_t VirtualMajorVersion = 10;
+constexpr std::uint32_t VirtualMinorVersion = 0;
+constexpr std::uint32_t VirtualBuildNumber = 19045;
+constexpr std::uint32_t SupportedErrorModeFlags = 0x8007;
+
+struct AdapterDescription {
+    const char* name;
+    std::uint32_t argumentBytes;
+};
+constexpr AdapterDescription Adapters[] = {
+    {"SetLastError", 4}, {"GetLastError", 0}, {"OutputDebugStringA", 4},
+    {"ExitProcess", 4}, {"GetVersionExA", 4}, {"GetModuleHandleA", 4},
+    {"GetModuleHandleW", 4}, {"SetErrorMode", 4}, {"GetErrorMode", 0},
+    {"GetVersion", 0}, {"GetCurrentProcessId", 0}, {"GetCurrentThreadId", 0},
+    {"GetCurrentProcess", 0}, {"GetCurrentThread", 0},
+    {"GetACP", 0}, {"GetOEMCP", 0}
+};
+
+const AdapterDescription* FindAdapter(const Pe32Import& imported) noexcept {
+    constexpr char Library[] = "KERNEL32.DLL";
+    if (imported.byOrdinal || imported.library.size() != sizeof(Library) - 1) return nullptr;
+    for (std::size_t n = 0; n < sizeof(Library) - 1; ++n) {
+        const auto byte = static_cast<unsigned char>(imported.library[n]);
+        const auto upper = byte >= 'a' && byte <= 'z' ? byte - 'a' + 'A' : byte;
+        if (upper != static_cast<unsigned char>(Library[n])) return nullptr;
+    }
+    for (const auto& adapter : Adapters)
+        if (imported.name == adapter.name) return &adapter;
+    return nullptr;
+}
 
 bool Range(std::size_t at, std::size_t size, std::size_t total) noexcept {
     return at <= total && size <= total - at;
@@ -30,7 +59,7 @@ struct Guest {
     Pe32Image image;
     std::vector<std::uint8_t> stack = std::vector<std::uint8_t>(StackSize);
     std::vector<std::uint8_t> environment = std::vector<std::uint8_t>(8192);
-    std::uint32_t lastError = 0, exitCode = 0;
+    std::uint32_t lastError = 0, exitCode = 0, errorMode = 0;
     bool exited = false;
     std::string debug, failure;
     std::vector<std::string> calls;
@@ -66,17 +95,6 @@ struct Guest {
     }
 };
 
-bool Supported(const Pe32Import& imported) {
-    auto library = imported.library;
-    std::transform(library.begin(), library.end(), library.begin(), [](unsigned char c) {
-        return static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
-    });
-    return library == "KERNEL32.DLL" && !imported.byOrdinal &&
-        (imported.name == "SetLastError" || imported.name == "GetLastError" ||
-         imported.name == "OutputDebugStringA" || imported.name == "ExitProcess" ||
-         imported.name == "GetVersionExA" || imported.name == "GetModuleHandleA");
-}
-
 std::string ImportName(const Pe32Import& imported) {
     return imported.library + "!" + (imported.byOrdinal ? "#" + std::to_string(imported.ordinal) : imported.name);
 }
@@ -110,14 +128,16 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
         const auto& imported = guest.image.imports[index];
         const auto& name = imported.name;
         if (guest.calls.size() >= 128) { guest.failure = "Win32 call trace limit reached."; return X86HostCallAction::Fault; }
-        if (!Supported(imported)) {
+        const auto* adapter = FindAdapter(imported);
+        if (!adapter) {
             guest.calls.push_back(ImportName(imported));
             guest.failure = "Missing Win32 API: " + ImportName(imported);
             return X86HostCallAction::Fault;
         }
-        const std::uint32_t arguments = name == "GetLastError" ? 0 : 4;
+        const auto arguments = adapter->argumentBytes;
+        const auto frameBytes = 4U + arguments;
         std::uint32_t returnAddress = 0, argument = 0;
-        if (state.esp > UINT32_MAX - 8 || !guest.Read32(state.esp, returnAddress) ||
+        if (state.esp > UINT32_MAX - frameBytes || !guest.Read32(state.esp, returnAddress) ||
             (arguments && !guest.Read32(state.esp + 4, argument))) {
             guest.failure = "Win32 stdcall stack is outside guest memory."; return X86HostCallAction::Fault;
         }
@@ -139,26 +159,54 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
             if (!guest.Read32(TebBase + 0x34, guest.lastError)) return X86HostCallAction::Fault;
             state.eax = guest.lastError;
         }
-        else if (name == "GetModuleHandleA") {
+        else if (name == "SetErrorMode") {
+            if (argument & ~SupportedErrorModeFlags) {
+                guest.failure = "SetErrorMode flags contain unsupported reserved bits.";
+                return X86HostCallAction::Fault;
+            }
+            const auto previous = guest.errorMode;
+            // This virtual guest chooses sticky SEM_NOALIGNMENTFAULTEXCEPT
+            // semantics even though native x86 may ignore that request.
+            guest.errorMode = argument | (previous & 0x4U);
+            state.eax = previous;
+        }
+        else if (name == "GetErrorMode") state.eax = guest.errorMode;
+        else if (name == "GetVersion")
+            state.eax = (VirtualBuildNumber << 16) | (VirtualMinorVersion << 8) | VirtualMajorVersion;
+        else if (name == "GetCurrentProcessId" || name == "GetCurrentThreadId") {
+            // ClientId belongs to the emulated TEB, not the UWP host thread.
+            const auto at = TebBase + (name == "GetCurrentProcessId" ? 0x20U : 0x24U);
+            if (!guest.Read32(at, state.eax)) return X86HostCallAction::Fault;
+        }
+        else if (name == "GetCurrentProcess") state.eax = 0xffffffffU;
+        else if (name == "GetCurrentThread") state.eax = 0xfffffffeU;
+        else if (name == "GetACP") state.eax = 1252;
+        else if (name == "GetOEMCP") state.eax = 437;
+        else if (name == "GetModuleHandleA" || name == "GetModuleHandleW") {
             if (!argument) {
                 // This is the mapped guest executable, never a host HMODULE.
                 // A successful query does not change the guest's last error.
                 state.eax = guest.image.base;
             } else {
                 // Named modules do not have a guest loader/registry yet. Still
-                // validate the entire bounded ANSI name before returning the
+                // validate the entire bounded name before returning the
                 // truthful lookup failure; do not pass guest pointers to a
                 // host API or manufacture a handle for a DLL name.
                 constexpr std::uint32_t NameLimit = 512;
+                const bool wide = name == "GetModuleHandleW";
+                const std::uint32_t width = wide ? 2 : 1;
                 bool ended = false;
-                for (std::uint32_t offset = 0; offset < NameLimit; ++offset) {
+                for (std::uint32_t unit = 0; unit < NameLimit; ++unit) {
+                    const auto offset = unit * width;
                     if (argument > UINT32_MAX - offset) break;
-                    const auto* character = guest.Pointer(argument + offset, 1, false, false);
+                    const auto* character = guest.Pointer(argument + offset, width, false, false);
                     if (!character) break;
-                    if (!*character) { ended = true; break; }
+                    if (!character[0] && (!wide || !character[1])) { ended = true; break; }
                 }
                 if (!ended) {
-                    guest.failure = "GetModuleHandleA requires a readable NUL-terminated ANSI guest name within 512 bytes.";
+                    guest.failure = wide
+                        ? "GetModuleHandleW requires a readable NUL-terminated UTF-16 guest name within 512 code units."
+                        : "GetModuleHandleA requires a readable NUL-terminated ANSI guest name within 512 bytes.";
                     return X86HostCallAction::Fault;
                 }
                 if (!guest.Write32(TebBase + 0x34, 126)) return X86HostCallAction::Fault;
@@ -200,9 +248,9 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
                 // x64 shim. It is not the Xbox OS or manifest-sensitive
                 // native GetVersionEx behavior. szCSDVersion stays empty.
                 put(0, size);
-                put(4, 10);
-                put(8, 0);
-                put(12, 19045);
+                put(4, VirtualMajorVersion);
+                put(8, VirtualMinorVersion);
+                put(12, VirtualBuildNumber);
                 put(16, 2); // VER_PLATFORM_WIN32_NT
                 if (size == ExSize) version[154] = 1; // VER_NT_WORKSTATION
                 std::memcpy(output, version.data(), size);
@@ -228,7 +276,7 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
             guest.debug += output;
             state.eax = 0;
         } else { guest.failure = "Unsupported Win32 call."; return X86HostCallAction::Fault; }
-        state.esp += 4 + arguments;
+        state.esp += frameBytes;
         state.eip = returnAddress;
         return X86HostCallAction::Continue;
     } catch (...) { return X86HostCallAction::Fault; }
@@ -239,9 +287,14 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
     report << "Xbox Desktop Mode / x86 Win32 execution\n"
            << "Engine: libx86emu, bounded protected-mode integer interpreter\n"
            << "Native guest code/JIT: no\nFPU/MMX/SSE: not implemented by this engine\n"
-           << "Host API profile: KERNEL32 SetLastError, GetLastError, OutputDebugStringA, ExitProcess, GetVersionExA, GetModuleHandleA\n"
+           << "Host API profile: KERNEL32";
+    for (const auto& adapter : Adapters) report << ' ' << adapter.name;
+    report << '\n'
            << "GetVersionExA policy: virtual Windows 10.0.19045 workstation, not the host OS; ANSI 148/156-byte structures, no manifest version negotiation.\n"
            << "GetModuleHandleA policy: NULL returns the guest executable base; named lookup is unavailable and returns NULL with ERROR_MOD_NOT_FOUND (126) after validating a NUL-terminated ANSI name within 512 readable guest bytes. No host modules are exposed.\n"
+           << "GetModuleHandleW policy: the same guest-only lookup with NUL within 512 readable UTF-16 code units; opaque code units, no host module lookup.\n"
+           << "Scalar bootstrap policy: virtual GetVersion 10.0.19045 (0x4a65000a); process/thread IDs initially 1 from the guest TEB; guest process/thread pseudohandles 0xffffffff/0xfffffffe; ACP 1252/OEMCP 437. Scalar successes preserve guest LastError.\n"
+           << "Error-mode policy: per guest, initially 0; flags 0x8007 only, bit 0x4 sticky, reserved flags stop execution. Host error mode is never changed.\n"
            << "Operation: " << (startupTrace ? "bounded supplied-image startup trace" : "self-authored fixture execution") << '\n';
     if (!limit || limit > 1000000) return {false, "Invalid x86 instruction budget.", report.str()};
     auto mapped = LoadPe32Image(bytes, size, startupTrace ? Pe32Profile::StartupTrace : Pe32Profile::Fixture);
@@ -266,7 +319,7 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
     guest.Write32(TebBase + 4096 + 8, guest.image.base);
     for (std::size_t i = 0; i < guest.image.imports.size(); ++i) {
         const auto& imported = guest.image.imports[i];
-        if (!Supported(imported) && !startupTrace) {
+        if (!HasWin32IntegerAdapter(imported) && !startupTrace) {
             report << "Unresolved import: " << imported.library << '!' <<
                 (imported.byOrdinal ? "#" + std::to_string(imported.ordinal) : imported.name) << '\n';
             return {false, "Unsupported PE32 import; guest execution was not started.", report.str()};
@@ -304,6 +357,7 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
            << "\nInstruction budget: " << limit << "\nInstructions/host gates: " << executed.instructions
            << "\nEngine stop: " << executed.message << "\nGuest ExitProcess reached: " << (guest.exited ? "yes" : "no")
            << "\nGuest exit code: " << guest.exitCode << "\nGuest last error: " << Hex(guest.lastError)
+           << "\nGuest error mode: " << Hex(guest.errorMode)
            << "\nDebug output: " << guest.debug << "\nWin32 call trace:\n";
     for (const auto& call : guest.calls) report << "  " << call << '\n';
     if (!guest.failure.empty()) report << "Host-call failure: " << guest.failure << '\n';
@@ -333,6 +387,10 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
         "FAIL: x86/Win32 program stopped; see x86-runtime.txt for the exact reason.", report.str()};
 }
 } // namespace
+
+bool HasWin32IntegerAdapter(const Pe32Import& imported) noexcept {
+    return FindAdapter(imported) != nullptr;
+}
 
 Win32Probe32Result ExecuteWin32IntegerImage(const std::uint8_t* bytes, std::size_t size, std::uint64_t limit) noexcept {
     try { return Execute(bytes, size, limit, false); }

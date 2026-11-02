@@ -25,7 +25,7 @@
  #include <csetjmp>
  #include <cwchar>
  #include <fileapifromapp.h>
-@@ -25,6 +29,42 @@
+@@ -25,6 +29,37 @@
  
  namespace
  {
@@ -57,18 +57,13 @@
 +
 +    bool HasPe32HostAdapter(const xcdm::runtime::Pe32Import& symbol)
 +    {
-+        std::string library = symbol.library;
-+        for (char& character : library)
-+            if (character >= 'a' && character <= 'z') character -= 'a' - 'A';
-+        return library == "KERNEL32.DLL" && !symbol.byOrdinal &&
-+            (symbol.name == "SetLastError" || symbol.name == "GetLastError" ||
-+             symbol.name == "OutputDebugStringA" || symbol.name == "ExitProcess" || symbol.name == "GetVersionExA" || symbol.name == "GetModuleHandleA");
++        return xcdm::runtime::HasWin32IntegerAdapter(symbol);
 +    }
 +
      constexpr DWORD GuestExitException = 0xE0424242u;
      thread_local GuestRuntime* g_currentGuestRuntime = nullptr;
      thread_local std::jmp_buf* g_guestExitTarget = nullptr;
-@@ -451,6 +491,8 @@
+@@ -451,6 +486,8 @@
  {
      RuntimeDiagnostics::Record(L"PREPARE: inspecting main PE (" + std::to_wstring(fileSize) + L" bytes).");
      m_ready = false;
@@ -77,7 +72,7 @@
      m_runtime.Release();
      m_metadata = PeImageInfo{};
      m_mapped = MappedPeImage{};
-@@ -459,6 +501,66 @@
+@@ -459,6 +496,66 @@
      m_modules.reset();
      m_registry.reset();
      m_resolver = resolver;
@@ -144,7 +139,7 @@
  
      if (!PeImage::Inspect(fileBytes, fileSize, &m_metadata))
      {
-@@ -515,6 +617,29 @@
+@@ -515,6 +612,29 @@
          RuntimeDiagnostics::Record(L"RUN FAILED: called before a successful prepare.");
          return false;
      }

@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-or-later
+     Mihawk desktop adaptation for Xbox. See the packaged notices for upstream credits. -->
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mihawk Desktop for Xbox</title>
+  <link rel="stylesheet" href="assets/fonts.css">
+  <link rel="stylesheet" href="assets/tokens.css">
+  <link rel="stylesheet" href="shell.css">
+</head>
+<body>
+  <div id="wallpaper" aria-hidden="true"></div>
+  <main id="desktop" aria-label="Desktop">
+    <div id="desktop-icons" aria-label="Desktop applications"></div>
+    <div class="desktop-wordmark" aria-hidden="true"><span>MIHAWK</span><small>DESKTOP FOR XBOX</small></div>
+  </main>
+  <div id="windows" aria-label="Open windows"></div>
+  <section id="start-menu" class="start-menu hidden" aria-label="Start menu">
+    <div class="start-heading"><img src="assets/start.svg" alt=""><div><strong>Mihawk Desktop</strong><span>Your workspace on Xbox</span></div></div>
+    <label class="search-label" for="start-search">Find an application</label>
+    <input id="start-search" class="start-search" type="search" placeholder="Search apps" autocomplete="off">
+    <div id="start-apps" class="start-apps"></div>
+    <div class="start-footer"><span id="start-platform">Connecting to Xbox…</span><button id="start-about" type="button">About</button></div>
+  </section>
+  <footer id="taskbar" aria-label="Taskbar">
+    <button id="start-button" class="taskbar-button" type="button" title="Start (Ctrl+Esc)" aria-label="Start" aria-expanded="false"><img src="assets/start.svg" alt=""></button>
+    <div id="pinned-apps" class="pinned-apps"></div>
+    <div class="taskbar-divider" aria-hidden="true"></div>
+    <div id="running-apps" class="running-apps" aria-label="Running applications"></div>
+    <button id="connection-status" class="connection-status" type="button" title="Connection details"><span class="status-dot"></span><span id="connection-label">Connecting</span></button>
+    <div class="clock" aria-label="Date and time"><time id="clock-time"></time><span id="clock-date"></span></div>
+    <button id="show-desktop" type="button" title="Show desktop" aria-label="Show desktop"></button>
+  </footer>
+  <div id="toasts" aria-live="polite"></div>
+  <div id="modal-layer"></div>
+  <script src="shell.js"></script>
+</body>
+</html>

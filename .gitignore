@@ -24,3 +24,6 @@ __pycache__/
 *.key
 *.cer
 GeckoBuild.local.props
+
+# Regenerated from the pinned MihawkOS submodule.
+/desktop/mihawk/assets/
