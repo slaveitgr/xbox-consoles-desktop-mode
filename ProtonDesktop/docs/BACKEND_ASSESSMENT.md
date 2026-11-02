@@ -56,12 +56,44 @@ Primary evidence:
    Import rootfs/prefix files into app-local storage rather than assuming raw
    USB paths can be opened by the upstream POSIX-style VFS.
 
-The bundled SDL has a WinRT project. That provides a useful renderer/host
-reference, not a working Boxedwine64 UWP build. The older
-[`worleydl/Boxedwine-uwp` reference](https://github.com/worleydl/Boxedwine-uwp/tree/e08c29a79375cf8695e794131bf0acd23451319d)
-describes 32-bit Wine; its emulator MSVC project has no Windows Store /
-AppContainer declaration. Its repository name therefore is not evidence of a
-finished Xbox port either.
+The bundled SDL has a WinRT project. The older
+[`worleydl/Boxedwine-uwp` `uwp-compat` branch](https://github.com/worleydl/Boxedwine-uwp/tree/5514667573e8a9f370fbe9c542ab5c682c5f5200)
+also has a genuine Windows Store/AppContainer wrapper, `SDL_WinRTRunApp`,
+CoreWindow input/video, a D3D11 swapchain, pickers/FutureAccessList and package
+paths. Its kernel already includes ZIP/VFS and Wine launch/main-loop code.
+Our original review used `e08c29a79375cf8695e794131bf0acd23451319d` and missed
+this branch. The blanket conclusion that this repository lacks a UWP app was
+incorrect.
+
+These are reusable implementations, not merely a repository name. The old
+engine still targets Wine32 / 16- and 32-bit programs: its `x64` means the host
+and older translator, not the new `cpu64`/`syscall64`/`loader64`/`kmemory64`
+guest engine. Its checked source relies on prebuilt SDL/Mesa/zlib DLLs, retains
+RWX `VirtualAlloc` paths and hardcoded `E:\\boxwine\\` storage. No Xbox Explorer
+execution result was verified during this review.
+
+Primary old-branch evidence:
+
+- [AppContainer project](https://github.com/worleydl/Boxedwine-uwp/blob/5514667573e8a9f370fbe9c542ab5c682c5f5200/project/msvc/BoxedWine/uwp/uwp.vcxproj#L43)
+  and [SDL/WinRT entry](https://github.com/worleydl/Boxedwine-uwp/blob/5514667573e8a9f370fbe9c542ab5c682c5f5200/project/msvc/BoxedWine/uwp/main.cpp#L58).
+- [WinRT storage/display helpers](https://github.com/worleydl/Boxedwine-uwp/blob/5514667573e8a9f370fbe9c542ab5c682c5f5200/project/msvc/BoxedWine/libuwp/libuwp.cpp)
+  and [D3D11 CoreWindow presentation](https://github.com/worleydl/Boxedwine-uwp/blob/5514667573e8a9f370fbe9c542ab5c682c5f5200/lib/sdl2/src/render/direct3d11/SDL_render_d3d11.c#L737).
+
+Our new host and custom SDL frame sink were integration choices, not changes
+inherently required by guest x64. Avoid rewriting the existing virtual kernel,
+ZIP/VFS or X11 server. Preserve the working x64 core and qualify its app
+execution; reuse the pinned startup/VFS and old WinRT integration where suitable.
+Safe worker ownership and explicit launch outcomes remain requirements before
+the full Wine session can be enabled.
+
+The inspected SDL WinRT app/video/D3D11 files and UWP project are byte-identical
+in the old UWP pin and the new guest-x64 pin. Before extending custom GPU/input
+code, compile that existing SDL WinRT library with MSVC/C++/CX and test linking
+its public C API to the clang-cl guest-x64 core. SDL must own its CoreApplication
+and CoreWindow event pump in that route; it cannot share those with a second
+`CoreApplication::Run` or independently controlled swapchain. The custom software
+driver remains useful for deterministic pixel tests. This reuse candidate has
+not yet been compiled or activated as the new Wine application.
 
 ## Rootfs and direct boot contract
 

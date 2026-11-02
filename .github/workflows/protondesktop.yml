@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   windows-host:
-    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') && !contains(github.event.head_commit.message, '[sdlwinrt-only]') }}
     name: Compile native UWP host
     runs-on: windows-2022
     timeout-minutes: 30
@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: warn
 
   windows-core:
-    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') && !contains(github.event.head_commit.message, '[sdlwinrt-only]') }}
     name: Build and run actual x64 interpreter on Windows
     runs-on: windows-2022
     timeout-minutes: 30
@@ -272,4 +272,43 @@ jobs:
             ProtonDesktop/build/sdlvideo-app/compile_commands.json
             ProtonDesktop/build/sdlvideo-app/CMakeCache.txt
             ProtonDesktop/build/sdlvideo-app/qualification-scope.txt
+          if-no-files-found: warn
+
+
+  sdl-winrt:
+    name: Compile existing native SDL WinRT renderer
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[sdlwinrt-only]') }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      MSBUILDDISABLENODEREUSE: '1'
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ProtonDesktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: andrewnakas/Boxedwine64
+          ref: 58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4
+          path: ProtonDesktop/external/Boxedwine64-full
+          persist-credentials: false
+          sparse-checkout: |
+            lib/sdl2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate original host assets
+        run: python tools/generate_assets.py
+      - name: Ensure official UWP SDK and C++ tools
+        run: ./tools/ci/build_windows_host.ps1
+      - name: Compile pinned SDL WinRT with its C++/CX source
+        run: ./tools/ci/build_sdl_winrt.ps1
+      - name: Upload existing renderer compilation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protondesktop-sdl-winrt-compile
+          path: ProtonDesktop/artifacts/sdl-winrt/
           if-no-files-found: warn

@@ -12,6 +12,14 @@ Boxedwine64's top-level license is GPL v2. Its bundled SDL, zlib, font, audio,
 OpenGL and other components have their own notices. A later build must retain
 all corresponding source, licenses and attribution, including local patches.
 
+The current clang-cl diagnostic links the official LLVM compiler-rt builtins
+archive. Its Apache-2.0 license with LLVM exceptions and legacy notices are
+retained in `notices/compiler-rt-LICENSE.txt`, taken from the LLVM 19.1.5 source.
+The SDL2 zlib-style notice is retained in `notices/SDL2-COPYING.txt`. Our SDL
+build-local overlays modify the pinned SDL source; their source and attribution
+must accompany distributed builds. These notices do not qualify the separate
+Debian/Wine rootfs payload for redistribution.
+
 Wine uses LGPL-2.1-or-later with component-specific exceptions/notices. A Debian
 rootfs also includes glibc, X11, FreeType/fontconfig, fonts and other separately
 licensed packages. The upstream staging script is not a complete distribution

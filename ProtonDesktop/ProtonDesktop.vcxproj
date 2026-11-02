@@ -90,6 +90,9 @@
     <Image Include="Assets\WideLogo.png" />
     <Image Include="Assets\SplashScreen.png" />
     <None Include="backend.lock.json" />
+    <None Include="LICENSE"><DeploymentContent>true</DeploymentContent></None>
+    <None Include="THIRD_PARTY.md"><DeploymentContent>true</DeploymentContent></None>
+    <None Include="notices\*.txt"><DeploymentContent>true</DeploymentContent></None>
   </ItemGroup>
   <ItemGroup Condition="'$(ProtonCoreProbeEnabled)' == 'true'">
     <None Include="DiagnosticPayloads\guest64-smoke.elf">

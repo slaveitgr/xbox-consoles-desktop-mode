@@ -13,6 +13,18 @@ if((CMAKE_HOST_WIN32 OR CMAKE_SYSTEM_NAME MATCHES "^Windows") AND
   # cached standard libraries before platform defaults are initialized.
   set(CMAKE_C_STANDARD_LIBRARIES "WindowsApp.lib" CACHE STRING "APP SDK standard libraries" FORCE)
   set(CMAKE_CXX_STANDARD_LIBRARIES "WindowsApp.lib" CACHE STRING "APP SDK standard libraries" FORCE)
+  list(APPEND CMAKE_TRY_COMPILE_PLATFORM_VARIABLES
+    CMAKE_C_STANDARD_LIBRARIES CMAKE_CXX_STANDARD_LIBRARIES)
+  if(POLICY CMP0137)
+    cmake_policy(SET CMP0137 NEW)
+  endif()
+  # The internal compiler-smoke project initializes its own platform defaults.
+  # Linker flags are forwarded even there; retain the actual APP umbrella as
+  # an explicit input instead of relying only on its standard-library cache.
+  if(NOT CMAKE_EXE_LINKER_FLAGS MATCHES "(^|[ ;])WindowsApp\\.lib($|[ ;])")
+    set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} WindowsApp.lib"
+      CACHE STRING "Executable linker flags including the required APP umbrella" FORCE)
+  endif()
   # Compiler/feature probes must use the selected release APP CRT, not the
   # debug Store CRT chosen by the default MSVC try_compile configuration.
   set(CMAKE_TRY_COMPILE_CONFIGURATION Release)

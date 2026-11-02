@@ -113,8 +113,8 @@ with these 11 unresolved definitions:
 | `initWindowsAudio` | Windows-specific audio initialization, outside the intended initial audio-disabled profile |
 
 `Platform::` prefixes are omitted in the table. This is an actual linker report,
-not a source-only estimate. No successful UWP core executable or import audit
-exists. The artifact ZIP digest was verified as
+not a source-only estimate. At that attempt no successful UWP core executable or
+import audit existed; the later successful link is recorded below. The artifact ZIP digest was verified as
 `2c09a426c20eddf0dcafbc1e135f5f9f1c00ae15b8754ba72a6dacf235fb6b69`;
 local extracted logs are in `artifacts/uwp-core-attempt2/`.
 
@@ -131,17 +131,81 @@ and qualified separately. See the closure boundary in `tools/uwp-core/README.md`
 ## Wine filesystem and first boot
 
 `rootfs/` now records Wine 8.0~repack-4 and glibc 2.36-9+deb12u14 with signed
-Debian metadata and source provenance. No package/rootfs binaries were fetched
-or assembled. The boot contract has a separate two-base-layer prefix-initialization
+Debian metadata and source provenance. At this initial metadata milestone no
+package/rootfs binaries were fetched or assembled; a subsequent local assembly
+is recorded below. The boot contract has a separate two-base-layer prefix-initialization
 mode; the existing desktop mode still requires a prepared third layer. Its 63
 portable assertions pass both locally and on desktop Windows. A request description does not verify a real
 empty app-owned overlay or execute Wine. Prefix completion also needs an explicit
 persistent-wineserver shutdown policy and bounded waits, then validation of
 registry files, directories and drive links before declaring it prepared.
 
+## Successful UWP diagnostic link
+
+Source `49dd9d66ac9a970ee949a2802fcbc32374f3915c`,
+[run 41482983407](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41482983407):
+
+- The actual guest-x64 diagnostic linked under `WindowsStore`, genuine
+  `WINAPI_FAMILY_APP` headers and the Store C++ runtime.
+- Real socket-pair wakeup, current-thread scheduling and string-search services
+  resolved required functionality. The initial profile explicitly disables
+  unsupported audio and CPU telemetry; it rejects host-code writes.
+- Windows service checks passed: boot 63, strings 149, scheduling 91,
+  socket pair 79, memory 49, host services 47 and profile 30.
+- The basic import guard passed and `_APP` C++ runtime DLLs were selected.
+  This is not a complete UWP API certification or full Wine-kernel closure.
+  In particular, retained CRT environment functions still require qualification
+  or replacement before a complete session can be accepted.
+
+Verified artifact SHA-256:
+`d83f8e9dcefb348726a7004a4fff4c9f4f35d3d634683d88b725ec23f9b64c5b`.
+Executable SHA-256:
+`72ada15653ea7eff2b87bf186aaa55200c513c282712bfbdc300174187649e11`.
+
+The subsequent opt-in CoreApplication probe compiled and linked the actual core
+into `ProtonDesktop.exe` in
+[run 41488079728](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41488079728).
+Packaging failed at `APPX1673` because the manifest lacked `PhoneIdentity`.
+The manifest has been corrected; packaging validation is separate from linking,
+and neither proves app activation. Default host and probe outputs remain separate.
+
+The corrected probe **compiled, linked and packaged successfully** from
+`ce43dcba3a8d1cf8fd4eff70140682e790def88b` in
+[run 41490787752](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41490787752).
+The unsigned `ProtonDesktop_0.1.0.0_x64.msix` contains the real interpreter and
+both self-authored ELF controls. Package SHA-256:
+`4e102c5c53a312934e983a1147d766cdd50a87c1c677aa9b1abf7e2df63f0e6a`.
+Artifact SHA-256:
+`73efe7978d404a55131967140ca3925b357bc427c678e0515009f6dce1a066ff`.
+This package is not signed, installed or activated. The independent software
+SDL job in the same workflow failed its nested CMake compiler-link probe;
+the successful package does not turn that separate failure into a pass.
+
+## Filesystem and software pixels after the link
+
+125 hash-verified Debian packages were assembled locally into two deterministic
+ZIP candidates. The payload contains 5,941 entries and 107 ELF files. No guest
+was executed and no Wine prefix was created. Private Wine library search order
+and license-notice gaps remain unresolved; neither artifact is qualified for
+boot or redistribution. Exact hashes and RAM-only locations are recorded in
+`rootfs/README.md` and local ignored assembly evidence.
+
+The custom SDL software video driver passed 300 Linux checks, including real
+texture rendering and pixel copying into a host-owned buffer, under ASan/UBSan.
+Its Windows APP-family compilation and execution are a separate qualification
+step. No GPU/CoreWindow presentation, Wine window or Xbox pixels are proven by
+that software test.
+
+The old Boxedwine-UWP `uwp-compat` branch was re-reviewed: it already has genuine
+AppContainer, SDL/WinRT, D3D11, input and storage implementations. The initial
+review missed that branch. Those are reusable references for the remaining
+integration; guest-x64 support does not inherently require a new renderer.
+
 ## Next proof
 
-1. Build the interpreter under the UWP API partition, porting the remaining
-   platform services and presentation path, then repeat ELF64 checks on Xbox.
-2. Supply a pinned Wine64 rootfs and display a real Wine application before
+1. Package and activate the real-core probe, then execute CPU/ELF64 checks in
+   app context and on Xbox. A successful app link alone does not satisfy this.
+2. Complete the Wine lifecycle using the existing pinned kernel/ZIP/VFS, with
+   explicit load failure and owned guest-worker completion. Qualify the
+   filesystem and display a real Wine application before
    attempting Explorer desktop and applying the Windows 11-inspired theme.

@@ -27,8 +27,11 @@ startup paths or AppContainer activation.
 
 Boxedwine64 has substantive x64 guest support and upstream reports Wine64 GUI
 applications on native macOS. Its Windows desktop project does not include the
-new guest-x64 source files, and there is no emulator UWP project at the pinned
-revision. Explorer is still listed as experimental. See
+new guest-x64 source files. The older `Boxedwine-uwp` **does have a genuine UWP
+application on its `uwp-compat` branch**, including SDL/WinRT display/input and
+storage integration; it runs the older 32-bit guest engine. Our initial review
+looked at a different commit and missed that useful implementation. Explorer
+in the new guest-x64 fork is still listed as experimental. See
 [the source assessment](docs/BACKEND_ASSESSMENT.md).
 
 ## Files and checks

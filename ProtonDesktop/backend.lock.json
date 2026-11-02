@@ -15,8 +15,11 @@
   },
   "older_uwp_reference": {
     "repository": "https://github.com/worleydl/Boxedwine-uwp",
-    "commit": "e08c29a79375cf8695e794131bf0acd23451319d",
-    "finding": "32-bit guest baseline; no emulator AppContainer target found in this source tree"
+    "commit": "5514667573e8a9f370fbe9c542ab5c682c5f5200",
+    "finding": "Genuine Windows Store/AppContainer wrapper, SDL/WinRT D3D11/input and storage integration; older Wine32 guest engine, not the new guest-x64 core. Xbox Explorer execution unverified.",
+    "branch": "uwp-compat",
+    "initial_review_commit": "e08c29a79375cf8695e794131bf0acd23451319d",
+    "initial_review_correction": "Initial review missed the uwp-compat branch and incorrectly generalized that no UWP application existed."
   },
   "rootfs": {
     "bundled": false,
@@ -131,5 +134,20 @@
     "packaged_core_activated": false,
     "wine_executed": false,
     "xbox_tested": false
+  },
+  "uwp_core_probe_package_evidence": {
+    "source_commit": "ce43dcba3a8d1cf8fd4eff70140682e790def88b",
+    "run_id": 41490787752,
+    "core_linked_in_app": true,
+    "unsigned_msix_packaged": true,
+    "self_authored_elf_payloads_packaged": 2,
+    "package_sha256": "4e102c5c53a312934e983a1147d766cdd50a87c1c677aa9b1abf7e2df63f0e6a",
+    "artifact_sha256": "73efe7978d404a55131967140ca3925b357bc427c678e0515009f6dce1a066ff",
+    "executable_sha256": "56332f2fc5d30945b42585cf06fd44c3c5245e9dc773a54ce5c7f7cc34657d4a",
+    "signed": false,
+    "installed_on_xbox": false,
+    "app_activated": false,
+    "cpu_tests_executed_in_app": false,
+    "wine_executed": false
   }
 }
