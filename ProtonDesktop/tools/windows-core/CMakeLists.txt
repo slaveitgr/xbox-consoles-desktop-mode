@@ -115,6 +115,10 @@ file(GLOB softfloat_sources CONFIGURE_DEPENDS
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/*.c"
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/8086-SSE/*.c")
 add_executable(boxedwine64-windows ${core_sources} ${platform_sources} ${softfloat_sources})
+set_source_files_properties(
+  "${BOXEDWINE_SOURCE}/platform/windows/kwindowsaudio.cpp"
+  "${BOXEDWINE_SOURCE}/platform/windows/platform.cpp"
+  PROPERTIES COMPILE_OPTIONS "/FI${CMAKE_CURRENT_SOURCE_DIR}/windows_platform_headers.h")
 target_compile_features(boxedwine64-windows PRIVATE cxx_std_20)
 target_compile_definitions(boxedwine64-windows PRIVATE
   BOXEDWINE_GUEST_X64=1 BOXEDWINE_64=1 BOXEDWINE_MSVC BOXEDWINE_MULTI_THREADED

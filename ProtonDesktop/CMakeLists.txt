@@ -5,6 +5,9 @@ target_include_directories(protondesktop_contract PUBLIC ${CMAKE_CURRENT_SOURCE_
 target_compile_features(protondesktop_contract PUBLIC cxx_std_17)
 include(CTest)
 if(BUILD_TESTING)
+  # Exercise the shared overflow/conversion policies in the normal test run.
+  # Windows additionally builds/runs the actual FromApp service implementations.
+  add_subdirectory(backend/uwp)
   add_executable(protondesktop_contract_tests tests/BootRequestTests.cpp)
   target_link_libraries(protondesktop_contract_tests PRIVATE protondesktop_contract)
   add_test(NAME protondesktop_boot_contract COMMAND protondesktop_contract_tests)

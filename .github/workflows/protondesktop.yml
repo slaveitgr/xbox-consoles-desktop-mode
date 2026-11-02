@@ -103,7 +103,7 @@ jobs:
         if: ${{ !cancelled() }}
         run: |
           $source = (Resolve-Path external/Boxedwine64-full).Path
-          cmake -S backend/uwp -B build/windows-platform -A x64 "-DBOXEDWINE_SOURCE=$source"
+          cmake -S . -B build/windows-platform -A x64 "-DBOXEDWINE_SOURCE=$source"
           if ($LASTEXITCODE -ne 0) { throw 'Platform configure failed.' }
           cmake --build build/windows-platform --config Release --parallel
           if ($LASTEXITCODE -ne 0) { throw 'Platform build failed.' }

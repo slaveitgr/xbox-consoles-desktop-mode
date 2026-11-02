@@ -41,6 +41,9 @@ the positive/negative payload checks. Do not run a Wine/rootfs workload here.
   host pointer width; `BOXEDWINE_GUEST_X64` separately selects guest architecture.
 - `int128_compat.h` supplies only the upstream GCC typedef spelling used by
   clang-cl; it does not emulate or replace the arithmetic.
+- `windows_platform_headers.h` supplies genuine multimedia/shell SDK headers
+  only to the two Windows platform files which relied on transitive Windows.h
+  declarations. Actual `winmm` and `shell32` libraries are linked.
 - If clang-cl needs 128-bit division helpers, CMake links its official
   `clang_rt.builtins-x86_64.lib`. It searches the compiler installation and fails
   if unavailable; `-DPROTON_CLANG_BUILTINS=<absolute-library>` selects it explicitly.
@@ -77,6 +80,11 @@ Its Windows LIBC loop also replaces unconditional function claims with actual
 declaration-and-link probes for every listed CRT function. Missing functions
 such as `wcslcpy`/`wcslcat` then select SDL's existing implementations. No dummy
 implementations stand in for absent system functions.
+
+The sixth CI attempt compiled the real CPU64/kernel/ELF sources and linked SDL;
+only two Windows platform files still required explicit multimedia/shell headers.
+Those headers are now supplied per source file. The complete executable link
+and Windows execution remain unverified until the next CI result.
 
 UWP memory adaptation has its own independent `backend/uwp` target. It cannot
 be linked with the unmodified desktop `platform/windows/platform.cpp`, which
