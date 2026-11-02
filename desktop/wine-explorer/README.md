@@ -113,6 +113,28 @@ cmake --build desktop/wine-explorer/build/host-checks
 ctest --test-dir desktop/wine-explorer/build/host-checks --output-on-failure
 ```
 
+## Build the coherent stock PE dependency set
+
+The separate [PE build driver](pe-build/README.md) compiles the full pinned
+Wine source on Linux without running any guest code. A fresh build and
+incremental replay produced **61 AMD64 PE files**, with zero missing file
+dependencies among ordinary imports, native PE delay imports and exported
+forwarders. This is different from the standalone file-window source unit
+above. It still requires a Wine-to-UWP backend and the collaborator's guest
+TEB/PEB/header work before any execution can be considered.
+
+The compiled set is marked **NOT SAFE TO EXECUTE**. It is not bundled or
+deployed. The driver records source/tool hashes and commands; a metadata
+inventory retains named/ordinal/delay imports and forwarders. The dynamic
+runtime module closure and API semantics remain unknown. The collaborator
+owns the separate GS/TLS audit, guest header/runtime patches and registry
+seeding; this driver applies no guest header patch.
+
+The [loader ownership foundation](../../docs/WINE_LOADER_OWNERSHIP.md) routes
+experimental strict modules to one provider and blocks executable Wine loads
+until a qualified guest environment is integrated. It preserves the current
+Legacy profile for existing desktop launches.
+
 ## Audit before guest PEB/TEB implementation
 
 The next proposed native architecture rebuilds Wine's PE modules with a guest

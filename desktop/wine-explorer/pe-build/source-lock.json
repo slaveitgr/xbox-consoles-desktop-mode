@@ -1,0 +1,47 @@
+{
+  "schema": 1,
+  "wine": {
+    "repository": "https://github.com/ValveSoftware/wine",
+    "commit": "1c78596625336a73dbfc035dbbcf0dbdd95b06eb",
+    "archive_url": "https://codeload.github.com/ValveSoftware/wine/tar.gz/1c78596625336a73dbfc035dbbcf0dbdd95b06eb",
+    "archive_sha256": "c5e9d053b4edec0507d0e1cd8acf19d2ed0bba982417d67f7dcfa6122b53b0be",
+    "license": "LGPL-2.1-or-later; retain the source tree notices"
+  },
+  "autoconf": {
+    "version": "2.73-2",
+    "filename": "autoconf_2.73-2_all.deb",
+    "url": "https://archive.ubuntu.com/ubuntu/pool/main/a/autoconf/autoconf_2.73-2_all.deb",
+    "sha256": "7708a595b2857bca8bfa4fbbde7d33005dbb0219d0abad305810fce9eaa63270",
+    "license": "GPL-3.0-or-later with Autoconf exceptions; package extracted locally only"
+  },
+  "llvm": {
+    "origin": "Existing official Emscripten SDK upstream toolchain",
+    "version": "clang 23.0.0git",
+    "commit": "7b58716d96c3ae4c0c4e6f72e29b16137bb6224b",
+    "sha256": {
+      "clang": "1b251c7453ba8f7c7d751151f98ca35637493d9092209d8b4ebcf296728b9a00",
+      "llvm-ar": "1663abcbdf1969c27a7f254291debce136043b8f233164c378ad853899d4868f",
+      "lld": "c041439a76fd714e5343eb10d962ed90f2028244cb954076ad3a2560f8f7459b"
+    }
+  },
+  "seeds": [
+    "programs/explorer/x86_64-windows/explorer.exe",
+    "dlls/shell32/x86_64-windows/shell32.dll",
+    "dlls/user32/x86_64-windows/user32.dll",
+    "dlls/gdi32/x86_64-windows/gdi32.dll",
+    "dlls/ole32/x86_64-windows/ole32.dll",
+    "dlls/oleaut32/x86_64-windows/oleaut32.dll",
+    "dlls/comctl32/x86_64-windows/comctl32.dll",
+    "dlls/combase/x86_64-windows/combase.dll",
+    "dlls/shlwapi/x86_64-windows/shlwapi.dll",
+    "dlls/kernel32/x86_64-windows/kernel32.dll",
+    "dlls/kernelbase/x86_64-windows/kernelbase.dll",
+    "dlls/ntdll/x86_64-windows/ntdll.dll",
+    "dlls/win32u/x86_64-windows/win32u.dll",
+    "dlls/advapi32/x86_64-windows/advapi32.dll",
+    "dlls/rpcrt4/x86_64-windows/rpcrt4.dll",
+    "dlls/ucrtbase/x86_64-windows/ucrtbase.dll",
+    "dlls/msvcrt/x86_64-windows/msvcrt.dll",
+    "dlls/sechost/x86_64-windows/sechost.dll"
+  ]
+}

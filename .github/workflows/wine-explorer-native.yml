@@ -37,6 +37,8 @@ jobs:
           python3 -m unittest discover -s desktop/wine-explorer/native/tests -p test_source_tools.py -v
       - name: Check guest environment audit fixtures
         run: python3 -m unittest discover -s desktop/wine-explorer/environment-audit/tests -v
+      - name: Check stock PE build and inventory fixtures
+        run: python3 -m unittest discover -s desktop/wine-explorer/pe-build/tests -v
 
   native-guest:
     name: Actual Wine Explorer PE64 build
@@ -58,6 +60,8 @@ jobs:
         run: python -m unittest discover -s desktop/wine-explorer/native/tests -p test_source_tools.py -v
       - name: Check guest environment audit fixtures
         run: python -m unittest discover -s desktop/wine-explorer/environment-audit/tests -v
+      - name: Check stock PE inventory fixtures
+        run: python -m unittest discover -s desktop/wine-explorer/pe-build/tests -p test_pe_inventory.py -v
       - name: Upload Explorer guest and corresponding source
         uses: actions/upload-artifact@v4
         with:
