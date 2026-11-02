@@ -77,10 +77,18 @@
     <ClCompile Include="DiagnosticsApp.cpp" />
     <ClCompile Include="..\runtime\PeImage.cpp" />
     <ClCompile Include="..\runtime\GamePreflight.cpp" />
+    <ClCompile Include="..\runtime\Pe32Image.cpp" />
+    <ClCompile Include="..\runtime\Win32Probe32.cpp" />
+    <ClCompile Include="..\runtime\X86Execution.cpp" />
     <ClCompile Include="..\runtime\RuntimeProbe.cpp" />
+    <ClCompile Include="..\samples\X86Win32Fixture.cpp" />
     <ClCompile Include="..\samples\Return42Fixture.cpp" />
     <ClInclude Include="..\runtime\PeImage.h" />
     <ClInclude Include="..\runtime\GamePreflight.h" />
+    <ClInclude Include="..\runtime\Pe32Image.h" />
+    <ClInclude Include="..\runtime\Win32Probe32.h" />
+    <ClInclude Include="..\runtime\X86Execution.h" />
+    <ClInclude Include="..\samples\X86Win32Fixture.h" />
     <ClInclude Include="..\runtime\RuntimeProbe.h" />
     <ClInclude Include="..\samples\Return42Fixture.h" />
     <AppxManifest Include="Package.appxmanifest"><SubType>Designer</SubType></AppxManifest>
@@ -89,6 +97,15 @@
     <Image Include="Assets\Wide310x150Logo.png" />
     <Image Include="Assets\StoreLogo.png" />
     <Image Include="Assets\SplashScreen.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\third_party\libx86emu\api.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+    <ClCompile Include="..\third_party\libx86emu\decode.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+    <ClCompile Include="..\third_party\libx86emu\mem.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+    <ClCompile Include="..\third_party\libx86emu\ops.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+    <ClCompile Include="..\third_party\libx86emu\ops2.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+    <ClCompile Include="..\third_party\libx86emu\prim_ops.c"><AdditionalIncludeDirectories>$(ProjectDir)..\third_party\libx86emu\include;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories></ClCompile>
+    <Content Include="..\third_party\libx86emu\LICENSE"><Link>ThirdParty\libx86emu-LICENSE.txt</Link><DeploymentContent>true</DeploymentContent></Content>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

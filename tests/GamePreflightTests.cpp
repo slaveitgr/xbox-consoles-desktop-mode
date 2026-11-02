@@ -106,7 +106,7 @@ void ValidMetadata() {
         Check(Has(result.report, "Graphics indicators (imports only): Direct3D 9"), "D3D9 identified from case-insensitive DLL");
         Check(Has(result.report, "no image entry point was invoked"), "success explicitly non-executing");
         Check(Has(result.report, "Direct3D 9 imports require a guest D3D9 implementation"), "concrete graphics gap");
-        if (!is64) Check(Has(result.report, "no connected x86 execution engine"), "concrete x86 gap");
+        if (!is64) Check(Has(result.report, "embedded diagnostics, not this game"), "concrete x86 game execution gap");
     }
     Check(Inspect(Imports(false, true, true)).ok, "legacy VA-based PE32 delay imports accepted");
     const auto& minimal = xcdm::samples::Return42PeBytes();

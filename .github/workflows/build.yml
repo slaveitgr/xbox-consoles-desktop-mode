@@ -21,6 +21,8 @@ jobs:
         run: cmake --build build --parallel
       - name: Test
         run: ctest --test-dir build --output-on-failure
+      - name: Verify self-authored x86 fixture reproducibility
+        run: python3 samples/make_x86_win32.py --check
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4

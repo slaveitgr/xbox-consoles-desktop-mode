@@ -1,5 +1,25 @@
 # Verified baseline
 
+## USB metadata inspection, version 0.3
+
+On 2026-11-02 (Europe/Athens), version **0.3.0.0** on the same One X and OS
+successfully opened a USB folder through FolderPicker, read `gta_sa.exe` in
+place, parsed its PE32/x86 metadata and saved `game-preflight.txt`. Both a
+console screenshot and the report were retrieved through Device Portal.
+The report identified 13 imported libraries / 218 imports, including delayed
+Direct3D 9, DirectInput8 and DirectSound. The expected game data folders were
+present. No game code was executed.
+
+The WDP filesystem API requires `path=\LocalState` (including the leading
+Windows separator). A query using plain `LocalState` addresses a different
+path and does not establish that the application failed to save its report.
+
+Build source: `29b33c6619fda513f4c19d8af1facc0043b75c27`;
+[Actions run 41367529549](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41367529549)
+passed Linux/Windows checks, UWP packaging and the pinned bridge build.
+
+## Original native x64 baseline
+
 Test date: **2026-11-02, Europe/Athens** (report timestamp 2026-11-01 22:42:50 UTC).
 
 ## Build and host checks

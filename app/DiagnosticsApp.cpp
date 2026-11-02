@@ -34,6 +34,7 @@
 
 #include "runtime/RuntimeProbe.h"
 #include "runtime/GamePreflight.h"
+#include "runtime/Win32Probe32.h"
 
 #include <algorithm>
 #include <array>
@@ -77,10 +78,11 @@ constexpr std::array<D2D1_RECT_F, 3> Buttons{{
     {1496.0f, 770.0f, 1768.0f, 840.0f}
 }};
 constexpr D2D1_RECT_F PageButton{1476.0f, 134.0f, 1796.0f, 194.0f};
-constexpr std::array<D2D1_RECT_F, 3> GameButtons{{
-    {96.0f, 755.0f, 610.0f, 817.0f},
-    {638.0f, 755.0f, 1138.0f, 817.0f},
-    {1412.0f, 755.0f, 1796.0f, 817.0f}
+constexpr std::array<D2D1_RECT_F, 4> GameButtons{{
+    {96.0f, 755.0f, 560.0f, 817.0f},
+    {584.0f, 755.0f, 1004.0f, 817.0f},
+    {1028.0f, 755.0f, 1412.0f, 817.0f},
+    {1436.0f, 755.0f, 1796.0f, 817.0f}
 }};
 constexpr wchar_t GameFolderToken[] = L"GamePreflightFolder";
 constexpr std::uint64_t MaxGameImageBytes = 64ULL * 1024 * 1024;
@@ -259,12 +261,13 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
             } else if (m_page == Page::Game) {
                 if (key == VirtualKey::O) InspectGameFolderAsync(true);
                 else if (key == VirtualKey::R || key == VirtualKey::F5) InspectGameFolderAsync(false);
-                else if (key == VirtualKey::S) SaveGameReportAsync();
+                else if (key == VirtualKey::T) RunWin32Probe32Async();
+                else if (key == VirtualKey::S) SaveGamePageReports();
                 else if (key == VirtualKey::Enter || key == VirtualKey::Space) ActivateGameSelection();
                 else if (key == VirtualKey::Tab || key == VirtualKey::Right || key == VirtualKey::Down)
-                    m_gameSelection = (m_gameSelection + 1) % 3;
+                    m_gameSelection = (m_gameSelection + 1) % 4;
                 else if (key == VirtualKey::Left || key == VirtualKey::Up)
-                    m_gameSelection = (m_gameSelection + 2) % 3;
+                    m_gameSelection = (m_gameSelection + 3) % 4;
                 else if (key == VirtualKey::Escape) TogglePage();
                 else return;
             } else if (m_page == Page::Controllers) {
@@ -371,6 +374,7 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
         RefreshControllers(true);
         ReadSelectedController();
         RunProbesAsync(-1);
+        RunWin32Probe32Async();
         while (!m_closed) {
             if (m_visible && !m_suspended) {
                 m_window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
@@ -675,11 +679,11 @@ private:
             }
             if (m_page == Page::Game) {
                 if (edge(GamepadButtons::DPadRight) || edge(GamepadButtons::DPadDown))
-                    m_gameSelection = (m_gameSelection + 1) % 3;
+                    m_gameSelection = (m_gameSelection + 1) % 4;
                 if (edge(GamepadButtons::DPadLeft) || edge(GamepadButtons::DPadUp))
-                    m_gameSelection = (m_gameSelection + 2) % 3;
+                    m_gameSelection = (m_gameSelection + 3) % 4;
                 if (edge(GamepadButtons::A)) ActivateGameSelection();
-                if (edge(GamepadButtons::X)) SaveGameReportAsync();
+                if (edge(GamepadButtons::X)) SaveGamePageReports();
                 return;
             }
             if (m_page == Page::Controllers) {
@@ -705,7 +709,84 @@ private:
     void ActivateGameSelection() {
         if (m_gameSelection == 0) InspectGameFolderAsync(true);
         else if (m_gameSelection == 1) InspectGameFolderAsync(false);
-        else SaveGameReportAsync();
+        else if (m_gameSelection == 2) RunWin32Probe32Async();
+        else SaveGamePageReports();
+    }
+
+    void SaveGamePageReports() {
+        if (m_closed) return;
+        if (!m_gameReport.empty()) SaveGameReportAsync();
+        if (m_x86Complete) SaveX86ReportAsync();
+        if (m_gameReport.empty() && !m_x86Complete)
+            m_gameStatus = m_x86Busy ? L"The x86 test is running. Its report is saved automatically when it finishes." :
+                L"No results yet. Run the x86 test or inspect the game folder first.";
+    }
+
+    fire_and_forget RunWin32Probe32Async() {
+        if (m_x86Busy || m_x86Saving || m_closed) co_return;
+        auto lifetime = get_strong();
+        m_x86Busy = true;
+        m_x86Complete = false;
+        m_x86Summary = L"Running our embedded PE32 program...";
+        m_x86Status = L"Executing x86 code with four Win32 API thunks.";
+        const auto dispatcher = m_window.Dispatcher();
+        xcdm::runtime::Win32Probe32Result result;
+        try {
+            co_await resume_background();
+            result = xcdm::runtime::RunWin32Probe32();
+        } catch (...) {
+            result.passed = false;
+            result.summary = "The x86 execution test could not complete.";
+            result.report = "The test failed before producing an engine report. No game was executed.\n";
+        }
+        try { co_await resume_foreground(dispatcher); }
+        catch (...) {
+            OutputDebugStringW(L"x86 runtime test could not return to the UI dispatcher.\n");
+            co_return;
+        }
+        m_x86Busy = false;
+        if (m_closed) co_return;
+        m_x86Complete = true;
+        m_x86Passed = result.passed;
+        m_x86Summary = Wide(result.summary);
+        m_x86TestTime = UtcNow();
+        std::wostringstream report;
+        report << L"Xbox Desktop Mode / x86 Win32 execution smoke test\n"
+               << L"Test completed: " << m_x86TestTime << L"\n"
+               << L"Device family: " << m_deviceFamily << L"\n"
+               << L"OS version: " << m_osVersion << L"\n"
+               << L"Application architecture: x64\nGuest architecture: x86 / PE32\n"
+               << L"Result: " << (result.passed ? L"Passed" : L"Failed") << L"\n"
+               << L"Summary: " << m_x86Summary << L"\n\n" << Wide(result.report) << L"\n"
+               << L"Only an embedded, self-authored program was executed.\n"
+               << L"This test does not execute gta_sa.exe or establish San Andreas compatibility.\n"
+               << L"The San Andreas Win32/D3D9 runtime is not implemented.\n";
+        try {
+            const auto version = Package::Current().Id().Version();
+            report << L"Package version: " << version.Major << L'.' << version.Minor << L'.'
+                   << version.Build << L'.' << version.Revision << L"\n";
+        } catch (...) { report << L"Package version unavailable\n"; }
+        m_x86Report = report.str();
+        m_x86Status = L"Test complete. Saving x86-runtime.txt...";
+        SaveX86ReportAsync();
+    }
+
+    fire_and_forget SaveX86ReportAsync() {
+        if (m_x86Busy || m_x86Saving || m_closed || !m_x86Complete) co_return;
+        auto lifetime = get_strong();
+        m_x86Saving = true;
+        const auto report = m_x86Report;
+        try {
+            const auto file = co_await ApplicationData::Current().LocalFolder().CreateFileAsync(
+                L"x86-runtime.txt", CreationCollisionOption::ReplaceExisting);
+            co_await FileIO::WriteTextAsync(file, hstring(report), Windows::Storage::Streams::UnicodeEncoding::Utf8);
+            if (!m_closed) m_x86Status = L"Saved x86-runtime.txt. Press T to repeat the test.";
+        } catch (hresult_error const& error) {
+            if (!m_closed) m_x86Status = ApiError(L"x86 report save failed", error) + L". Press S to retry.";
+        } catch (...) {
+            if (!m_closed) m_x86Status = L"x86 report save failed. Press S to retry.";
+        }
+        m_x86Saving = false;
     }
 
     fire_and_forget InspectGameFolderAsync(bool chooseFolder) {
@@ -859,7 +940,7 @@ private:
                << L"Metadata recognized: " << (m_gameMetadataRecognized ? L"yes" : L"no") << L"\n\n"
                << m_gameSummary << L"\n\n" << details << L"\n" << inventory << L"\n"
                << L"Operation: metadata inspection in the selected folder. No game was copied or executed.\n"
-               << L"Windows x86 execution and Direct3D 9 game compatibility are not implemented.\n"
+               << L"The San Andreas Win32/D3D9 runtime is not implemented.\n"
                << L"A readable PE file is not proof that its code can execute on Xbox.\n";
         try {
             const auto version = Package::Current().Id().Version();
@@ -887,7 +968,7 @@ private:
             co_await FileIO::WriteTextAsync(file, hstring(report), Windows::Storage::Streams::UnicodeEncoding::Utf8);
             if (!m_closed) {
                 m_gameReportPath = file.Path().c_str();
-                m_gameStatus = L"Saved game-preflight.txt. The report contains metadata only; game execution is unavailable.";
+                m_gameStatus = L"Saved game-preflight.txt. This report contains game metadata; x86-runtime.txt contains the separate execution test.";
             }
         } catch (hresult_error const& error) {
             if (!m_closed) m_gameStatus = ApiError(L"Report save failed", error);
@@ -1266,23 +1347,35 @@ private:
         Border({776, 256, 1796, 724}, 0x2B3C30, 1.0f, 14.0f);
         Text(L"Selected game folder", {124, 277, 720, 324}, m_heading.get(), 0xF0F5F1);
         Text(m_gameFolderLabel.empty() ? L"No folder selected" : m_gameFolderLabel,
-             {124, 345, 720, 420}, m_body.get(), 0xD1DCD5);
+             {124, 342, 720, 388}, m_body.get(), 0xD1DCD5);
         Text(m_gameFolderPath.empty() ? L"Select the folder through the Xbox file picker. A previous selection can be rescanned." :
-             m_gameFolderPath, {124, 432, 720, 562}, m_small.get(), 0xAAB9AF);
-        Text(L"Last inspection: " + m_gameScanTime, {124, 608, 720, 680}, m_small.get(), 0x9FB0A4);
+             m_gameFolderPath, {124, 399, 720, 452}, m_small.get(), 0xAAB9AF);
+        Text(L"Inspection: " + m_gameScanTime, {124, 460, 720, 497}, m_small.get(), 0x9FB0A4);
+        Fill({124, 507, 720, 509}, 0x2B3C30);
+        Text(L"x86 / Win32 smoke test", {124, 521, 720, 564}, m_heading.get(), 0xF0F5F1);
+        const auto x86State = m_x86Busy ? L"Running" :
+            (m_x86Complete ? (m_x86Passed ? L"Passed" : L"Failed") : L"Not run");
+        Text(x86State, {124, 569, 720, 598}, m_small.get(),
+             m_x86Complete ? (m_x86Passed ? 0x8CEB67 : 0xFF9292) : 0xF1C875);
+        Text(m_x86Summary.substr(0, 120), {124, 604, 720, 660}, m_small.get(), 0xD1DCD5);
+        Text(m_x86Status, {124, 666, 720, 719}, m_small.get(), 0x9FB0A4);
         Text(L"Executable inspection", {806, 277, 1768, 324}, m_heading.get(), 0xF0F5F1);
         Text(m_gameSummary, {806, 338, 1768, 528}, m_body.get(),
              m_gameMetadataRecognized ? 0xD1DCD5 : 0xF1C875);
-        Text(L"Windows x86 execution and Direct3D 9 compatibility are not implemented. This page reads metadata; it does not launch San Andreas.",
-             {806, 555, 1768, 700}, m_small.get(), 0xF1C875);
-        const std::array<std::wstring, 3> labels{{
+        Text(L"The x86 test runs our own embedded PE32 program and four Win32 functions. Its result is separate from game-file inspection.\n\nThe San Andreas Win32/D3D9 runtime is not implemented; gta_sa.exe is not executed.",
+             {806, 541, 1768, 711}, m_small.get(), 0xF1C875);
+        const std::array<std::wstring, 4> labels{{
             m_gameBusy ? L"Inspecting..." : L"Choose game folder",
             L"Rescan selected folder",
-            m_gameSaving ? L"Saving..." : L"Save report"
+            m_x86Busy ? L"Running x86 test..." : L"Run x86 test",
+            m_gameSaving || m_x86Saving ? L"Saving..." : L"Save reports"
         }};
         for (std::size_t index = 0; index < GameButtons.size(); ++index) {
             const auto rect = GameButtons[index];
-            const bool disabled = m_gameBusy || m_gameSaving;
+            const bool canSave = (!m_gameBusy && !m_gameSaving && !m_gameReport.empty()) ||
+                (!m_x86Busy && !m_x86Saving && m_x86Complete);
+            const bool disabled = index == 2 ? m_x86Busy || m_x86Saving :
+                (index == 3 ? !canSave : m_gameBusy || m_gameSaving);
             Fill(rect, disabled ? 0x243128 : (Contains(rect, m_pointer) ? 0x96F36F : 0x87DD61), 8.0f);
             if (m_gameSelection == static_cast<int>(index))
                 Border({rect.left - 5, rect.top - 5, rect.right + 5, rect.bottom + 5}, 0xDEFBCF, 2.0f, 11.0f);
@@ -1291,11 +1384,11 @@ private:
         }
         Fill({96, 840, 1796, 938}, 0x121C16, 14.0f);
         Text(m_gameStatus, {124, 851, 1768, 908}, m_small.get(), 0xD1DCD5);
-        if (!m_gameReportPath.empty())
-            Text(L"Report: game-preflight.txt in this app's local storage", {124, 909, 1768, 937}, m_small.get(), 0x9FB0A4);
-        Text(L"D-pad  Select action     A  Activate     X  Save report     Y  Runtime checks",
+        Text(L"Reports in local storage: game-preflight.txt (USB metadata), x86-runtime.txt (execution test)",
+             {124, 909, 1768, 937}, m_small.get(), 0x9FB0A4);
+        Text(L"D-pad  Select action     A  Activate     X  Save reports     Y  Runtime checks",
              {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
-        Text(L"Keyboard: O choose folder  |  R / F5 rescan  |  S save  |  arrows / Tab select  |  Enter activate  |  C switch page",
+        Text(L"Keyboard: O choose folder  |  R rescan  |  T x86 test  |  S save  |  arrows / Tab select  |  Enter activate  |  C switch page",
              {96, 1006, 1796, 1043}, m_small.get(), 0x9FB0A4);
     }
 
@@ -1429,6 +1522,10 @@ private:
     std::wstring m_gameSummary{L"Choose the game folder to inspect gta_sa.exe and its imported Windows libraries."};
     std::wstring m_gameStatus{L"Ready. Choose the USB folder containing gta_sa.exe. No game files need to be copied."};
     std::wstring m_gameScanTime{L"Not run"};
+    bool m_x86Busy{false}, m_x86Saving{false}, m_x86Complete{false}, m_x86Passed{false};
+    std::wstring m_x86Summary{L"Runs an embedded x86 program through the interpreter and Win32 bridge."};
+    std::wstring m_x86Status{L"The test starts automatically. T runs it again."};
+    std::wstring m_x86TestTime{L"Not run"}, m_x86Report;
     bool m_rawApiOkay{false}, m_gamepadApiOkay{false}, m_associationWarning{false};
     bool m_rawReadingOkay{false}, m_gamepadReadingOkay{false};
     std::uint32_t m_rawCount{0}, m_gamepadCount{0};

@@ -1,0 +1,26 @@
+#pragma once
+
+#include <string>
+#include <cstddef>
+#include <cstdint>
+
+namespace xcdm::runtime {
+
+struct Win32Probe32Result {
+    bool passed = false;
+    std::string summary;
+    std::string report;
+};
+
+// Runs only the embedded, self-authored PE32 fixture through a bounded x86
+// interpreter and four explicit Win32 host calls. Never executes a USB image.
+Win32Probe32Result RunWin32Probe32() noexcept;
+
+// Bounded integer-only guest runner with SetLastError, GetLastError,
+// OutputDebugStringA and guest-only ExitProcess. Other imports fail closed.
+// Exposed for malformed-image/host-call regression tests. The UWP app does not
+// pass USB executables here. A successful exit is not game compatibility.
+Win32Probe32Result ExecuteWin32IntegerImage(const std::uint8_t* bytes,
+    std::size_t size, std::uint64_t instructionLimit = 100000) noexcept;
+
+} // namespace xcdm::runtime

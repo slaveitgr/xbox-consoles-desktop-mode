@@ -16,7 +16,8 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 | Desktop and Win32Bridge source | Pinned upstream source; bridge compiles, independent full desktop build still pending |
 | Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
 | Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
-| USB game inspection | Game page reads `gta_sa.exe` from a user-selected folder and reports PE32/PE32+ metadata; console validation is pending |
+| USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
+| Integer x86 execution | Version 0.4 adds a PE32 interpreter and four Win32 host calls for an embedded program; see scope in the runtime guide |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -70,7 +71,7 @@ binary, not a desktop built or customized by this repository. See
 dependencies, controls and remaining checks. Commercial applications have not
 been tested by us.
 
-The companion runs only self-authored diagnostic code. Its PE fixture has no
+The companion runs only self-authored diagnostic code. Its original native PE fixture has no
 imports, relocations, TLS or CRT and returns `42` through a deliberately tiny
 test entry-point contract. A pass proves that narrow contract, not Win32 app
 compatibility. It does not execute arbitrary files from your game library.
@@ -79,8 +80,13 @@ Version 0.3 adds a **Game preflight** page. Choose the folder containing
 `gta_sa.exe`, including a USB folder exposed by the device picker. The app reads
 the executable in place and saves `game-preflight.txt` to its own LocalState;
 copying the game through the desktop is unnecessary. The system picker and USB
-grant still require validation on the actual Xbox. See
+grant were verified on the actual One X, including a saved metadata report. See
 [`docs/GAME_PREFLIGHT.md`](docs/GAME_PREFLIGHT.md) for controls and report scope.
+
+Version 0.4 adds a separate, automatically running **x86 / Win32 smoke test**.
+It interprets an embedded PE32 program and handles four explicit Win32 calls;
+it does not execute the USB game. The integer interpreter has no FPU/MMX/SSE,
+Direct3D or general Windows API layer. See [`docs/X86_RUNTIME.md`](docs/X86_RUNTIME.md).
 
 ## Development direction
 

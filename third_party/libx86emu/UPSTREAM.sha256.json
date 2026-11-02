@@ -1,0 +1,21 @@
+{
+  "repository": "https://github.com/wfeldt/libx86emu",
+  "commit": "ce81129c57fdfbf690bebc210a8db97d926cc5e7",
+  "original_sha256": {
+    "LICENSE": "ae75006b2e3b5733b30933bfa18f0f167c2ac2f6e410cd420fb927fe361e8f71",
+    "LICENSE_INFO": "7078a3fa7e1a6b9d975d8591884f473739e2305b89393b9e31507b853e463388",
+    "README.md": "0e58c0c70453317a81358a3a0053e62ad474ac3506cedcad4be825422f070947",
+    "api.c": "66a33412efb4647a339f9fd7d01c2b2e0d466b11fb7708e174f0c3bad09f595c",
+    "decode.c": "3aa135d66860ec1c2b09e9bcbcd1381836bd8e081fa2af8eecec751b49e03851",
+    "mem.c": "ff044153f23813435e0c3351de7ff194e3abea4a983392218c0156413e6bd8ba",
+    "ops.c": "2554b5035c71b0bf9beb25342ce47ab152827a7d216879a657085bd88df9b864",
+    "ops2.c": "398e963ce062bcd9f6091de1f5b7a938534415a95b84d037351ddcee3a290cf9",
+    "prim_ops.c": "c5aa6b49c2da8d636f794951e3d9bd9aa71835b3ceaf5234632eb3558e03f11f",
+    "include/decode.h": "319492eceedf5976faca04db6adbae768e720d4430440c600e776308e7681ad2",
+    "include/mem.h": "32b7fd1bf90a6544abd44d25d31ada87f0177ba9a654de446017d48fc007fd55",
+    "include/ops.h": "35cc118db25f5ec6a209db91c8efb8af2886ef1cec4ed99fc21a11e85057d1ef",
+    "include/prim_ops.h": "817f383d227a9dbea0415a0ba704410ab12b3a31bab0eb525e2cb9e3b5ef1161",
+    "include/x86emu.h": "98f148f53b151e63938d97b5b62c851d07bea32b6ca394c38a7b33ad7fb79eec",
+    "include/x86emu_int.h": "d77b4b312b5e8e1f032fd3e18b9875427862304cdb6156855db0927ccc873c92"
+  }
+}

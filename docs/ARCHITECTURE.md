@@ -38,3 +38,13 @@ return-42 probe proves that Steam's desktop client or a game will work.
 Before a graphics integration, select one owned, offline test title, enumerate
 its real imports and graphics requirements, then measure against those exact
 requirements. No game or account data belongs in the source tree.
+
+## Integer x86 bootstrap
+
+Version 0.4 adds an independent PE32 path: `Pe32Image` maps bounded guest
+sections and imports, `X86Execution` supplies checked virtual-memory callbacks
+to the pinned libx86emu integer interpreter, and `Win32Probe32` marshals four
+explicit stdcall host gates. Its embedded self-authored fixture proves that
+execution path separately from USB metadata and native x64 probes. It does not
+connect the USB game's image to the interpreter. FPU/MMX/SSE, game APIs and
+guest graphics are absent. See `X86_RUNTIME.md` for scope and tests.
