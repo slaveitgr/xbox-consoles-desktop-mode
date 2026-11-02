@@ -11,6 +11,7 @@ permissions:
 
 jobs:
   windows-host:
+    if: ${{ !contains(github.event.head_commit.message, '[core-only]') }}
     name: Compile native UWP host
     runs-on: windows-2022
     timeout-minutes: 30
@@ -75,6 +76,7 @@ jobs:
           if-no-files-found: warn
 
   windows-core:
+    if: ${{ !contains(github.event.head_commit.message, '[host-only]') }}
     name: Build and run actual x64 interpreter on Windows
     runs-on: windows-2022
     timeout-minutes: 30

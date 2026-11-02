@@ -25,6 +25,25 @@ endif()]=])
   endif()
   string(REPLACE "${original}" "${replacement}" patched "${sdl_cmake}")
   file(WRITE "${destination}/CMakeLists.txt" "${patched}")
+
+  # SDL2.0.12 intentionally undefines SSE/SSE2 in its clang-cl branch, but
+  # leaves SSE3 defined. SDL_audiocvt then selects an SSE3 converter without
+  # declaring its intrinsic types. Keep the real scalar converter consistently.
+  file(READ "${source}/include/SDL_cpuinfo.h" cpuinfo)
+  set(original_intrinsics [=[#undef __MMX__
+#undef __SSE__
+#undef __SSE2__]=])
+  set(replacement_intrinsics [=[#undef __MMX__
+#undef __SSE__
+#undef __SSE2__
+/* ProtonDesktop clang-cl build: match SDL's scalar SSE/SSE2 fallback. */
+#undef __SSE3__]=])
+  string(FIND "${cpuinfo}" "${original_intrinsics}" intrinsics_position)
+  if(intrinsics_position EQUAL -1)
+    message(FATAL_ERROR "Pinned SDL clang-cl intrinsic-header patch no longer matches")
+  endif()
+  string(REPLACE "${original_intrinsics}" "${replacement_intrinsics}" patched_cpuinfo "${cpuinfo}")
+  file(WRITE "${destination}/include/SDL_cpuinfo.h" "${patched_cpuinfo}")
 endfunction()
 
 # Standalone patch-application verification, without a compiler or build.

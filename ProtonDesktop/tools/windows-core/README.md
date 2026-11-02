@@ -56,7 +56,12 @@ compiler-rt, then failed while compiling SDL: its legacy CMake emits GCC's
 `-idirafter <path>` for clang-cl, which treats the path as a second source file.
 The build-local SDL copy now selects its existing `include_directories` branch
 for the MSVC driver. The real source and API behavior are unchanged; the
-corrected Windows build/run result remains pending.
+second attempt passed that stage, then exposed an SDL2.0.12 intrinsic-header
+inconsistency: its clang-cl branch undefines SSE/SSE2 but leaves SSE3 enabled,
+selecting an audio converter without its intrinsic declarations. The local
+header overlay also undefines SSE3 in that same branch, keeping SDL's actual
+scalar converter. This changes SDL host conversion selection only; it does not
+replace guest instruction emulation. The corrected build/run remains pending.
 
 UWP memory adaptation has its own independent `backend/uwp` target. It cannot
 be linked with the unmodified desktop `platform/windows/platform.cpp`, which
