@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <functional>
 #include <memory>
+#include <utility>
 
 namespace XWindows {
 using namespace Platform;

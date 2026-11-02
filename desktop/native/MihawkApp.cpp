@@ -101,6 +101,7 @@ struct State {
     TextBlock^ fallback = nullptr;
     Button^ back = nullptr;
     Win32Bridge::RuntimeSession^ session = nullptr;
+    task<int> runtimeTask=task_from_result(-1);
     DispatcherTimer^ inputTimer = nullptr;
     bool runtimeInput = true, libraryBusy = false;
     std::vector<Game> games;
@@ -439,6 +440,7 @@ void OpenOverlay(const std::shared_ptr<State>& state, String^ title, bool browse
 task<JsonObject^> RunFile(const std::shared_ptr<State>& state, StorageFile^ file, StorageFolder^ parent, bool inputEnabled) {
     if (!parent) Fail(L"Open the executable from its containing folder first.");
     OpenOverlay(state, L"Preparing " + file->Name, false);
+    state->root->UpdateLayout(); // Supply actual client bounds before creating guest metrics.
     state->runtimeInput = inputEnabled;
     auto session = ref new Win32Bridge::RuntimeSession(state->surface); state->session = session;
     return create_task(session->PrepareAsync(file, parent)).then([state, session, file, inputEnabled](bool prepared) {
@@ -446,7 +448,7 @@ task<JsonObject^> RunFile(const std::shared_ptr<State>& state, StorageFile^ file
         if (!prepared) { state->overlayTitle->Text = L"Stopped: " + session->LastError; Fail(session->LastError); }
         session->SetInputEnabled(inputEnabled && state->hostedWindow->InputActive());
         state->overlayTitle->Text = L"Running " + file->Name;
-        auto running = create_task(session->RunAsync());
+        auto running = create_task(session->RunAsync()); state->runtimeTask=running;
         session->SetInputEnabled(inputEnabled && state->hostedWindow->InputActive());
         running.then([state, session, file](task<int> finished) {
             try {
@@ -944,6 +946,26 @@ task<void> WindowChromeSmoke(const std::shared_ptr<State>& state) {
     Bool(report,L"passed",passed); report->SetNamedValue(L"snapshots",snapshots);
     return SmokeRecord(L"xwindows-window-smoke.json",report);
 }
+task<void> RuntimeReturn42Smoke(const std::shared_ptr<State>& state) {
+    // The immutable packaged, self-authored fixture has no imports or TLS.
+    // This qualifies only the existing native return contract, never Wine.
+    return create_task(Windows::ApplicationModel::Package::Current->InstalledLocation->GetFolderAsync(L"Diagnostics"))
+        .then([state](StorageFolder^ folder) {
+            return create_task(folder->GetFileAsync(L"return42.exe")).then([state,folder](StorageFile^ file) {
+                return RunFile(state,file,folder,false);
+            }, Ui());
+        }, Ui()).then([state](JsonObject^) {
+            auto session=state->session;
+            return state->runtimeTask.then([session](int exit) {
+                auto report=ref new JsonObject();
+                Text(report,L"fixture",L"packaged self-authored return42");
+                Number(report,L"exitCode",exit); Bool(report,L"wineExecuted",false);
+                Text(report,L"error",session ? session->LastError : L"Session missing");
+                Bool(report,L"passed",exit==42 && session && (!session->LastError || !session->LastError->Length()));
+                return SmokeRecord(L"xwindows-runtime-smoke.json",report);
+            }, Ui());
+        }, Ui());
+}
 void NativeSmoke(const std::shared_ptr<State>& state) {
     if (state->smokeStarted) return;
     state->smokeStarted = true;
@@ -959,6 +981,8 @@ void NativeSmoke(const std::shared_ptr<State>& state) {
             task<void> smoke = task_from_result();
             if (config->HasKey(L"windowChrome") && config->GetNamedBoolean(L"windowChrome"))
                 smoke=smoke.then([state] { return WindowChromeSmoke(state); }, Ui());
+            if (config->HasKey(L"runtimeReturn42") && config->GetNamedBoolean(L"runtimeReturn42"))
+                smoke=smoke.then([state] { return RuntimeReturn42Smoke(state); }, Ui());
             if (config->HasKey(L"shellCapture") && config->GetNamedBoolean(L"shellCapture"))
                 smoke = smoke.then([state] { return ScheduleShellCapture(state); }, Ui());
             if (config->HasKey(L"lan") && config->GetNamedBoolean(L"lan"))

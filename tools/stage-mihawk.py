@@ -108,6 +108,7 @@ def main():
     assets(out / 'Mihawk/assets')
     package_icons(out / 'Assets')
     copy(args.host, out / 'MihawkDesktop.exe')
+    copy(ROOT / 'samples/return42.exe', out / 'Diagnostics/return42.exe')
     for name in ['Win32Bridge.Runtime.dll', 'Win32Bridge.winmd']:
         copy(args.bridge / name, out / name)
     copy(ROOT / 'desktop/native/Package.appxmanifest', out / 'AppxManifest.xml')
