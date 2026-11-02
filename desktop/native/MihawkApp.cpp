@@ -145,7 +145,7 @@ JsonObject^ Entry(const std::shared_ptr<State>& state, String^ id) {
     auto result = ref new JsonObject();
     Text(result, L"id", id);
     Text(result, L"name", Wide(id) == L"workspace" ? L"Files" : item.value->Name);
-    Text(result, L"kind", dynamic_cast<StorageFolder^>(item.value) ? L"folder" : L"file");
+    Text(result, L"kind", Str(dynamic_cast<StorageFolder^>(item.value) ? L"folder" : L"file"));
     Bool(result, L"writable", item.writable);
     return result;
 }
@@ -385,7 +385,7 @@ void Request(const std::shared_ptr<State>& state, Object^ sender, NotifyEventArg
     catch (...) { Reply(state, id, nullptr, L"Invalid native request."); }
 }
 Button^ Action(String^ title) {
-    auto button = ref new Button(); button->Content = title; button->Margin = Thickness(8);
+    auto button = ref new Button(); button->Content = title; button->Margin = ThicknessHelper::FromUniformLength(8);
     return button;
 }
 }
@@ -404,7 +404,7 @@ protected:
         state->fallback = ref new TextBlock(); state->fallback->Text = L"Opening Mihawk desktop...";
         state->fallback->TextWrapping = TextWrapping::Wrap;
         state->fallback->Foreground = ref new SolidColorBrush(Colors::White);
-        state->fallback->Margin = Thickness(32);
+        state->fallback->Margin = ThicknessHelper::FromUniformLength(32);
         state->root->Children->Append(state->fallback);
         Observe(Status(state));
         try {
@@ -415,7 +415,7 @@ protected:
                 }, Ui());
             state->overlay = ref new Grid(); state->overlay->Visibility = Visibility::Collapsed;
             state->overlay->Background = ref new SolidColorBrush(Colors::Black);
-            auto headerRow = ref new RowDefinition(); headerRow->Height = GridLength(0, GridUnitType::Auto);
+            auto headerRow = ref new RowDefinition(); headerRow->Height = GridLengthHelper::Auto;
             state->overlay->RowDefinitions->Append(headerRow);
             state->overlay->RowDefinitions->Append(ref new RowDefinition());
             auto header = ref new StackPanel(); header->Orientation = Orientation::Horizontal;
@@ -441,7 +441,7 @@ protected:
                 [](WebView^, WebViewNewWindowRequestedEventArgs^ args) { args->Handled = true; });
             state->shell->NavigationCompleted += ref new TypedEventHandler<WebView^, WebViewNavigationCompletedEventArgs^>(
                 [state](WebView^, WebViewNavigationCompletedEventArgs^ args) {
-                    state->navigation = args->IsSuccess ? (state->javascriptReady ? L"ready" : L"loaded") : L"failed";
+                    state->navigation = Str(args->IsSuccess ? (state->javascriptReady ? L"ready" : L"loaded") : L"failed");
                     if (!args->IsSuccess) HostError(state, L"The packaged desktop page could not load. Web error " + Str(std::to_wstring(static_cast<int>(args->WebErrorStatus))));
                     else Observe(Status(state));
                 });
