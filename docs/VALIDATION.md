@@ -1,5 +1,63 @@
 # Verified baseline
 
+## Certificate metadata and Steam installer trace, version 0.10
+
+Source commit: `d271fc4c72b0e15d33a20e686fce3704e263676a`;
+source tree: `9fb456acf00de4beb7da06522bbf5b9510773c69`;
+[Actions run 41416818336](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41416818336).
+All seven Linux ASan/UBSan suites and seven Windows suites passed, including
+**323 PE32 loader and execution checks** and **56 bounded startup checks**.
+Both CI jobs completed successfully. The fixture and 18 native
+startup-target parser checks passed; read-only core review found no blocker.
+Windows build, packaging and desktop repack checks passed. Desktop repack
+**1.0.46.5** passed signature/ABI checks and validation of all **8,858 blockmap
+files** in CI. Console deployment completed with code 0 and success true;
+version **1.0.46.5** was registered, launch returned HTTP 200, and
+`DesktopMode.exe` was observed under that exact package identity. A fresh
+SteamSetup file-open trace through this desktop remains unobserved. The
+physical 13-instruction result below is from diagnostics sharing the exact DLL.
+
+Physical Xbox One X, diagnostics **0.10.0.0**:
+
+- Deployment completed with code 0 and launch returned HTTP 200. The packaged
+  bridge SHA-256 is
+  `8255e7ac61c70f8120c7b5234b02c1540b67417db2af50911f827961e1a1b1e5`.
+- The latest `x86-runtime.txt` confirms the original four-call smoke test passed
+  in 13 instructions. The native simultaneous low-address reservation probe
+  passed and released its reservations.
+- The default USB GTA trace retained its 85-instruction HeapCreate stop.
+- An invalid target override, `../SteamSetup.exe`, reported `Runner invoked: no`
+  and `File: No target selected`; it did not fall back to GTA.
+- A valid `SteamSetup.exe` override reopened the saved USB grant and read the
+  2,380,800-byte installer in place; it matched the official inspected binary.
+  It executed **13 guest instructions
+  and host gates**, stopping at `KERNEL32.dll!SetErrorMode`, gate `0x7ff00110`.
+  Its report identified one certificate record at file offset `0x242698`, size
+  11,624 bytes, explicitly unmapped and unverified. No ExitProcess was reached.
+
+The override was removed after testing, restoring the default target. This
+demonstrates bounded installer startup on Xbox, without Steam installation or
+client UI. No new graphics or gameplay result was observed.
+
+StartupTrace now accepts structurally valid SECURITY directory 4 certificate
+tables as bounded file metadata. The address is a file offset, not a guest RVA;
+8-byte alignment, record extents, revision/type, zero padding, record limits and
+disjoint header/raw-section ranges are checked. Only revision 0x0200 and type
+0x0002 are accepted. Certificate bytes are never mapped, and Authenticode
+signature/trust is not verified. The strict Fixture profile still rejects this
+directory; TLS, relocations and CLR remain unsupported with precise diagnostics.
+
+On the development host, the official `SteamSetup.exe` also maps and executes
+**13 guest instructions and host gates** through the bounded interpreter,
+stopping at unimplemented `KERNEL32.dll!SetErrorMode`, gate `0x7ff00110`.
+No ExitProcess call was reached. The host result is recorded separately from
+the matching console result above.
+
+The diagnostic app also accepts a basename override in
+`LocalState/startup-target.txt` for an executable in the saved folder. An absent
+override retains `gta_sa.exe`; an invalid override stops without falling back
+to another executable. Both override paths were verified on the console.
+
 ## GetModuleHandleA startup progress, version 0.9
 
 Source commit: `d3b03db19eb4a12c8697bb5966ea2b22c82cb4e9`;

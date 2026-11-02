@@ -12,14 +12,15 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 
 | Component | Status |
 | --- | --- |
-| Upstream desktop | Patched repack 1.0.46.4 installed and launched on One X with its process confirmed; the preceding 1.0.46.3 game file-open trace was verified |
+| Upstream desktop | Patched repack 1.0.46.5 installed and launched on One X with its matching process confirmed; a fresh desktop SteamSetup file-open trace remains unobserved |
 | Desktop and Win32Bridge source | Pinned upstream source; patched bridge builds and passes ABI comparison; repacks retain the upstream shell and Gecko binaries |
 | Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
-| Portable PE validation | Seven Linux sanitizer suites and seven Windows suites pass for 0.9, including malformed images |
+| Portable PE validation | Version 0.10 passes all seven Linux sanitizer and seven Windows suites, including 323 PE32 loader/execution checks |
 | USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
-| Integer x86 execution | Version 0.9 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls |
+| Integer x86 execution | Version 0.10 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls; native low-address probe also passed |
 | Bounded game startup trace | Version 0.9 returns normally through GetVersionExA and GetModuleHandleA, reaching 85 guest instructions and host gates before missing HeapCreate; no gameplay or graphics |
 | Patched Win32Bridge | Version 0.9 loads on One X with ABI 1 and no direct fallback; six host APIs implemented; 56 startup checks pass on Linux and Windows |
+| Steam installer startup | Version 0.10 companion on One X reads official SteamSetup.exe directly from USB and reaches missing SetErrorMode after 13 guest instructions and host gates; no installer UI |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -144,6 +145,26 @@ with deployment code 0; launch returned HTTP 200 and its matching desktop
 process was confirmed. A fresh game file-open trace through this desktop
 version remains unobserved; diagnostics confirms the shared DLL's
 85-instruction HeapCreate stop.
+
+Version **0.10** accepts bounded SECURITY directory 4 certificate metadata in
+StartupTrace, fixing the loader rejection for the official `SteamSetup.exe`.
+Certificates remain outside guest memory and their signature/trust is not
+verified; strict fixture, TLS and relocation restrictions remain. The host
+interpreter and Xbox One X companion both execute 13 Steam installer instructions
+and host gates before missing `KERNEL32.dll!SetErrorMode`, without reaching
+ExitProcess or installer UI. The companion reads the official installer in
+place from the saved USB folder using `LocalState/startup-target.txt`. A malformed
+override was verified to stop without invoking the runner or falling back to
+GTA; the default GTA trace remains at 85 instructions / HeapCreate. All seven
+Linux ASan/UBSan and seven Windows suites pass, with 323 PE32 checks, 56 startup
+checks and 18 separate target-parser checks. Both CI jobs succeeded. The console
+also passed the original four-call smoke and native simultaneous low-address
+probe. Desktop repack **1.0.46.5** passes signature, ABI and 8,858-file blockmap
+validation, installed with deployment code 0, and launched with HTTP 200;
+its matching desktop process was confirmed. A fresh SteamSetup file-open trace
+through that desktop remains unobserved; the physical 13-instruction
+SetErrorMode stop was verified through diagnostics sharing the exact DLL.
+Steam installation and client functionality remain unavailable.
 
 ## Development direction
 
