@@ -17,12 +17,13 @@
         <uap:DefaultTile Wide310x150Logo="Assets\Wide310x150Logo.png" />
         <uap:SplashScreen Image="Assets\SplashScreen.png" BackgroundColor="#173f66" />
       </uap:VisualElements>
-      <Extensions><Extension Category="windows.activatableClass.inProcessServer"><InProcessServer>
+
+    </Application>
+  </Applications>
+  <Extensions><Extension Category="windows.activatableClass.inProcessServer"><InProcessServer>
         <Path>Win32Bridge.Runtime.dll</Path>
         <ActivatableClass ActivatableClassId="Win32Bridge.RuntimeSession" ThreadingModel="both" />
         <ActivatableClass ActivatableClassId="Win32Bridge.RuntimeHost" ThreadingModel="both" />
       </InProcessServer></Extension></Extensions>
-    </Application>
-  </Applications>
-  <Capabilities><Capability Name="internetClient" /><Capability Name="privateNetworkClientServer" /><uap:Capability Name="codeGeneration" /><rescap:Capability Name="expandedResources" /></Capabilities>
+  <Capabilities><Capability Name="internetClient" /><Capability Name="privateNetworkClientServer" /><Capability Name="codeGeneration" /><rescap:Capability Name="expandedResources" /></Capabilities>
 </Package>
