@@ -2,7 +2,11 @@
 
 First build target for the actual pinned `BOXEDWINE_GUEST_X64` core on Windows.
 This is **not UWP**, does not link into the app and does not qualify Xbox or Wine.
-The initial Windows compile/run result is pending CI.
+Passed on Windows x64 in
+[CI 41472941389](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41472941389),
+source `b0115e6dc53380a06c38b20284cd1d004896b47a`: **907/907 CPU64 checks**,
+positive ELF64 guest exit 0 and negative guest exit 9. This remains desktop
+Windows evidence; UWP and Wine have not executed.
 
 Requires Windows x64, a Visual Studio 2022 x64 developer environment (MSVC
 headers/import libraries), Windows SDK, CMake, Ninja, Git and LLVM **clang-cl**.
@@ -64,7 +68,8 @@ inconsistency: its clang-cl branch undefines SSE/SSE2 but leaves SSE3 enabled,
 selecting an audio converter without its intrinsic declarations. The local
 header overlay also undefines SSE3 in that same branch, keeping SDL's actual
 scalar converter. This changes SDL host conversion selection only; it does not
-replace guest instruction emulation. The corrected build/run remains pending.
+replace guest instruction emulation. The corrected build/run passed in the
+Windows CI result linked above.
 The following compiler pass also showed that this old clang-cl branch skipped
 `intrin.h`, hiding `__cpuid` and `_xgetbv` declarations from SDL's real CPU probe.
 The overlay includes the compiler's genuine intrinsic header before preserving

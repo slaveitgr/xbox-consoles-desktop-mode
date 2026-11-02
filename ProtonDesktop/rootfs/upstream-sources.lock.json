@@ -1,0 +1,31 @@
+{
+  "repository": "https://github.com/andrewnakas/Boxedwine64",
+  "commit": "58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4",
+  "files": [
+    {
+      "path": "tools/rootfs64/build-wine64-zip.sh",
+      "local": "reference/build-wine64-zip.sh",
+      "sha256": "a770f4822d312b577f3d98f8fd473f4ca268d07051414cdef02a7ebd11442492",
+      "bytes": 11718
+    },
+    {
+      "path": "tools/rootfs64/build-prefix64.sh",
+      "local": "reference/build-prefix64.sh",
+      "sha256": "c17efeff3b227780c32c3f6382c4e80b862c07ec721571f55b4c2d04e085cdd3",
+      "bytes": 13504
+    },
+    {
+      "path": "tools/rootfs64/build-libgl64.sh",
+      "local": "reference/build-libgl64.sh",
+      "sha256": "097c6a1a896c6b59f62ff566dfacbbea8048ef3bb2a01507eab4ddbf6f716b89",
+      "bytes": 3978
+    },
+    {
+      "path": "tools/run_wine64_gui.sh",
+      "local": "reference/run_wine64_gui.sh",
+      "sha256": "24b00ca7a6170018dfc3e46803bd0f0f2befef1d4d0e7e29f15ce2d49f4100d7",
+      "bytes": 15471
+    }
+  ],
+  "scripts_executed": false
+}

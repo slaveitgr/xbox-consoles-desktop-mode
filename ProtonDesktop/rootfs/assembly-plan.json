@@ -1,0 +1,225 @@
+{
+  "schema": 1,
+  "kind": "unexecuted assembly and first-boot plan",
+  "backend_commit": "58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4",
+  "package_lock": "debian-bookworm.lock.json",
+  "layers_in_mount_order": [
+    "glibc-rootfs64.zip",
+    "wine64.zip",
+    "prefix64.zip"
+  ],
+  "required_guest_paths": {
+    "glibc-rootfs64.zip": [
+      "/lib64/ld-linux-x86-64.so.2",
+      "/lib/x86_64-linux-gnu/libc.so.6",
+      "/lib/x86_64-linux-gnu/libgcc_s.so.1",
+      "/lib/x86_64-linux-gnu/libfreetype.so.6",
+      "/etc/ld.so.cache",
+      "/etc/localtime",
+      "/etc/passwd",
+      "/etc/group",
+      "/etc/nsswitch.conf",
+      "/tmp/",
+      "/run/user/1000/",
+      "/home/username/",
+      "/var/tmp/"
+    ],
+    "wine64.zip": [
+      "/usr/lib/wine/wine64",
+      "/usr/lib/wine/wineserver64",
+      "/usr/lib/wine/wineapploader",
+      "/usr/lib/x86_64-linux-gnu/wine/x86_64-unix/",
+      "/usr/lib/x86_64-linux-gnu/wine/x86_64-windows/",
+      "/usr/lib/x86_64-linux-gnu/wine/x86_64-windows/explorer.exe",
+      "/usr/lib/x86_64-linux-gnu/wine/x86_64-windows/wineboot.exe",
+      "/usr/lib/x86_64-linux-gnu/wine/x86_64-unix/winex11.drv.so",
+      "/usr/share/wine/",
+      "/usr/share/X11/locale/",
+      "/usr/share/fontconfig/",
+      "/usr/share/fonts/truetype/liberation2/"
+    ],
+    "prefix64.zip": [
+      "/home/username/.wine/system.reg",
+      "/home/username/.wine/user.reg",
+      "/home/username/.wine/userdef.reg",
+      "/home/username/.wine/dosdevices/c:",
+      "/home/username/.wine/drive_c/windows/system32/",
+      "/home/username/.wine/drive_c/users/username/Desktop/",
+      "/home/username/.wine/drive_c/users/username/Documents/",
+      "/home/username/.wine/drive_c/users/username/AppData/Local/Temp/"
+    ]
+  },
+  "paths_requiring_elf_dependency_completion": [
+    "/usr/lib/wine/wine64",
+    "/usr/lib/wine/wineserver64",
+    "/usr/lib/x86_64-linux-gnu/wine/x86_64-unix/*.so"
+  ],
+  "dlopen_libraries": [
+    "libgcc_s.so.1",
+    "libfreetype.so.6",
+    "libfontconfig.so.1",
+    "libXrender.so.1",
+    "libXcursor.so.1",
+    "libXfixes.so.3",
+    "libXcomposite.so.1",
+    "libXi.so.6",
+    "libXinerama.so.1",
+    "libXxf86vm.so.1",
+    "libXrandr.so.2"
+  ],
+  "environment": {
+    "HOME": "/home/username",
+    "USER": "username",
+    "WINEARCH": "win64",
+    "WINEPREFIX": "/home/username/.wine",
+    "WINELOADER": "/usr/lib/wine/wine64",
+    "WINESERVER": "/usr/lib/wine/wineserver64",
+    "WINEDLLPATH": "/usr/lib/x86_64-linux-gnu/wine",
+    "DISPLAY": ":0",
+    "WINEDLLOVERRIDES": "mscoree,mshtml="
+  },
+  "first_boot_guest_argv": [
+    "/usr/lib/wine/wine64",
+    "wineboot.exe",
+    "--init"
+  ],
+  "palette_guest_argv": [
+    "/usr/lib/wine/wine64",
+    "regedit.exe",
+    "/S",
+    "Z:\\home\\username\\ProtonDesktop.reg"
+  ],
+  "desktop_guest_argv": [
+    "/usr/lib/wine/wine64",
+    "explorer.exe",
+    "/desktop=ProtonDesktop,1920x1080"
+  ],
+  "writable_guest_paths": [
+    "/home/username/.wine",
+    "/tmp",
+    "/run/user/1000",
+    "/var/tmp"
+  ],
+  "initial_profile": {
+    "x64_only": true,
+    "graphics": "GDI/X11 software pixels",
+    "audio_bridge_included": false,
+    "opengl_guest_shim_included": false,
+    "upstream_demo_apps_included": false,
+    "microsoft_assets_included": false
+  },
+  "prefix_created": false,
+  "rootfs_built": false,
+  "accepted_layer_sha256": null,
+  "file_payload_sha256_manifest": null,
+  "wine_executed": false,
+  "xbox_tested": false,
+  "link_encoding": {
+    "colon_escape": "(_colon_)",
+    "link_suffix": ".link",
+    "prefix_links": [
+      {
+        "zip_entry": "home/username/.wine/dosdevices/c(_colon_).link",
+        "target": "../drive_c"
+      },
+      {
+        "zip_entry": "home/username/.wine/dosdevices/z(_colon_).link",
+        "target": "/"
+      }
+    ],
+    "zip_unix_symlink_attributes_qualified": false
+  },
+  "file_payload_manifest_required_fields": [
+    "guest_path",
+    "kind",
+    "sha256_or_link_target",
+    "mode",
+    "binary_package",
+    "binary_version",
+    "source_package",
+    "source_version",
+    "copyright_notice_path"
+  ],
+  "first_boot_contract": {
+    "implemented": true,
+    "api": "BuildPrefixBootRequest",
+    "kind": "BootKind::PrefixInitialization",
+    "base_layers_in_mount_order": [
+      "glibc-rootfs64.zip",
+      "wine64.zip"
+    ],
+    "writable_overlay_descriptor": {
+      "fields": [
+        "rootPath",
+        "appOwned",
+        "initiallyEmpty"
+      ],
+      "required_appOwned": true,
+      "required_initiallyEmpty": true,
+      "caller_assertions_only": true
+    },
+    "environment_matches_plan": true,
+    "actual_app_ownership_verified": false,
+    "actual_overlay_emptiness_verified": false,
+    "backend_execution_implemented": false,
+    "wineboot_executed": false,
+    "prefix_created": false,
+    "prepared_desktop_contract": {
+      "api": "BuildDesktopBootRequest",
+      "kind": "BootKind::ExplorerDesktop",
+      "required_layers": 3
+    }
+  },
+  "prefix_lifecycle": {
+    "implemented": false,
+    "status": "pending backend persistence, bounded completion and controlled shutdown policy",
+    "scope": "same owned guest kernel, user and WINEPREFIX for initialization/theming/shutdown",
+    "pinned_upstream_server_policy": {
+      "source": "source/kernel/syscall64.cpp",
+      "source_lines": [
+        1676,
+        1689
+      ],
+      "bare_wineserver_exec_injected_argument": "-p",
+      "effect": "server persists after all clients exit",
+      "flagged_wineserver_execs_left_untouched": true
+    },
+    "client_completion": {
+      "observe_actual_guest_exit": true,
+      "bounded_wait_required": true,
+      "deadline_ms": null,
+      "deadline_policy_implemented": false
+    },
+    "controlled_shutdown": {
+      "required": true,
+      "implemented": false,
+      "method": null,
+      "stop_new_clients_before_finalization": true,
+      "unconditional_kill_recommended": false
+    },
+    "server_exit_observation": {
+      "guest_argv": [
+        "/usr/lib/wine/wineserver64",
+        "-w"
+      ],
+      "meaning": "wait for server termination, not registry flush",
+      "only_after_controlled_shutdown_initiated": true,
+      "bounded_host_wait_required": true,
+      "deadline_ms": null,
+      "unconditional_wait_allowed": false
+    },
+    "prepared_prefix_publication": {
+      "published": false,
+      "requires_all": [
+        "actual guest initialization and theming exits accepted",
+        "owned guest clients and wineserver terminated",
+        "backend workers quiescent and registry writes completed with handles closed",
+        "actual registry/drive/profile/link structure validated",
+        "transient sockets, locks and temporary registry files excluded after quiescence",
+        "actual payload SHA256/source manifest validated",
+        "final prefix ZIP hash calculated and accepted"
+      ],
+      "on_timeout_or_missing_policy": "fail finalization; do not publish a prepared prefix"
+    }
+  }
+}

@@ -27,7 +27,7 @@
     "redistribution_qualified": false
   },
   "gates": {
-    "guest_x64_windows_compile": false,
+    "guest_x64_windows_compile": true,
     "uwp_api_partition": false,
     "uwp_pixel_presenter": false,
     "elf64_selftests_on_uwp": false,
@@ -44,5 +44,34 @@
     "report": "artifacts/headless-core-result.json",
     "qualifies_windows_or_uwp": false,
     "wine_executed": false
+  },
+  "windows_uwp_host_evidence": {
+    "source_commit": "217a2791bfed70d0e224eb5c233816a402c8c3c6",
+    "run_id": 41469175033,
+    "uwp_executable_compiled": true,
+    "appcontainer_linked": true,
+    "executable_sha256": "edf30a0db4b02d6303f7d85e335b4cfac704de4e109df0c3ffe818caf07b0023",
+    "artifact_sha256": "5cf09f87c0b088a6240e5c0e97994455f762e77b5a1d7877203cc6ac8a7bf9df",
+    "memory_checks_on_windows": 49,
+    "host_service_checks_on_windows": 47,
+    "api_family": "WINAPI_FAMILY_APP",
+    "adapter_tests_run_in_appcontainer": false,
+    "uwp_app_executed": false,
+    "wine_executed": false,
+    "xbox_tested": false
+  },
+  "windows_desktop_interpreter_evidence": {
+    "source_commit": "b0115e6dc53380a06c38b20284cd1d004896b47a",
+    "run_id": 41472941389,
+    "compiler": "clang-cl 19.1.5",
+    "cpu64_checks_passed": 907,
+    "cpu64_checks_failed": 0,
+    "positive_guest_exit": 0,
+    "negative_guest_exit": 9,
+    "executable_sha256": "1cb9378ddd9fabaab565de58d3457f6e8882cb557c9126b6254493bd018c0096",
+    "artifact_sha256": "5eaa5533bf6c23d89fa697f1f69a8854327c46ffd703170f13ec8f62ab4d53a6",
+    "uwp_executed": false,
+    "wine_executed": false,
+    "xbox_tested": false
   }
 }

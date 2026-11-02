@@ -1,8 +1,12 @@
-# Future Windows host compile check
+# Windows UWP host compile check
 
-Not run yet. This compiles the native UWP host starter, which reports that the
-Boxedwine64 backend is unavailable. It does not compile the emulator, start Wine
-or produce Xbox compatibility evidence.
+Passed on 2026-11-02 in
+[Windows CI 41469175033](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41469175033),
+source `217a2791bfed70d0e224eb5c233816a402c8c3c6`.
+The native x64 UWP executable linked with `/APPCONTAINER`; its SHA256 is
+`edf30a0db4b02d6303f7d85e335b4cfac704de4e109df0c3ffe818caf07b0023`.
+This proves host compilation. The backend is unavailable and no UWP session,
+Wine process or Xbox test ran.
 
 Required on Windows:
 
@@ -19,12 +23,14 @@ From a Visual Studio developer PowerShell in the ProtonDesktop project root:
 msbuild ProtonDesktop.vcxproj /t:Rebuild /m /p:Configuration=Release /p:Platform=x64 /p:WindowsTargetPlatformVersion=10.0.26100.0 /p:AppxPackage=false /p:GenerateAppxPackageOnBuild=false /p:AppxPackageSigningEnabled=false
 ```
 
-Expected executable: `build/uwp/Release/ProtonDesktop.exe`. Archive the build log
-and exact compiler/SDK versions if this is later run in Windows CI. Do not sign,
-install or deploy the unfinished host as part of a compile check.
+Output executable: `build/uwp/Release/ProtonDesktop.exe`. The compile artifact
+records the SDK, source revision and executable digest. The downloaded CI ZIP
+was verified against SHA256
+`5cf09f87c0b088a6240e5c0e97994455f762e77b5a1d7877203cc6ac8a7bf9df`.
+No package is signed, installed or deployed by this compile check.
 
 The CoreApplication bootstrap uses an MTA apartment and catches top-level
-HRESULT failures. Device removal/reset still reports failure; graphics-device
-recreation and suspend/resume are unfinished. A successful build therefore
-qualifies compilation of this host only. The actual Windows guest-x64 build,
-UWP API port and Wine/Explorer runtime gates remain separate and false.
+HRESULT failures. Resize/DPI, device recreation and suspend/resume handling
+are implemented and compile, but those lifecycle paths have not been exercised
+on a device. The actual guest-x64 core, UWP API port and Wine/Explorer execution
+remain separate qualification steps.

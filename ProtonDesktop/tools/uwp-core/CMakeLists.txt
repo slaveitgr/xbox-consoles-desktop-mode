@@ -28,7 +28,7 @@ execute_process(COMMAND "${GIT_EXECUTABLE}" -C "${BOXEDWINE_SOURCE}" status --po
 if(NOT source_status STREQUAL "")
   message(FATAL_ERROR "Upstream checkout must remain pristine: ${source_status}")
 endif()
-add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_APP _WIN32_WINNT=0x0A00 WINVER=0x0A00
+add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_APP SDL_BUILDING_WINRT=1 _WIN32_WINNT=0x0A00 WINVER=0x0A00
   WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
 # Do not inherit the desktop platform's broad default Win32 import list.
 set(CMAKE_C_STANDARD_LIBRARIES "WindowsApp.lib")
@@ -94,11 +94,15 @@ foreach(directory emulation io kernel sdl util x11 x11wire opengl vulkan)
   list(APPEND core_sources ${batch})
 endforeach()
 list(FILTER core_sources EXCLUDE REGEX "/source/util/networkutils\\.cpp$")
+list(FILTER core_sources EXCLUDE REGEX "/source/sdl/(main|startupArgs)\\.cpp$")
 file(GLOB platform_sources CONFIGURE_DEPENDS "${BOXEDWINE_SOURCE}/platform/sdl/*.cpp")
-# Keep the real function but rename its unused desktop main, allowing our
-# explicit diagnostic entry without global test-mode changes to kernel code.
-set_source_files_properties("${BOXEDWINE_SOURCE}/platform/sdl/knativesystem.cpp"
-  PROPERTIES COMPILE_DEFINITIONS "main=proton_unused_desktop_entry")
+# Drop only the desktop launcher entry; retain the genuine host functions and
+# normal threading behavior. No global __TEST mode or API substitution.
+include("${CMAKE_CURRENT_SOURCE_DIR}/prepare_host_overlay.cmake")
+set(native_system_overlay "${CMAKE_CURRENT_BINARY_DIR}/upstream-overlay/platform/sdl/knativesystem.cpp")
+proton_prepare_uwp_host_overlay("${BOXEDWINE_SOURCE}/platform/sdl/knativesystem.cpp" "${native_system_overlay}")
+list(FILTER platform_sources EXCLUDE REGEX "/platform/sdl/knativesystem\\.cpp$")
+list(APPEND platform_sources "${native_system_overlay}")
 file(GLOB softfloat_sources CONFIGURE_DEPENDS
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/*.c"
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/8086-SSE/*.c")
@@ -111,6 +115,7 @@ target_compile_definitions(proton-uwp-core-objects PRIVATE
 target_include_directories(proton-uwp-core-objects PRIVATE
   "${CMAKE_CURRENT_BINARY_DIR}/sdl2/include" "${sdl_overlay}/include"
   "${BOXEDWINE_SOURCE}/include" "${BOXEDWINE_SOURCE}/lib/simde"
+  "${BOXEDWINE_SOURCE}/platform/sdl"
   "${BOXEDWINE_SOURCE}/lib/glew/include" "${BOXEDWINE_SOURCE}/lib/pugixml/src"
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/include"
   "${BOXEDWINE_SOURCE}/lib/softfloat/source"

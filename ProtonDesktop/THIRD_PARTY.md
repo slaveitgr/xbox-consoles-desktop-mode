@@ -2,8 +2,11 @@
 
 Original project code, geometric tiles and theme source use GPL-2.0-only so a
 future combined Boxedwine application can retain the backend's GPL obligations.
-The GPL text is in `LICENSE`. No Boxedwine code or Wine/rootfs binaries are
-included in this starter. Source assessment links do not imply a tested port.
+The GPL text is in `LICENSE`. Four exact upstream build-script references are
+retained under `rootfs/reference/`, with their pinned source/hash manifest and
+the upstream GPL text in `rootfs/reference/LICENSE`. They have not been run.
+Emulator source remains an external pinned checkout; no Wine/rootfs binaries
+are included. Source assessment links do not imply a tested port.
 
 Boxedwine64's top-level license is GPL v2. Its bundled SDL, zlib, font, audio,
 OpenGL and other components have their own notices. A later build must retain

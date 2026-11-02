@@ -1,0 +1,11 @@
+{
+  "status": "passed",
+  "timestamp_utc": "2026-11-02T15:58:44.938798+00:00",
+  "signed_release_signatures": 3,
+  "binary_package_metadata_records": 126,
+  "source_package_metadata_records": 107,
+  "upstream_source_files": 4,
+  "binaries_downloaded": false,
+  "wine_executed": false,
+  "rootfs_built": false
+}

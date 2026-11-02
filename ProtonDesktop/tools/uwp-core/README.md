@@ -29,6 +29,14 @@ presenter. This is not a Wine desktop renderer. The existing build-local SDL
 header/CRT compatibility corrections are reused. SDL's unconditional desktop
 library list is replaced by WindowsApp so missing APIs remain visible.
 
+The supported `SDL_BUILDING_WINRT=1` switch selects SDL's existing WinRT dynapi
+policy; no desktop DLL-loading/message-box fallback is substituted. The desktop
+CLI files `source/sdl/main.cpp` and `startupArgs.cpp` are outside this diagnostic
+closure, so their process DPI and host-current-directory bootstrap are excluded.
+A checked build-local overlay removes only `knativesystem.cpp`'s desktop `main`;
+all its genuine host functions and normal worker behavior remain intact. No
+global `__TEST` mode or replacement `boxedmain` is used.
+
 The desktop Windows Platform and WinMM sources are excluded. Their unported
 services are deliberately undefined; the real backend/uwp definitions are used
 without duplicates. A missing frequency/proc/socket/audio/platform helper is a

@@ -71,11 +71,14 @@ fonts and optional custom GL/audio shims into layered ZIPs. The observed Wine
 version is 8.0. The Docker tag/package closure is not immutable provenance.
 No rootfs ZIP or executable was downloaded for this milestone.
 
-The native host itself is an uncompiled starter. It has not qualified Xbox
-suspend/resume or device loss: Direct3D device removal/reset still ends the
-session with an error instead of rebuilding the graphics device. The 17 portable
+The native UWP host now compiles in Windows CI; see
+[the host proof](WINDOWS_HOST_BUILD.md). Device recreation and suspend/resume
+handling are implemented but remain untested on a device. The 17 portable
 boot-request checks validate argument construction and rollback only; they do
 not validate root ownership, artifact provenance or guest compatibility.
+The real FromApp memory and host-service adapters passed 49 and 47 checks
+respectively in Windows test executables. Those are not AppContainer or Xbox
+runtime tests, and the app's full backend remains unavailable.
 
 Our boot request deliberately targets the real guest command:
 
