@@ -43,6 +43,48 @@ int main(int argc, char** argv)
         check(parent.readq(inherited) == 0x1122334455667788ULL,
               "private fork writes leave the parent address space unchanged");
     }
+    {
+        // Use the real registry-backed MAP_SHARED implementation, not a host
+        // allocation or a copied test implementation. A fork must preserve
+        // this alias while the preceding anonymous mapping remains private.
+        KMemory64 parent(nullptr);
+        const U64 shared = parent.mmapReserveAndMap(K64_PAGE_SIZE, 3);
+        const U64 seed = 0x123456789abcdef0ULL;
+        constexpr const char* sharedPath = "/protondesktop-fixtures/shared-fork.page";
+        check(parent.mmapSharedFile(shared, K64_PAGE_SIZE, 3, sharedPath, 0,
+                                    reinterpret_cast<const U8*>(&seed), sizeof(seed)) == shared,
+              "real shared file mapping is seeded through the shared-page registry");
+        {
+            KMemory64 child(nullptr);
+            child.cloneFrom(&parent);
+            check(child.readq(shared) == seed,
+                  "fork inherits committed shared bytes");
+            check((child.getPageFlags(shared >> K64_PAGE_SHIFT) & K64_PAGE_SHARED) != 0,
+                  "fork retains the shared page flag");
+            check(parent.getCommittedPagePtr(shared >> K64_PAGE_SHIFT) ==
+                  child.getCommittedPagePtr(shared >> K64_PAGE_SHIFT),
+                  "fork retains the actual shared backing buffer");
+            parent.writeq(shared, 0x1122334455667788ULL);
+            check(child.readq(shared) == 0x1122334455667788ULL,
+                  "parent writes are visible through the inherited shared mapping");
+            child.writeq(shared, 0x8877665544332211ULL);
+            check(parent.readq(shared) == 0x8877665544332211ULL,
+                  "child writes are visible through the parent shared mapping");
+        }
+        check(parent.readq(shared) == 0x8877665544332211ULL,
+              "destroying the fork child preserves registry-owned shared bytes");
+        KMemory64 peer(nullptr);
+        const U64 peerAddress = peer.mmapReserveAndMap(K64_PAGE_SIZE, 3);
+        const U64 replacementSeed = 0;
+        check(peer.mmapSharedFile(peerAddress, K64_PAGE_SIZE, 3, sharedPath, 0,
+                                  reinterpret_cast<const U8*>(&replacementSeed),
+                                  sizeof(replacementSeed)) == peerAddress &&
+              peer.readq(peerAddress) == 0x8877665544332211ULL,
+              "later shared mapping aliases the registry without reseeding it");
+        peer.writeq(peerAddress, 0xfedcba9876543210ULL);
+        check(parent.readq(shared) == 0xfedcba9876543210ULL,
+              "registry alias remains shared after fork child destruction");
+    }
     for (const char* path : {"/missing.elf", "/not-elf", "/missing-interpreter.elf", "/valid-static.elf"})
     {
         auto process = KProcess::create();

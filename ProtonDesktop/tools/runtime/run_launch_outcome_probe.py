@@ -67,6 +67,7 @@ int main(int argc, char** argv) {
     host_source.write_text(host.replace(entry, "// Regression executable owns main; genuine SDL host retained."))
     sources = [ROOT / "tools/runtime/LaunchOutcomeProbe.cpp", work / "overlay/source/kernel/kprocess.cpp",
                work / "overlay/source/kernel/kmemory64.cpp",
+               work / "overlay/source/kernel/syscall64.cpp",
                work / "overlay/source/kernel/ksystem.cpp",
                work / "overlay/source/emulation/cpu/normal/normalPlatformMultiThreaded.cpp",
                host_source, ROOT / "backend/uwp/UwpGuestWorkers.cpp"]
@@ -77,6 +78,7 @@ int main(int argc, char** argv) {
         objects.append(str(obj))
     excluded = ["source/sdl/main.cpp", "platform/sdl/knativesystem.cpp", "source/kernel/kprocess.cpp",
                 "source/kernel/kmemory64.cpp",
+                "source/kernel/syscall64.cpp",
                 "source/kernel/ksystem.cpp", "source/emulation/cpu/normal/normalPlatformMultiThreaded.cpp"]
     for command in commands:
         if any(command["file"].endswith(suffix) for suffix in excluded):
@@ -109,10 +111,13 @@ int main(int argc, char** argv) {
     (fixture / "missing-interpreter.elf").write_bytes(bad)
     log = execute([str(executable), str(fixture)], work / "probe.log")
     checks = sum(line.startswith("PASS:") for line in log.splitlines())
-    if checks != 28 or "launch-outcome probe: 0 failed" not in log:
-        raise RuntimeError("The actual launch probe did not report all 28 expected checks")
+    if checks != 37 or "launch-outcome probe: 0 failed" not in log:
+        raise RuntimeError("The actual launch probe did not report all 37 expected checks")
     report = {"source_commit": pin, "scope": "real Linux pinned kernel/ELF loader/owned worker integration",
               "passed": checks, "failed": 0, "wine_executed": False,
+              "fork_memory_checks": {"private_isolation": True,
+                                     "shared_registry_aliasing": True,
+                                     "shared_alias_lifetime": True},
               "self_authored_guest_exit_controls": [0, 9], "work_directory": str(work)}
     (work / "result.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))

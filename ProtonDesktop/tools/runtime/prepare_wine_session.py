@@ -184,7 +184,58 @@ def memory(cpp, header):
     cpp = once(cpp, "#endif\n    pages.clear();\n    pages.reserve(from->pages.size());",
         "#endif\n    ranges = from->ranges;\n    mmapNext = from->mmapNext;\n"
         "    pages.clear();\n    pages.reserve(from->pages.size());")
+    # Shared file pages belong to the shared registry. Fork must retain their
+    # backing buffers; only private pages get independent copied contents.
+    cpp = once(cpp, "        if (kv.second->committed()) {\n",
+        "        if (kv.second->dataShared) {\n"
+        "            copy->adoptShared(kv.second->data);\n"
+        "        } else if (kv.second->committed()) {\n")
     return cpp, header
+
+
+def syscalls(cpp):
+    # A NULL-address shared mapping reserves an address first. That reservation
+    # must not turn Wine's shared server clock into a private copy.
+    cpp = once(cpp,
+        "if (serverSection && (flags & K_MAP_SHARED) && kfile->openFile->node && !reserved) {",
+        "if (serverSection && (flags & K_MAP_SHARED) && kfile->openFile->node) {")
+    # The guest uses Linux x86-64 struct flock, whereas KProcess::fcntrl reads
+    # packed i386 flock64 from its 32-bit scratch address space. Preserve the
+    # actual 64-bit offsets and leave guest padding untouched on copy-out.
+    cpp = once(cpp, """            // Lock command: marshal the 24-byte 64-bit flock into scratch.
+            const U32 FLOCK64_BYTES = 24;
+            U32 scratch = bounceSockaddrTo32(cpu, 0, 0, nullptr);
+            if (!scratch) { ret = (U64)-K_EFAULT; break; }
+            {
+                U8 tmp[FLOCK64_BYTES];
+                cpu->memory->memcpyFromGuest(tmp, a3, FLOCK64_BYTES);
+                cpu->thread->memory->memcpy(scratch, tmp, FLOCK64_BYTES);
+            }
+""", """            // Linux x86-64 struct flock is 32 bytes (start@8, len@16,
+            // pid@24); the i386 flock64 scratch is packed to 24 bytes
+            // (start@4, len@12, pid@20). Marshal fields, never raw padding.
+            U32 scratch = bounceSockaddrTo32(cpu, 0, 0, nullptr);
+            if (!scratch) { ret = (U64)-K_EFAULT; break; }
+            cpu->thread->memory->writew(scratch + 0, cpu->memory->readw(a3 + 0));
+            cpu->thread->memory->writew(scratch + 2, cpu->memory->readw(a3 + 2));
+            cpu->thread->memory->writeq(scratch + 4, cpu->memory->readq(a3 + 8));
+            cpu->thread->memory->writeq(scratch + 12, cpu->memory->readq(a3 + 16));
+            cpu->thread->memory->writed(scratch + 20, cpu->memory->readd(a3 + 24));
+""")
+    cpp = once(cpp, """            if (cmd == K_F_GETLK || cmd == K_F_GETLK64) {
+                U8 tmp[FLOCK64_BYTES];
+                cpu->thread->memory->memcpy(tmp, scratch, FLOCK64_BYTES);
+                cpu->memory->memcpyToGuest(a3, tmp, FLOCK64_BYTES);
+            }
+""", """            if ((cmd == K_F_GETLK || cmd == K_F_GETLK64) && (S64)ret >= 0) {
+                cpu->memory->writew(a3 + 0, cpu->thread->memory->readw(scratch + 0));
+                cpu->memory->writew(a3 + 2, cpu->thread->memory->readw(scratch + 2));
+                cpu->memory->writeq(a3 + 8, cpu->thread->memory->readq(scratch + 4));
+                cpu->memory->writeq(a3 + 16, cpu->thread->memory->readq(scratch + 12));
+                cpu->memory->writed(a3 + 24, cpu->thread->memory->readd(scratch + 20));
+            }
+""")
+    return cpp
 
 
 def prepare(source, profile, output):
@@ -205,6 +256,7 @@ def prepare(source, profile, output):
     cpp, header = memory(read("source/kernel/kmemory64.cpp"), read("include/kmemory64.h"))
     write("source/kernel/kmemory64.cpp", cpp)
     write("include/kmemory64.h", header)
+    write("source/kernel/syscall64.cpp", syscalls(read("source/kernel/syscall64.cpp")))
     loop = read("source/sdl/multiThreaded/threadedMainloop.cpp")
     loop = once(loop, "static thread_local bool isMainThread;", "static thread_local bool isMainThread;\nvoid protonSetSdlOwnerThread(bool value) { isMainThread = value; }")
     write("source/sdl/multiThreaded/threadedMainloop.cpp", loop)
