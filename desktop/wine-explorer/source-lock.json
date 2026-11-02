@@ -393,6 +393,12 @@
       "path": "wine/patches/1152-explorer-navigations-show-the-new-folder-only-once-it-is-drawn.patch",
       "size": 1829,
       "sha256": "5b7c9cb638ef77fb1354431117f69487a77a377ec108b16e05c7bf4dbb2e2f4f"
+    },
+    {
+      "project": "wine",
+      "path": "include/wine/wine_common_ver.rc",
+      "size": 3752,
+      "sha256": "952360cd6c8e42e1955067c6f6aac9ff376a4b9616a731042ad9865cf3c82c49"
     }
   ]
 }

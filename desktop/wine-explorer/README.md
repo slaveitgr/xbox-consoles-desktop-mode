@@ -1,9 +1,9 @@
 # Real Wine Explorer integration
 
 The requested target is Wine Explorer itself. The existing HTML Files app is
-not Wine Explorer. This directory contains pinned upstream source staging and
-a self-authored qualification guest; it does **not** yet provide a working
-Wine Explorer on Xbox.
+not Wine Explorer. This directory contains pinned upstream source staging, an
+actual Wine-source PE64 build target and a self-authored qualification guest.
+It does **not** yet provide a working Wine Explorer on Xbox.
 
 ## What original MihawkOS uses
 
@@ -31,7 +31,7 @@ python3 desktop/wine-explorer/prepare_sources.py
 python3 desktop/wine-explorer/prepare_sources.py --offline
 ```
 
-`source-lock.json` pins 63 files (1,940,102 bytes) by repository, commit, size and
+`source-lock.json` pins 64 files (1,943,854 bytes) by repository, commit, size and
 SHA-256. The first command retrieves selected Wine source and the exact Mihawk
 source, patches, layout and Explorer sprite inputs. The second verifies the
 staged files without network access. Existing files with different checksums
@@ -49,6 +49,63 @@ Wine source retains LGPL-2.1-or-later. Mihawk modifications retain GPL-3.0-or-la
 and their component notices. A distributed derived build must satisfy those
 licenses and provide its corresponding source; the root repository's MIT
 license does not replace upstream terms.
+
+## Build the actual native Explorer source unit
+
+On the existing Windows VS2022 desktop C++ build host:
+
+```powershell
+pwsh desktop/wine-explorer/build-native.ps1
+```
+
+This compiles the pinned `programs/explorer/explorer.c` itself, with its original
+Explorer resources and manifest, as `build/native/MihawkWineExplorer.exe`.
+The folder window, navigation, address bar, event handling and message loop
+remain Wine's code. `native/prepare_native.py` verifies the source checksum and
+emits the complete adapted source, a reviewable patch and provenance. It does
+not generate another file-manager UI or implement a fake `IExplorerBrowser`.
+
+The added support unit replaces the CRT startup/memory/string subset with
+direct Win32 heap calls and small tested helpers. It links a native x64 PE32+
+guest with direct SDK imports, no default CRT, no Wine Unix loader, no delay-load
+bootstrap and no CPU emulator. Command-line arguments are limited to 259 UTF-16
+code units before they reach Wine's `MAX_PATH` parser. File/path text is not
+translated; the adapter folds ASCII command-option names only. Its source
+patch adds correct COM event `QueryInterface`/`AddRef`, optional ShellWindows
+null handling, clean allocation/COM/window failure reporting, terminated address
+input and bounded shell-selection messages.
+
+This is the **file-window source unit**. The actual Wine shell provider,
+ListView/COM services and desktop/session manager are not linked. `/desktop`
+explicitly reports that missing component. On Xbox the direct desktop imports
+must be handled by Win32Bridge; building this PE does not make the missing
+ExplorerBrowser or shell view available. Its runtime report is written only
+through the guest virtual filesystem to `C:\wine-explorer-native-report.txt`.
+No script in this directory deploys or runs the Wine executable.
+
+The build performs host adapter contract tests and offline PE/import checks.
+The PE gate rejects x86/DLL images, writable/executable sections, TLS/CLR/delay
+directories, UCRT/vcruntime/Win32u/other unexpected runtime libraries, and Wine
+Unix/delay-loader bootstrap imports. It requires the actual Explorer/adapter
+API imports. This qualifies the **build format**, not API behavior or a working
+Xbox desktop. Windows compilation and physical execution results must be
+reported separately.
+
+The output artifact includes the executable, `native-imports.json`,
+`native-build-info.json`, generated source/patch/provenance, and a complete
+`source/corresponding/desktop/wine-explorer` tree containing every compiled
+source, support/project/build/validation script, source lock and selected
+upstream sources/licenses. It contains no Windows SDK headers or libraries.
+
+Portable validation without Wine execution:
+
+```sh
+python3 desktop/wine-explorer/prepare_sources.py
+python3 -m unittest discover -s desktop/wine-explorer/native/tests -p test_source_tools.py -v
+cmake -S desktop/wine-explorer/native/tests -B desktop/wine-explorer/build/host-checks
+cmake --build desktop/wine-explorer/build/host-checks
+ctest --test-dir desktop/wine-explorer/build/host-checks --output-on-failure
+```
 
 ## Current bridge blockers
 
@@ -102,9 +159,27 @@ These PE Windows-side components can be source-ported without also porting
 PS5's payload loader, wineserver transport or Vulkan driver. That is an
 architectural route, **not proof that the present bridge is sufficient**.
 They depend on many shared shell helpers and Windows semantics; copying
-`explorer.exe` or compiling `explorer.c` alone does not supply them. A full Wine
-runtime inside an emulator is a separate route that may reuse more upstream
-code, with its own performance, filesystem and packaging qualification.
+`explorer.exe` or compiling `explorer.c` alone does not supply them. A Wine PE
+module using existing NT desktop services can work on a full Windows desktop;
+Xbox UWP does not expose that host shell. The chosen native path must supply
+the guest shell/window/storage services through the UWP host and Win32Bridge.
+
+### Next native provider batch
+
+An approved per-session CLSID-to-guest-DLL mapping can route activation through
+`GuestModuleLoader` to Wine's `DllGetClassObject`/`IClassFactory`. Loading
+`shell32.dll` via `BridgeLoadLibraryW` currently returns a bridge module token;
+it does not load a Wine provider. `CoGetClassObject`, `CoRegisterClassObject`
+and `CoRevokeClassObject` adapters are absent. Provider objects must retain
+their module until all objects are released. Guest COM objects must be released
+before dependency code is unloaded; current reset/teardown order needs review
+for that change. Never invoke guest callbacks while holding loader/COM locks.
+The existing thread-local `CoInitialize` counters are not COM marshaling.
+
+Further required contracts must remain real: Wine's path callback queries
+`IPersistFolder2`, and its image-list code uses a COM `IImageList`. The bridge's
+opaque `HIMAGELIST` handle cannot be cast to an `IImageList` and released. Adding
+only the ExplorerBrowser class would leave these additional crash paths.
 
 ## Qualification guest
 

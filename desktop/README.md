@@ -76,6 +76,11 @@ The owned test file and smoke configuration were deleted, and the desktop was
 restarted to stop the listener. The separate browser initialized Edge 150;
 initialization alone does not establish that a public page rendered correctly.
 
+Version 1.0.47.3 was then built and installed on the same One X. It removes the
+emulated Wine shortcut and startup preference. The live page reports eight
+desktop applications, native readiness and zero rejected messages; the LAN
+listener is stopped after the test. No Wine guest was executed on the console.
+
 Opt-in native integration smoke tests are requested only by a local
 `mihawk-native-smoke.json` file containing explicit `lan`/`browser` booleans.
 They are off by default and never triggered by a website. Remove the file

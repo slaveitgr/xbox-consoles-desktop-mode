@@ -9,8 +9,7 @@ build Wine Explorer, create a UWP package, deploy to Xbox, or execute the guest.
 param([string]$WindowsSdkVersion)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
-$repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$toolchain = & (Join-Path $repoRoot 'tools\build-uwp.ps1') -CheckOnly -WindowsSdkVersion $WindowsSdkVersion
+$toolchain = & (Join-Path $PSScriptRoot 'find-desktop-toolchain.ps1') -WindowsSdkVersion $WindowsSdkVersion
 $output = Join-Path $PSScriptRoot 'build'
 New-Item -ItemType Directory -Force -Path $output | Out-Null
 & $toolchain.MSBuild (Join-Path $PSScriptRoot 'ExplorerContractProbe.vcxproj') `

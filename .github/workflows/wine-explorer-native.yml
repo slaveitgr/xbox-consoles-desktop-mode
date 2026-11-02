@@ -1,0 +1,69 @@
+name: Native Wine Explorer source
+
+on:
+  push:
+    paths:
+      - '.github/workflows/wine-explorer-native.yml'
+      - 'desktop/wine-explorer/**'
+  pull_request:
+    paths:
+      - '.github/workflows/wine-explorer-native.yml'
+      - 'desktop/wine-explorer/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  adapter-checks:
+    name: Source adapter bounds and memory checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Compile and run portable adapter checks
+        run: |
+          cc -std=c11 -Wall -Wextra -Werror -pedantic -fsanitize=address,undefined -fno-omit-frame-pointer \
+            -Idesktop/wine-explorer/native \
+            desktop/wine-explorer/native/SupportAlgorithms.c \
+            desktop/wine-explorer/native/tests/SupportAlgorithmsTests.c \
+            -o "$RUNNER_TEMP/wine-native-support-tests"
+          "$RUNNER_TEMP/wine-native-support-tests"
+      - name: Verify source adaptation and malformed PE/import rejection
+        run: |
+          python3 desktop/wine-explorer/prepare_sources.py
+          python3 -m unittest discover -s desktop/wine-explorer/native/tests -p test_source_tools.py -v
+
+  native-guest:
+    name: Actual Wine Explorer PE64 build
+    runs-on: windows-2022
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build pinned Wine Explorer and inspect PE64 imports
+        run: ./desktop/wine-explorer/build-native.ps1
+      - name: Verify source adaptation and malformed PE/import rejection
+        run: python -m unittest discover -s desktop/wine-explorer/native/tests -p test_source_tools.py -v
+      - name: Upload Explorer guest and corresponding source
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-explorer-native-x64-guest
+          path: desktop/wine-explorer/build/native/**
+          if-no-files-found: error
+      - name: Upload compilation diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wine-explorer-native-build-logs
+          path: desktop/wine-explorer/build/native/*.log
+          if-no-files-found: ignore
