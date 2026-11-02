@@ -1,0 +1,272 @@
+diff --git a/Win32Bridge/Bridge/GuestModule.cpp b/Win32Bridge/Bridge/GuestModule.cpp
+index 21fae2a..eb4c838 100644
+--- a/Win32Bridge/Bridge/GuestModule.cpp
++++ b/Win32Bridge/Bridge/GuestModule.cpp
+@@ -1,4 +1,6 @@
+ #include "pch.h"
++#include "bridge/GuestContextShims.h"
++#include <stdexcept>
+ #include "Bridge/GuestModule.h"
+ 
+ #include "Bridge/ApiSet.h"
+@@ -218,8 +220,10 @@ GuestModuleLoader::GuestModuleLoader(
+     std::shared_ptr<GuestStorageContext> storage,
+     ImportResolver resolver,
+     StorageFolder^ moduleSourceFolder,
+-    xcdm::runtime::ModuleOwnership ownership)
++    xcdm::runtime::ModuleOwnership ownership,
++    std::shared_ptr<xcdm::guest::GuestExecutionContext> execution)
+     : m_ownership(std::move(ownership)),
++      m_execution(std::move(execution)),
+       m_storage(std::move(storage)),
+       m_resolver(std::move(resolver)),
+       m_moduleSourceFolder(moduleSourceFolder)
+@@ -1085,7 +1089,14 @@ ImportResolution GuestModuleLoader::ResolveOwnedImport(
+     failure.disposition = ImportDisposition::Unsupported;
+     failure.note = L"Module ownership rejected " + symbol.library + L": " + decision.reason;
+     ImportResolution resolution = xcdm::runtime::RouteModuleSymbol(decision,
+-        [&] { return m_resolver(canonical); },
++        [&] {
++            if (m_ownership.IsStrict())
++            {
++                auto context = ResolveGuestContextImport(canonical);
++                if (context.targetAddress) return context;
++            }
++            return m_resolver(canonical);
++        },
+         [&] { return wineResolver(canonical); },
+         [](const ImportResolution& value) { return value.targetAddress != 0; }, failure);
+     if (m_ownership.IsStrict() && resolution.targetAddress == 0)
+@@ -1719,6 +1730,21 @@ GuestModuleLoader* Win32Bridge::Bridge::CurrentGuestModuleLoader()
+ GuestModuleScope::GuestModuleScope(GuestModuleLoader* loader)
+     : m_previous(g_currentModuleLoader)
+ {
++    if (loader && loader->OwnershipPolicy().IsStrict())
++    {
++        if (g_currentModuleLoader && g_currentModuleLoader != loader)
++            throw std::runtime_error("A guest callback cannot switch loader ownership.");
++        m_ownerPin = loader->weak_from_this().lock();
++        const auto execution = loader->ExecutionContext();
++        if (!m_ownerPin || !execution)
++            throw std::runtime_error("Strict guest entry requires an owned loader and execution context.");
++        m_guestScope = std::make_unique<xcdm::guest::GuestThreadScope>(execution);
++        if (!m_guestScope->IsActive())
++            throw std::runtime_error(m_guestScope->Error());
++    }
++    else if (xcdm::guest::CurrentExecutionContext() ||
++        (g_currentModuleLoader && g_currentModuleLoader->OwnershipPolicy().IsStrict()))
++        throw std::runtime_error("An active guest context cannot fall back to a Legacy loader.");
+     g_currentModuleLoader = loader;
+ }
+ 
+diff --git a/Win32Bridge/Bridge/GuestModule.h b/Win32Bridge/Bridge/GuestModule.h
+index 6c4657f..d3c272c 100644
+--- a/Win32Bridge/Bridge/GuestModule.h
++++ b/Win32Bridge/Bridge/GuestModule.h
+@@ -5,6 +5,7 @@
+ #include "Bridge/RuntimeImage.h"
+ 
+ #include <ModuleOwnership.h>
++#include <GuestExecution.h>
+ 
+ #include <memory>
+ #include <mutex>
+@@ -23,16 +24,18 @@ namespace Bridge
+     // Maps PE DLLs from the executable's authorized source folder, falling
+     // back to the guest C: drive for modules intentionally placed there.
+     // Module handles are guest image bases, never host HMODULEs.
+-    class GuestModuleLoader final
++    class GuestModuleLoader final : public std::enable_shared_from_this<GuestModuleLoader>
+     {
+     public:
+         GuestModuleLoader(
+             std::shared_ptr<GuestStorageContext> storage,
+             ImportResolver resolver,
+             Windows::Storage::StorageFolder^ moduleSourceFolder,
+-            xcdm::runtime::ModuleOwnership ownership = xcdm::runtime::ModuleOwnership());
++            xcdm::runtime::ModuleOwnership ownership = xcdm::runtime::ModuleOwnership(),
++            std::shared_ptr<xcdm::guest::GuestExecutionContext> execution = {});
+         ~GuestModuleLoader();
+         const xcdm::runtime::ModuleOwnership& OwnershipPolicy() const { return m_ownership; }
++        std::shared_ptr<xcdm::guest::GuestExecutionContext> ExecutionContext() const { return m_execution; }
+ 
+         bool LoadLibrary(
+             LPCWSTR requestedName,
+@@ -92,6 +95,7 @@ namespace Bridge
+         ImportResolution ResolveOwnedImport(const ImportedSymbol& symbol, const ImportResolver& wineResolver) const;
+ 
+         const xcdm::runtime::ModuleOwnership m_ownership;
++        const std::shared_ptr<xcdm::guest::GuestExecutionContext> m_execution;
+         std::shared_ptr<GuestStorageContext> m_storage;
+         ImportResolver m_resolver;
+         Platform::Agile<Windows::Storage::StorageFolder^> m_moduleSourceFolder;
+@@ -122,6 +126,9 @@ namespace Bridge
+ 
+     private:
+         GuestModuleLoader* m_previous;
++        // Reverse destruction order releases thread state before the loader.
++        std::shared_ptr<GuestModuleLoader> m_ownerPin;
++        std::unique_ptr<xcdm::guest::GuestThreadScope> m_guestScope;
+     };
+ }
+ }
+diff --git a/Win32Bridge/Bridge/GuestRuntime.cpp b/Win32Bridge/Bridge/GuestRuntime.cpp
+index fcbd3ce..be6508d 100644
+--- a/Win32Bridge/Bridge/GuestRuntime.cpp
++++ b/Win32Bridge/Bridge/GuestRuntime.cpp
+@@ -23,6 +23,7 @@
+ #include <fileapifromapp.h>
+ #include <roapi.h>
+ #include <system_error>
++#include <exception>
+ #include <thread>
+ 
+ using namespace Win32Bridge::Bridge;
+@@ -669,8 +670,27 @@ bool GuestRuntime::Run(int* exitCode, std::wstring* error)
+     // after a qualified guest environment has been integrated and reviewed.
+     if (m_ownership.IsStrict())
+     {
+-        SetError(error, L"Strict Wine execution is blocked: a qualified guest TEB/PEB/TLS environment is not integrated.");
+-        RuntimeDiagnostics::Record(L"RUN BLOCKED: strict Wine guest environment is not qualified.");
++        if (!m_execution)
++        {
++            SetError(error, L"Strict Wine execution requires an owned guest execution context.");
++            return false;
++        }
++        try
++        {
++            // Enter the actual per-process loader/thread scope before any
++            // future import initialization. This milestone still invokes no
++            // guest address: native providers and asynchronous callback/image
++            // lifetime are not qualified. No setting bypasses this gate.
++            m_modules = std::make_shared<GuestModuleLoader>(m_storage, m_resolver,
++                m_moduleSourceFolder.Get(), m_ownership, m_execution);
++            GuestModuleScope guestScope(m_modules.get());
++            RuntimeDiagnostics::Record(L"GUEST CONTEXT: strict loader/thread entry established; guest execution remains blocked.");
++            SetError(error, L"Strict Wine execution is blocked: native providers and callback/image lifetime are not qualified.");
++        }
++        catch (const std::exception&)
++        {
++            SetError(error, L"Strict Wine guest context entry failed; no guest code was invoked.");
++        }
+         return false;
+     }
+     if (m_mapped.entryPointRva == 0 ||
+@@ -904,6 +924,12 @@ bool GuestRuntime::LaunchChildProcess(
+     LPPROCESS_INFORMATION processInformation,
+     DWORD* win32Error)
+ {
++    if (m_ownership.IsStrict())
++    {
++        if (win32Error) *win32Error = ERROR_NOT_SUPPORTED;
++        RuntimeDiagnostics::Record(L"PROCESS BLOCKED: strict child context and image lifetime are not qualified.");
++        return false;
++    }
+     if (!processInformation || !executableName || !*executableName ||
+         !m_modules || !m_kernel || !m_storage || !m_windows)
+     {
+@@ -1031,6 +1057,12 @@ HANDLE GuestRuntime::LaunchThread(
+     DWORD* win32Error)
+ {
+     if (threadId) *threadId = 0;
++    if (m_ownership.IsStrict())
++    {
++        if (win32Error) *win32Error = ERROR_NOT_SUPPORTED;
++        RuntimeDiagnostics::Record(L"THREAD BLOCKED: strict async callback and image lifetime are not qualified.");
++        return nullptr;
++    }
+     if (!startAddress || !m_kernel || !m_modules || !m_registry ||
+         !m_storage || !m_windows)
+     {
+diff --git a/Win32Bridge/Bridge/GuestRuntime.h b/Win32Bridge/Bridge/GuestRuntime.h
+index 5a591fc..6abac2e 100644
+--- a/Win32Bridge/Bridge/GuestRuntime.h
++++ b/Win32Bridge/Bridge/GuestRuntime.h
+@@ -5,6 +5,7 @@
+ #include "Bridge\\GuestStorage.h"
+ 
+ #include <ModuleOwnership.h>
++#include <GuestExecution.h>
+ 
+ #include <memory>
+ #include <agile.h>
+@@ -24,8 +25,9 @@ namespace Bridge
+     class GuestRuntime final
+     {
+     public:
+-        explicit GuestRuntime(xcdm::runtime::ModuleOwnership ownership = xcdm::runtime::ModuleOwnership())
+-            : m_ownership(std::move(ownership)) {}
++        explicit GuestRuntime(xcdm::runtime::ModuleOwnership ownership = xcdm::runtime::ModuleOwnership(),
++            std::shared_ptr<xcdm::guest::GuestExecutionContext> execution = {})
++            : m_ownership(std::move(ownership)), m_execution(std::move(execution)) {}
+ 
+         void SetStorageContext(std::shared_ptr<GuestStorageContext> storage) { m_storage = std::move(storage); }
+         void SetRegistryContext(std::shared_ptr<GuestRegistryContext> registry) { m_registry = std::move(registry); }
+@@ -61,6 +63,7 @@ namespace Bridge
+ 
+     private:
+         const xcdm::runtime::ModuleOwnership m_ownership;
++        const std::shared_ptr<xcdm::guest::GuestExecutionContext> m_execution;
+         PeImageInfo m_metadata;
+         MappedPeImage m_mapped;
+         MappedPeImage m_resourceSatellite;
+diff --git a/Win32Bridge/Bridge/Kernel32Shims.cpp b/Win32Bridge/Bridge/Kernel32Shims.cpp
+index 49ad43a..6299c6c 100644
+--- a/Win32Bridge/Bridge/Kernel32Shims.cpp
++++ b/Win32Bridge/Bridge/Kernel32Shims.cpp
+@@ -1,4 +1,6 @@
+ #include "pch.h"
++#include "bridge/GuestContextShims.h"
++#include <GuestExecution.h>
+ #include "Bridge/ApiSet.h"
+ #include "Bridge\\Kernel32Shims.h"
+ #include "Bridge/ActivationContext.h"
+@@ -1000,6 +1002,14 @@ namespace
+ 
+     void SetGuestLastError(DWORD error)
+     {
++        if (xcdm::guest::CurrentExecutionContext())
++        {
++            RequireGuestTeb()->LastErrorValue = error;
++            return;
++        }
++        const auto* loader = CurrentGuestModuleLoader();
++        if (loader && loader->OwnershipPolicy().IsStrict())
++            RequireGuestTeb(); // Fail closed rather than touching Legacy state.
+         g_guestLastError = error;
+     }
+ 
+@@ -3116,6 +3126,9 @@ BOOL WINAPI Win32Bridge::Bridge::BridgeIsDebuggerPresent()
+ 
+ DWORD WINAPI Win32Bridge::Bridge::BridgeGetLastError()
+ {
++    const auto* loader = CurrentGuestModuleLoader();
++    if (xcdm::guest::CurrentExecutionContext() || (loader && loader->OwnershipPolicy().IsStrict()))
++        return RequireGuestTeb()->LastErrorValue;
+     return g_guestLastError;
+ }
+ 
+diff --git a/Win32Bridge/Bridge/Win32Shims.cpp b/Win32Bridge/Bridge/Win32Shims.cpp
+index a87e71a..bbdb788 100644
+--- a/Win32Bridge/Bridge/Win32Shims.cpp
++++ b/Win32Bridge/Bridge/Win32Shims.cpp
+@@ -1,4 +1,6 @@
+ #include "pch.h"
++#include "bridge/GuestContextShims.h"
++#include "Bridge/GuestModule.h"
+ #include "Bridge/DialogResources.h"
+ #include "Bridge/ApiSet.h"
+ #include "Bridge/GuestResources.h"
+@@ -610,6 +612,12 @@ ImportResolution ResolveAuxiliaryImport(const ImportedSymbol& symbol)
+ 
+ ImportResolution ResolveRuntimeImport(const ImportedSymbol& symbol)
+ {
++    const auto* loader = CurrentGuestModuleLoader();
++    if (loader && loader->OwnershipPolicy().IsStrict())
++    {
++        auto context = ResolveGuestContextImport(symbol);
++        if (context.targetAddress) return context;
++    }
+     ImportedSymbol canonical = symbol;
+     canonical.library = ApiSetHostLibrary(symbol.library);
+     auto resolution = CompatibilityCatalog::Resolve(canonical);

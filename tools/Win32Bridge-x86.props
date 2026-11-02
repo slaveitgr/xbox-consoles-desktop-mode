@@ -12,6 +12,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="$(XcdmRoot)runtime\ModuleOwnership.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)runtime\GuestEnvironment.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)runtime\GuestExecution.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)bridge\GuestContextShims.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)bridge\GuestContextProbe.cpp"><CompileAsWinRT>true</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
+    <ClCompile Include="$(XcdmRoot)samples\Return42Fixture.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(XcdmRoot)bridge\BridgeProbeExports.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(XcdmRoot)runtime\Pe32Image.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>
     <ClCompile Include="$(XcdmRoot)runtime\Win32Probe32.cpp"><CompileAsWinRT>false</CompileAsWinRT><PrecompiledHeader>NotUsing</PrecompiledHeader></ClCompile>

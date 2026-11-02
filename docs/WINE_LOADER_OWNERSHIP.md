@@ -20,7 +20,7 @@ Wine modules have one proposed location: the app-owned guest `C:\Windows\System3
 
 `patches/Win32Bridge-wine-ownership.patch` applies to a disposable upstream source copy **after** `Win32Bridge-x86-startup.patch`. It routes main-image and dependency imports through the shared ownership decision. Strict preparation does not prebind through the raw shim resolver. Dynamic module handles, `LoadLibrary` and `GetProcAddress` respect the same owner, including rejection of forged legacy bridge tokens for Wine-owned modules. Forwarders reclassify their target module; ordinary delay-load helpers reach the same dynamic API policy. A missing export reports its owner and fails without trying the other provider.
 
-Strict runtime execution and executable DLL loading are unconditionally blocked. There is no configuration switch to bypass this gate. Resource-only mappings remain inert. These gates must stay until a qualified guest TEB/PEB/TLS environment and callback ABI have been integrated and reviewed. Existing unwind registration in `RuntimeImage` is unchanged.
+Strict runtime execution and executable DLL loading are unconditionally blocked. There is no configuration switch to bypass this gate. Resource-only mappings remain inert. The loader/thread scopes now carry an owned guest process context, while native providers, complete callback/image lifetime and TLS qualification remain incomplete. See [`WINE_CONTEXT_INTEGRATION.md`](WINE_CONTEXT_INTEGRATION.md). Existing unwind registration in `RuntimeImage` is unchanged.
 
 Two existing lifetime constraints are particularly important before removing the gates:
 

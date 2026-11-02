@@ -66,6 +66,11 @@ if ($FullShell) {
         if ($LASTEXITCODE -ne 0) { throw 'The Wine ownership overlay does not apply after the x86 overlay.' }
         & git -C $repoRoot apply --ignore-space-change "--directory=$relativeSource" $ownershipPatch
         if ($LASTEXITCODE -ne 0) { throw 'Applying the Wine ownership overlay failed.' }
+        $contextPatch = Join-Path $repoRoot 'patches\Win32Bridge-guest-context.patch'
+        & git -C $repoRoot apply --ignore-space-change "--directory=$relativeSource" --check $contextPatch
+        if ($LASTEXITCODE -ne 0) { throw 'The guest context overlay does not apply after ownership.' }
+        & git -C $repoRoot apply --ignore-space-change "--directory=$relativeSource" $contextPatch
+        if ($LASTEXITCODE -ne 0) { throw 'Applying the guest context overlay failed.' }
         $project = Join-Path $sourceRoot 'Win32Bridge\Win32Bridge.vcxproj'
         [xml]$projectXml = Get-Content -Raw $project
         $ns = New-Object System.Xml.XmlNamespaceManager($projectXml.NameTable)

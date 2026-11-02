@@ -18,6 +18,7 @@ add_library(xcdm_runtime STATIC
     runtime/PeImage.cpp
     runtime/GamePreflight.cpp
     runtime/GuestEnvironment.cpp
+    runtime/GuestExecution.cpp
     runtime/Pe32Image.cpp
     runtime/LowAddressProbe.cpp
     runtime/PackagedBridgeProbe.cpp
@@ -86,6 +87,12 @@ if(BUILD_TESTING)
         target_link_libraries(guest_environment_tests PRIVATE Threads::Threads)
     endif()
     add_test(NAME wine_guest_environment_contract COMMAND guest_environment_tests)
+    add_executable(guest_execution_tests tests/GuestExecutionTests.cpp)
+    target_link_libraries(guest_execution_tests PRIVATE xcdm_runtime)
+    if(NOT MSVC)
+        target_link_libraries(guest_execution_tests PRIVATE Threads::Threads)
+    endif()
+    add_test(NAME wine_guest_execution_contract COMMAND guest_execution_tests)
 
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND)

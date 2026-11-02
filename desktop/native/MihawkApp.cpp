@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <map>
 #include <memory>
 #include <string>
@@ -966,6 +967,39 @@ task<void> RuntimeReturn42Smoke(const std::shared_ptr<State>& state) {
             }, Ui());
         }, Ui());
 }
+using GuestContextProbeEntry = DWORD(WINAPI*)(char*, DWORD);
+bool InvokeContextProbe(GuestContextProbeEntry entry, char* output, DWORD capacity,
+    DWORD* status, DWORD* fault) noexcept {
+    __try { *status = entry(output, capacity); return true; }
+    __except (EXCEPTION_EXECUTE_HANDLER) { *fault = GetExceptionCode(); return false; }
+}
+task<void> GuestContextSmoke() {
+    return create_task([]() -> JsonObject^ {
+        struct Module {
+            HMODULE handle = nullptr;
+            ~Module() { if (handle) ::FreeLibrary(handle); }
+        } module;
+        module.handle = ::LoadPackagedLibrary(L"Win32Bridge.Runtime.dll", 0);
+        if (!module.handle) Fail(L"Could not load the packaged bridge context diagnostic.");
+        auto entry = reinterpret_cast<GuestContextProbeEntry>(
+            ::GetProcAddress(module.handle, "XcdmBridgeProbeGuestContext"));
+        if (!entry) Fail(L"The packaged bridge has no guest context diagnostic export.");
+        std::vector<char> buffer(4096, '\0');
+        DWORD status = 3, fault = 0;
+        if (!InvokeContextProbe(entry, buffer.data(), static_cast<DWORD>(buffer.size()), &status, &fault))
+            Fail(L"The bridge context diagnostic raised a native exception.");
+        const size_t length = strnlen_s(buffer.data(), buffer.size());
+        if (!length || length == buffer.size()) Fail(L"The bridge context diagnostic returned no bounded report.");
+        // The fixed diagnostic protocol contains ASCII JSON only.
+        const std::wstring json(buffer.begin(), buffer.begin() + length);
+        auto report = JsonObject::Parse(Str(json));
+        Number(report, L"exportStatus", status);
+        if (status != 0) Bool(report, L"passed", false);
+        return report;
+    }).then([](JsonObject^ report) {
+        return SmokeRecord(L"xwindows-guest-context-smoke.json", report);
+    }, Ui());
+}
 void NativeSmoke(const std::shared_ptr<State>& state) {
     if (state->smokeStarted) return;
     state->smokeStarted = true;
@@ -979,6 +1013,8 @@ void NativeSmoke(const std::shared_ptr<State>& state) {
             if (!text) return task_from_result();
             auto config = JsonObject::Parse(text);
             task<void> smoke = task_from_result();
+            if (config->HasKey(L"guestContext") && config->GetNamedBoolean(L"guestContext"))
+                smoke=smoke.then([] { return GuestContextSmoke(); }, Ui());
             if (config->HasKey(L"windowChrome") && config->GetNamedBoolean(L"windowChrome"))
                 smoke=smoke.then([state] { return WindowChromeSmoke(state); }, Ui());
             if (config->HasKey(L"runtimeReturn42") && config->GetNamedBoolean(L"runtimeReturn42"))
