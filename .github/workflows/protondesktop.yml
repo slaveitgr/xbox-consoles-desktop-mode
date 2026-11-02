@@ -157,8 +157,11 @@ jobs:
           ctest --test-dir build/uwp-core-contracts -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'Contract tests failed.' }
       - name: Compile and link genuine UWP core
+        id: uwp_core_link
+        if: ${{ !cancelled() }}
         run: ./tools/ci/build_uwp_core.ps1
       - name: Build unsigned application linked to the real core
+        if: ${{ !cancelled() && steps.uwp_core_link.outcome == 'success' }}
         run: ./tools/ci/build_uwp_probe.ps1
       - name: Upload UWP core evidence
         if: always()

@@ -11,8 +11,9 @@ if(BUILD_TESTING)
   add_executable(protondesktop_core_log_tests app/CoreDiagnosticLogTests.cpp app/CoreDiagnostics.cpp)
   target_include_directories(protondesktop_core_log_tests PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/app")
   target_compile_features(protondesktop_core_log_tests PRIVATE cxx_std_17)
+  target_compile_definitions(protondesktop_core_log_tests PRIVATE PROTON_CORE_DIAGNOSTIC_PARSER_ONLY=1)
   if(MSVC)
-    # Parser-only tests discard the uncalled real-core runner; no mock core is linked.
+    # This target compiles the parser only; the app separately links the real runner.
     target_compile_options(protondesktop_core_log_tests PRIVATE /Gy)
     target_link_options(protondesktop_core_log_tests PRIVATE /OPT:REF)
     target_link_libraries(protondesktop_core_log_tests PRIVATE WindowsApp)

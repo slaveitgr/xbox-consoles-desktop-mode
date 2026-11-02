@@ -4,7 +4,7 @@
 #include <exception>
 #include <limits>
 #include <utility>
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(PROTON_CORE_DIAGNOSTIC_PARSER_ONLY)
 #ifndef NOMINMAX
 #define NOMINMAX
 #endif
@@ -251,7 +251,7 @@ namespace protondesktop
             ",\n\"negative\":" + GuestJson(report.negative) + "\n}\n";
     }
 
-#ifdef _WIN32
+#if defined(_WIN32) && !defined(PROTON_CORE_DIAGNOSTIC_PARSER_ONLY)
     namespace
     {
         std::mutex diagnosticMutex;
