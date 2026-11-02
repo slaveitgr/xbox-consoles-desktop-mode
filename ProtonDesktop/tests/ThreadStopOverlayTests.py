@@ -23,16 +23,17 @@ class OverlayTests(unittest.TestCase):
     def setUpClass(cls):
         cls.temporary = tempfile.TemporaryDirectory(prefix="protondesktop-stop-overlay-tests-",
                                                     dir="/dev/shm" if Path("/dev/shm").is_dir() else None)
-        cls.work = Path(cls.temporary.name)
+        cls.work = Path(cls.temporary.name).resolve()
         cls.profile = cls.work / "profile"
         cmake = cls.work / "prepare.cmake"
         cmake.write_text(f'''include("{ROOT.as_posix()}/tools/uwp-core/prepare_profile_overlay.cmake")
 proton_prepare_uwp_profile_overlay("{SOURCE.as_posix()}" "{cls.profile.as_posix()}")
 include("{ROOT.as_posix()}/tools/runtime/prepare_wine_session.cmake")
 proton_prepare_wine_session("{SOURCE.as_posix()}" "{cls.profile.as_posix()}" sources)
-''')
+''', encoding="utf-8")
         result = subprocess.run(["cmake", "-P", str(cmake)], stdout=subprocess.PIPE,
-                                stderr=subprocess.STDOUT, text=True, timeout=30)
+                                stderr=subprocess.STDOUT, text=True, encoding="utf-8",
+                                errors="replace", timeout=30)
         if result.returncode:
             raise RuntimeError(result.stdout)
 
@@ -47,10 +48,10 @@ proton_prepare_wine_session("{SOURCE.as_posix()}" "{cls.profile.as_posix()}" sou
         manifest = module.prepare(SOURCE, self.profile, output)
         for name, data in before.items():
             self.assertEqual((self.profile / name).read_bytes(), data)
-        process = (output / "source/kernel/kprocess.cpp").read_text()
-        normal = (output / "source/emulation/cpu/normal/normalPlatformMultiThreaded.cpp").read_text()
+        process = (output / "source/kernel/kprocess.cpp").read_text(encoding="utf-8")
+        normal = (output / "source/emulation/cpu/normal/normalPlatformMultiThreaded.cpp").read_text(encoding="utf-8")
         self.assertEqual(process.count("protonRollbackUnscheduledThread"),
-                         before["source/kernel/kprocess.cpp"].decode().count("protonRollbackUnscheduledThread"))
+                         before["source/kernel/kprocess.cpp"].decode("utf-8").count("protonRollbackUnscheduledThread"))
         self.assertEqual(normal.count("protondesktop::uwp::SpawnGuestWorker"), 1)
         self.assertNotIn("cppThread.detach()", normal)
         self.assertFalse(manifest["data_fields_added"])
@@ -61,13 +62,13 @@ proton_prepare_wine_session("{SOURCE.as_posix()}" "{cls.profile.as_posix()}" sou
     def test_quoted_edges_bind_generated_headers(self):
         output = self.work / "includes"
         manifest = module.prepare(SOURCE, self.profile, output)
-        umbrella = (output / "include/boxedwine.h").read_text()
-        normal = (output / "source/emulation/cpu/normal/normalCPU.cpp").read_text()
-        process = (output / "source/kernel/kprocess.cpp").read_text()
-        self.assertIn((output / "include/kthread.h").as_posix(), umbrella)
-        self.assertIn((output / "include/kprocess.h").as_posix(), umbrella)
-        self.assertIn((output / "source/emulation/cpu/normal/normal_other.h").as_posix(), normal)
-        self.assertIn((SOURCE / "source/io/fsfilenode.h").as_posix(), process)
+        umbrella = (output / "include/boxedwine.h").read_text(encoding="utf-8")
+        normal = (output / "source/emulation/cpu/normal/normalCPU.cpp").read_text(encoding="utf-8")
+        process = (output / "source/kernel/kprocess.cpp").read_text(encoding="utf-8")
+        self.assertIn((output / "include/kthread.h").resolve().as_posix(), umbrella)
+        self.assertIn((output / "include/kprocess.h").resolve().as_posix(), umbrella)
+        self.assertIn((output / "source/emulation/cpu/normal/normal_other.h").resolve().as_posix(), normal)
+        self.assertIn((SOURCE / "source/io/fsfilenode.h").resolve().as_posix(), process)
         for edges in manifest["quoted_include_edges"].values():
             for edge in edges:
                 if edge["resolution"] == "external-conditional":
@@ -80,7 +81,8 @@ proton_prepare_wine_session("{SOURCE.as_posix()}" "{cls.profile.as_posix()}" sou
         before = header.read_bytes()
         output = self.work / "rejected"
         try:
-            header.write_text(before.decode().replace("    BOXEDWINE_MUTEX waitingCondSync;", "    // changed fixture anchor"))
+            header.write_text(before.decode("utf-8").replace("    BOXEDWINE_MUTEX waitingCondSync;",
+                                                           "    // changed fixture anchor"), encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Pinned stop edit"):
                 module.prepare(SOURCE, self.profile, output)
             self.assertFalse(output.exists())
@@ -94,8 +96,9 @@ proton_prepare_wine_session("{SOURCE.as_posix()}" "{cls.profile.as_posix()}" sou
         output = self.work / "unrecognized-field"
         try:
             changed.parent.mkdir(parents=True, exist_ok=True)
-            changed.write_text((SOURCE / relative).read_text() +
-                               "\nstatic bool changed_fixture(KThread* other) { return other->terminating; }\n")
+            changed.write_text((SOURCE / relative).read_text(encoding="utf-8") +
+                               "\nstatic bool changed_fixture(KThread* other) { return other->terminating; }\n",
+                               encoding="utf-8")
             with self.assertRaisesRegex(ValueError, "Unredirected stop-field"):
                 module.prepare(SOURCE, self.profile, output)
             self.assertFalse(output.exists())
@@ -119,9 +122,10 @@ proton_prepare_wine_session("{SOURCE.as_posix()}" "{cls.profile.as_posix()}" sou
         before = (profile / "include/ksystem.h").read_bytes()
         result = module.prepare(SOURCE, profile, profile)
         self.assertEqual((profile / "include/ksystem.h").read_bytes(), before)
-        self.assertIn((profile / "include/kthread.h").as_posix(), (profile / "include/boxedwine.h").read_text())
+        self.assertIn((profile / "include/kthread.h").resolve().as_posix(),
+                      (profile / "include/boxedwine.h").read_text(encoding="utf-8"))
         self.assertTrue((profile / "source/sdl/startupArgs.cpp").is_file())
-        self.assertEqual(result["required_include_first"], str(profile / "include"))
+        self.assertEqual(result["required_include_first"], str((profile / "include").resolve()))
 
 
 if __name__ == "__main__":
