@@ -1,11 +1,13 @@
 # Build guide
 
-## Two separate build products
+## Build products
 
 - **RuntimeDiagnostics** is our small, independent UWP companion. It tests the
   platform without requiring the upstream shell, Gecko or commercial binaries.
 - **DesktopMode UWP** is the pinned upstream desktop. A Win32Bridge DLL build is
   useful validation of one component; it does not produce the full desktop.
+- The **desktop repack** replaces that component in the pinned upstream binary
+  package after checking its WinRT ABI. It retains the existing shell and Gecko.
 
 ## Windows prerequisites
 
@@ -24,8 +26,15 @@ From PowerShell on Windows:
 
 ```powershell
 .\tools\build-uwp.ps1 -CheckOnly
+git submodule update --init --recursive
+.\tools\build-upstream.ps1 -Configuration Release -WithX86Backend
 .\tools\build-uwp.ps1 -Configuration Release -Sign
 ```
+
+The patched bridge build stages `app/BridgeRuntime/Win32Bridge.Runtime.dll`,
+which version 0.6 and later companions load explicitly. Build it before the
+companion. Its overlay is applied to a disposable copy, leaving the submodule
+unchanged. Outputs are under `artifacts/upstream-bridge-x86/Release/`.
 
 `-Sign` creates a temporary development certificate whose subject matches our
 own `CN=SlaveIT` publisher. It exports the public `.cer`, signs the package and
@@ -74,14 +83,36 @@ $env:GECKO_W10M_CLANG_CL = 'C:\Program Files\LLVM\bin\clang-cl.exe'
 
 The wrapper validates the source directory, `mozilla-config.h`, `xul.dll`,
 `application.ini` and compiler before invoking MSBuild. It deliberately compiles
-without packaging/signing. Downstream desktop package identity, assets and
-content cleanup are still separate work; the companion is the only package
-produced by our packaging pipeline today.
+without packaging/signing. An independently rebuilt complete shell is still
+separate from the binary repack described below.
 
 The exact engine host instructions are in
 [`external/DesktopMode_uwp/gecko-source/GeckoShellHost/README.md`](../external/DesktopMode_uwp/gecko-source/GeckoShellHost/README.md).
 The external engine is not silently replaced with an incompatible stock Firefox
 download and missing input is reported as a build prerequisite, not a pass.
+
+## Desktop repack with the patched bridge
+
+After building with `-WithX86Backend`, run PowerShell 7 elevated on an ephemeral
+Windows build machine:
+
+```powershell
+.\tools\repack-desktop.ps1 `
+  -SourcePackage C:\input\DesktopMode_1.0.46.0_x64.msix `
+  -BridgeDirectory artifacts\upstream-bridge-x86\Release `
+  -OutputDirectory artifacts\patched-desktop `
+  -Version 1.0.46.2 `
+  -ExpectedSourceSha256 4691181e07f68f8d8c58e96ad44d4a01a9d2ccf1381669fd3ffa61d1e492beea
+```
+
+The helper validates block hashes and the public WinRT contract before replacing
+the DLL/metadata and incrementing the version. It adds component licenses and
+signs with a temporary community development certificate. The original manifest
+publisher is retained for package identity compatibility; this is not an official
+Microsoft signature. SignTool verification temporarily trusts only that new
+certificate in LocalMachine Root, then removes it and the signing private key.
+Only the public certificate is exported. The installed shell and Gecko binaries
+are reused rather than compiled by this command.
 
 ## Host tests
 

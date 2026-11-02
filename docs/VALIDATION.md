@@ -1,5 +1,37 @@
 # Verified baseline
 
+## Packaged Win32Bridge and game startup, version 0.7
+
+Source commit: `4d4f2bcebaf465ea46bfee2864a2462004efb7ba`;
+[Actions run 41378042706](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41378042706).
+All seven Linux checks and seven Windows checks passed. CI produced the test-signed UWP
+companion, the patched Win32Bridge, and desktop repack **1.0.46.2**. The repack
+passed WinRT ABI comparison, SignTool signature verification and blockmap
+validation of all **8,858 files**. The desktop update then installed on the same
+One X with deployment code 0. Its launch returned HTTP 200 and a new
+`DesktopMode.exe` process was observed. The console registered package version
+**1.0.46.2**. Screenshot capture for this shell remains unavailable; its new
+visual behavior and PE32 file-open interaction still need direct observation.
+
+Physical Xbox One X, OS **10.0.26100.10448**, diagnostics **0.7.0.0**:
+
+- The app loaded the packaged `Win32Bridge.Runtime.dll`, ABI 1, without a direct
+  runtime fallback. Its SHA-256 is
+  `72498347213ce3589427d879bdf5607153e73f921ceb665571614d9d6a0378a9`.
+- The embedded self-authored PE32 smoke test passed: 13 instructions and four
+  typed host calls. Simultaneous native low-address memory reservations passed.
+- The saved USB grant reopened `gta_sa.exe` automatically. Its startup trace
+  executed 41 guest instructions and host gates from entry point `0x824570`,
+  then stopped at the unimplemented `KERNEL32.dll!GetVersionExA` gate
+  `0x7ff005c0`. All 218 imports were bound to gates; only four host APIs are
+  implemented. Import binding does not mean those APIs are supported.
+
+The earlier version 0.5 guest W+X-section stop and version 0.6
+read-only-IAT loader stop are fixed. This trace did not reach a successful
+`ExitProcess(0)`, gameplay or graphics. Separately, desktop repack **1.0.46.1**
+was installed, launched and observed running on the console; this does not
+establish game compatibility.
+
 ## USB metadata inspection, version 0.3
 
 On 2026-11-02 (Europe/Athens), version **0.3.0.0** on the same One X and OS

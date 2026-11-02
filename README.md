@@ -12,14 +12,14 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 
 | Component | Status |
 | --- | --- |
-| Upstream desktop | Release 21286 / 1.0.46.0 installed and launched on Xbox One X; user confirmed desktop and taskbar appear |
-| Desktop and Win32Bridge source | Pinned upstream source; bridge compiles, independent full desktop build still pending |
+| Upstream desktop | Patched repack 1.0.46.2 installed and launched on One X; original release 21286 remains the shell/Gecko foundation |
+| Desktop and Win32Bridge source | Pinned upstream source; patched bridge builds and passes ABI comparison; repacks retain the upstream shell and Gecko binaries |
 | Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
 | Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
 | USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
-| Integer x86 execution | Version 0.4 adds a PE32 interpreter and four Win32 host calls for an embedded program; see scope in the runtime guide |
-| Bounded game startup trace | Version 0.5 interprets the selected PE32 entry point and stops at the first unsupported API/instruction; this is not gameplay |
-| Patched Win32Bridge | Version 0.6 adds the same PE32 interpreter to the upstream component; CI builds a companion and an ABI-checked desktop repack |
+| Integer x86 execution | Version 0.7 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls |
+| Bounded game startup trace | Version 0.7 executed 41 guest instructions and host gates from the USB game's entry point, then stopped at missing GetVersionExA; no gameplay or graphics |
+| Patched Win32Bridge | Version 0.7 confirmed the packaged DLL loads on One X with ABI 1 and no direct fallback; desktop repack 1.0.46.2 passes signature, ABI and 8,858-file blockmap checks |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -67,11 +67,13 @@ The first physical Xbox One X run passed on 2026-11-02 (Europe/Athens).
 The UWP companion launched, ran both native probes and saved its report.
 See [`docs/VALIDATION.md`](docs/VALIDATION.md) for exact scope and build links.
 The upstream desktop release was also installed and launched on the same console;
-the user confirmed the desktop and taskbar on the TV. This was the upstream
-binary, not a desktop built or customized by this repository. See
+the user confirmed the desktop and taskbar on the TV. Our patched bridge repack
+1.0.46.2 was subsequently installed and launched, retaining that shell and Gecko
+payload. See
 [`docs/DESKTOP_BASELINE.md`](docs/DESKTOP_BASELINE.md) for its version,
-dependencies, controls and remaining checks. Commercial applications have not
-been tested by us.
+dependencies and controls, and [`docs/VALIDATION.md`](docs/VALIDATION.md) for
+the current bridge and startup-trace results. Commercial game gameplay and
+graphics have not been demonstrated.
 
 The native execution probes run only self-authored diagnostic code. The original native PE fixture has no
 imports, relocations, TLS or CRT and returns `42` through a deliberately tiny
@@ -99,9 +101,19 @@ This limited integer-only startup is not a game compatibility or gameplay pass.
 
 Version 0.6 loads that backend from the packaged **Win32Bridge.Runtime.dll**.
 The same overlay adds PE32 startup to the existing desktop's executable loader.
-CI also produces a separate **1.0.46.1** developer-signed desktop update after
+CI also produces a separate developer-signed desktop update after
 checking its WinRT ABI against the original package. It retains the original
 shell and Gecko binaries; a complete independent shell build is still pending.
+
+Version **0.7** was tested on One X with the packaged bridge, without a direct
+runtime fallback. The saved USB game now executes 41 guest instructions and
+host gates before stopping at `KERNEL32.dll!GetVersionExA`. The previous
+guest W+X-section and read-only-IAT loader stops are fixed. All 218
+imports are bound to gates, while only four host APIs are implemented; this
+is not a successful game launch. The corresponding **1.0.46.2** desktop repack
+passed CI signature, ABI and blockmap validation, then installed successfully
+and launched on the One X. Device Portal screenshot capture remains unavailable
+for this shell; no new visual or gameplay result is inferred from launch alone.
 
 ## Development direction
 
