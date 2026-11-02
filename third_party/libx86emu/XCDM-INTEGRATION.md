@@ -7,6 +7,8 @@ The original copyright and permissive license remain in each source file,
 Local changes for the Xbox UWP interpreter host:
 
 - GNU attributes have a portable MSVC spelling/empty alternative.
+- Flag logging uses bounded `snprintf`; intentional modulo-32-bit negation
+  uses unsigned subtraction to preserve CPU behavior under MSVC `/sdl`.
 - Real host TSC and physical I/O support are disabled on every build. The
   adapter intercepts all guest memory and port accesses and supplies CPUID.
 - Initial emulator/memory allocations handle failure before dereferencing.

@@ -78,6 +78,7 @@
     <ClCompile Include="..\runtime\PeImage.cpp" />
     <ClCompile Include="..\runtime\GamePreflight.cpp" />
     <ClCompile Include="..\runtime\Pe32Image.cpp" />
+    <ClCompile Include="..\runtime\LowAddressProbe.cpp" />
     <ClCompile Include="..\runtime\Win32Probe32.cpp" />
     <ClCompile Include="..\runtime\X86Execution.cpp" />
     <ClCompile Include="..\runtime\RuntimeProbe.cpp" />
@@ -86,6 +87,7 @@
     <ClInclude Include="..\runtime\PeImage.h" />
     <ClInclude Include="..\runtime\GamePreflight.h" />
     <ClInclude Include="..\runtime\Pe32Image.h" />
+    <ClInclude Include="..\runtime\LowAddressProbe.h" />
     <ClInclude Include="..\runtime\Win32Probe32.h" />
     <ClInclude Include="..\runtime\X86Execution.h" />
     <ClInclude Include="..\samples\X86Win32Fixture.h" />

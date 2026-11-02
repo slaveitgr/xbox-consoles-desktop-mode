@@ -23,4 +23,11 @@ Win32Probe32Result RunWin32Probe32() noexcept;
 Win32Probe32Result ExecuteWin32IntegerImage(const std::uint8_t* bytes,
     std::size_t size, std::uint64_t instructionLimit = 100000) noexcept;
 
+// Starts a supplied PE32 in the integer interpreter with a virtual TEB/PEB.
+// Unknown imports receive stop gates, never fake success. Bounded startup
+// tracing does not implement gameplay, FPU/SSE, graphics or general Windows.
+// passed means only that guest ExitProcess(0) was reached.
+Win32Probe32Result TraceWin32Startup32(const std::uint8_t* bytes,
+    std::size_t size, std::uint64_t instructionLimit = 50000) noexcept;
+
 } // namespace xcdm::runtime

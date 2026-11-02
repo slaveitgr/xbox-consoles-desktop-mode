@@ -50,7 +50,113 @@ std::string Name(const Pe32Image& image, std::uint32_t rva) {
     Fail("Import string exceeds 511 characters.");
 }
 
-Pe32Image Map(const std::uint8_t* data, std::size_t size) {
+class ImportCollector {
+public:
+    explicit ImportCollector(Pe32Image& image)
+        : image_(image), mapped_(image.bytes.data(), image.bytes.size()) {}
+
+    void Collect(std::uint32_t rva, std::uint32_t size, bool delayed) {
+        if (!rva) return;
+        const std::size_t width = delayed ? 32 : 20;
+        if (size < width || !InSection(image_, rva, size))
+            Fail(delayed ? "Invalid PE32 delay-import descriptor directory." : "Invalid PE32 import descriptor directory.");
+        for (std::size_t offset = 0; Range(offset, width, size); offset += width) {
+            const auto at = static_cast<std::size_t>(rva) + offset;
+            std::uint32_t fields = 0;
+            for (std::size_t n = 0; n < width; n += 4) fields |= mapped_.U32(at + n);
+            if (!fields) return;
+            if (libraries_ == 256) Fail("PE32 import library count exceeds the shared 256-descriptor limit.");
+            ++libraries_;
+            std::uint32_t libraryRva = 0, iat = 0, lookup = 0;
+            bool legacyVa = false;
+            if (delayed) {
+                const auto attributes = mapped_.U32(at);
+                if (attributes & ~1U) Fail("PE32 delay-import descriptor has reserved attribute bits.");
+                legacyVa = (attributes & 1U) == 0;
+                libraryRva = AddressRva(mapped_.U32(at + 4), legacyVa);
+                iat = AddressRva(mapped_.U32(at + 12), legacyVa);
+                lookup = AddressRva(mapped_.U32(at + 16), legacyVa);
+                // A delay IAT initially contains linker-generated helper
+                // addresses, so it cannot stand in for a missing name table.
+                if (!libraryRva || !iat || !lookup)
+                    Fail("PE32 delay-import descriptor requires a DLL name, lookup table and IAT.");
+            } else {
+                lookup = mapped_.U32(at);
+                libraryRva = mapped_.U32(at + 12);
+                iat = mapped_.U32(at + 16);
+                if (!libraryRva || !iat) Fail("PE32 import descriptor has no library or IAT.");
+                if (!lookup) lookup = iat;
+            }
+            const auto library = Name(image_, libraryRva);
+            const auto tableSize = Thunks(lookup, iat, library, delayed, legacyVa);
+            if (delayed) {
+                // These tables are not followed or modified, but ensure every
+                // declared pointer covers its bounded table in guest memory.
+                const auto module = AddressRva(mapped_.U32(at + 8), legacyVa);
+                if (module && !InSection(image_, module, 4, true))
+                    Fail("PE32 delay-import module handle is outside writable guest memory.");
+                for (const auto field : {20U, 24U}) {
+                    const auto table = AddressRva(mapped_.U32(at + field), legacyVa);
+                    if (table && !InSection(image_, table, tableSize))
+                        Fail("PE32 delay-import ancillary table leaves readable guest memory.");
+                }
+            }
+        }
+        Fail(delayed ? "Unterminated PE32 delay-import descriptor table." : "Unterminated PE32 import descriptor table.");
+    }
+
+private:
+    std::uint32_t AddressRva(std::uint32_t value, bool legacyVa) const {
+        if (!value) return 0;
+        if (legacyVa) {
+            if (value < image_.base) Fail("PE32 legacy delay-import VA is below the image base.");
+            value -= image_.base;
+        }
+        return value;
+    }
+
+    std::size_t Thunks(std::uint32_t lookup, std::uint32_t iat,
+                       const std::string& library, bool delayed, bool legacyVa) {
+        for (std::uint32_t t = 0; t <= 8192; ++t) {
+            const auto source = static_cast<std::uint64_t>(lookup) + t * 4ULL;
+            const auto target = static_cast<std::uint64_t>(iat) + t * 4ULL;
+            if (source > UINT32_MAX || target > UINT32_MAX ||
+                !InSection(image_, static_cast<std::uint32_t>(source), 4) ||
+                !InSection(image_, static_cast<std::uint32_t>(target), 4, true))
+                Fail("PE32 lookup or IAT leaves its guest section.");
+            const auto value = mapped_.U32(static_cast<std::size_t>(source));
+            const auto target32 = static_cast<std::uint32_t>(target);
+            for (const auto previous : boundIats_)
+                if (target < static_cast<std::uint64_t>(previous) + 4 &&
+                    previous < target + 4)
+                    Fail("Overlapping PE32 import slots.");
+            boundIats_.push_back(target32);
+            if (!value) return static_cast<std::size_t>(t + 1) * 4;
+            if (image_.imports.size() == 8192) Fail("PE32 import count exceeds the shared 8192-entry limit.");
+            Pe32Import imported{library, {}, 0, (value & 0x80000000U) != 0, target32, delayed};
+            if (imported.byOrdinal) {
+                if (value & 0x7fff0000U) Fail("Malformed PE32 ordinal import.");
+                imported.ordinal = static_cast<std::uint16_t>(value);
+            } else {
+                const auto nameRva = AddressRva(value, legacyVa);
+                if (!InSection(image_, nameRva, 2) || nameRva > UINT32_MAX - 2)
+                    Fail("Invalid PE32 import-by-name hint.");
+                imported.name = Name(image_, nameRva + 2);
+            }
+            image_.imports.push_back(std::move(imported));
+        }
+        Fail("Unterminated PE32 import thunk table.");
+    }
+
+    Pe32Image& image_;
+    Reader mapped_;
+    std::size_t libraries_ = 0;
+    std::vector<std::uint32_t> boundIats_;
+};
+
+Pe32Image Map(const std::uint8_t* data, std::size_t size, Pe32Profile profile) {
+    if (profile != Pe32Profile::Fixture && profile != Pe32Profile::StartupTrace)
+        Fail("Unknown PE32 loading profile.");
     if (!data || size < 64 || size > MaxImage) Fail("PE32 file size is outside the 64-byte..64-MiB profile.");
     const Reader file(data, size);
     if (file.U16(0) != 0x5a4d) Fail("Missing MZ signature.");
@@ -83,13 +189,14 @@ Pe32Image Map(const std::uint8_t* data, std::size_t size) {
     const auto table = optional + optionalSize;
     if (!Range(table, static_cast<std::size_t>(count) * 40, image.headerSize))
         Fail("PE32 section table is outside SizeOfHeaders.");
-    std::uint32_t importRva = 0, importSize = 0;
+    std::uint32_t importRva = 0, importSize = 0, delayRva = 0, delaySize = 0;
     for (std::uint32_t n = 0; n < directories; ++n) {
         const auto rva = file.U32(optional + 96 + n * 8);
         const auto length = file.U32(optional + 100 + n * 8);
         if (!rva && !length) continue;
         if (!rva || !length) Fail("Inconsistent PE32 directory address and size.");
         if (n == 1) { importRva = rva; importSize = length; }
+        else if (n == 13 && profile == Pe32Profile::StartupTrace) { delayRva = rva; delaySize = length; }
         else if (n != 2 && n != 6 && n != 12)
             Fail("PE32 directory is unsupported by this initial loader (including TLS, relocations and delay imports).");
         if (!Range(rva, length, imageSize)) Fail("PE32 directory exceeds SizeOfImage.");
@@ -130,55 +237,19 @@ Pe32Image Map(const std::uint8_t* data, std::size_t size) {
     std::memcpy(image.bytes.data(), data, image.headerSize);
     for (std::size_t i = 0; i < raw.size(); ++i)
         if (raw[i].size) std::memcpy(image.bytes.data() + image.sections[i].rva, data + raw[i].at, raw[i].size);
-    if (!importRva) return image;
-    if (importSize < 20 || !InSection(image, importRva, importSize)) Fail("Invalid PE32 import descriptor directory.");
-    const Reader mapped(image.bytes.data(), image.bytes.size());
-    std::vector<std::uint32_t> boundIats;
-    bool ended = false;
-    for (std::uint32_t n = 0; n < 257; ++n) {
-        const auto offset = static_cast<std::size_t>(n) * 20;
-        if (!Range(offset, 20, importSize)) break;
-        const auto at = static_cast<std::size_t>(importRva) + offset;
-        const auto lookup = mapped.U32(at), timestamp = mapped.U32(at + 4), chain = mapped.U32(at + 8);
-        const auto libraryRva = mapped.U32(at + 12), iat = mapped.U32(at + 16);
-        if (!(lookup | timestamp | chain | libraryRva | iat)) { ended = true; break; }
-        if (n == 256) Fail("PE32 import library count exceeds 256.");
-        if (!libraryRva || !iat) Fail("PE32 import descriptor has no library or IAT.");
-        const auto library = Name(image, libraryRva);
-        const auto tableRva = lookup ? lookup : iat;
-        bool thunksEnded = false;
-        for (std::uint32_t t = 0; t <= 8192; ++t) {
-            const auto source = static_cast<std::uint64_t>(tableRva) + t * 4ULL;
-            const auto target = static_cast<std::uint64_t>(iat) + t * 4ULL;
-            if (source > UINT32_MAX || target > UINT32_MAX ||
-                !InSection(image, static_cast<std::uint32_t>(source), 4) ||
-                !InSection(image, static_cast<std::uint32_t>(target), 4, true))
-                Fail("PE32 lookup or IAT leaves its guest section.");
-            const auto value = mapped.U32(static_cast<std::size_t>(source));
-            if (!value) { thunksEnded = true; break; }
-            if (image.imports.size() >= 8192) Fail("PE32 import count exceeds 8192.");
-            const auto target32 = static_cast<std::uint32_t>(target);
-            if (std::find(boundIats.begin(), boundIats.end(), target32) != boundIats.end()) Fail("Duplicate PE32 import slot.");
-            boundIats.push_back(target32);
-            Pe32Import imported{library, {}, 0, (value & 0x80000000U) != 0, target32};
-            if (imported.byOrdinal) {
-                if (value & 0x7fff0000U) Fail("Malformed PE32 ordinal import.");
-                imported.ordinal = static_cast<std::uint16_t>(value);
-            } else {
-                if (!InSection(image, value, 2) || value > UINT32_MAX - 2) Fail("Invalid PE32 import-by-name hint.");
-                imported.name = Name(image, value + 2);
-            }
-            image.imports.push_back(std::move(imported));
-        }
-        if (!thunksEnded) Fail("Unterminated PE32 import thunk table.");
-    }
-    if (!ended) Fail("Unterminated PE32 import descriptor table.");
+    if (importRva && delayRva &&
+        static_cast<std::uint64_t>(importRva) < static_cast<std::uint64_t>(delayRva) + delaySize &&
+        static_cast<std::uint64_t>(delayRva) < static_cast<std::uint64_t>(importRva) + importSize)
+        Fail("Normal and delay-import descriptor directories overlap.");
+    ImportCollector imports(image);
+    imports.Collect(importRva, importSize, false);
+    imports.Collect(delayRva, delaySize, true);
     return image;
 }
 } // namespace
 
-Pe32LoadResult LoadPe32Image(const std::uint8_t* bytes, std::size_t size) noexcept {
-    try { return {true, "PE32 guest image mapped; no code executed.", Map(bytes, size)}; }
+Pe32LoadResult LoadPe32Image(const std::uint8_t* bytes, std::size_t size, Pe32Profile profile) noexcept {
+    try { return {true, "PE32 guest image mapped; no code executed.", Map(bytes, size, profile)}; }
     catch (const Invalid& error) {
         try { return {false, error.text, {}}; } catch (...) { return {}; }
     } catch (...) { return {}; }

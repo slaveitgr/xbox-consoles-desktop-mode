@@ -2334,7 +2334,7 @@ static void x86emuOp_cwd(x86emu_t *emu, u8 op1)
   if(MODE_DATA32) {
     OP_DECODE("cdq");
 
-    emu->x86.R_EDX = - (emu->x86.R_EAX >> 31);
+    emu->x86.R_EDX = 0U - (emu->x86.R_EAX >> 31);
   }
   else {
     OP_DECODE("cwd");

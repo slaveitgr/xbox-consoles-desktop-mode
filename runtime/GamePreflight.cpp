@@ -121,7 +121,7 @@ public:
         Line("");
         Line("Current Xbox host gaps:");
         if (machine_ == 0x14cU)
-            Line("- This is 32-bit x86. The separate integer interpreter currently runs only embedded diagnostics, not this game.");
+            Line("- This is 32-bit x86. The separate startup interpreter is integer-only; FPU/MMX/SSE and game APIs are missing.");
         else if (machine_ != 0x8664U)
             Line("- This architecture cannot be run by the current x64 diagnostic runtime.");
         else

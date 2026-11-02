@@ -18,6 +18,7 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 | Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
 | USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
 | Integer x86 execution | Version 0.4 adds a PE32 interpreter and four Win32 host calls for an embedded program; see scope in the runtime guide |
+| Bounded game startup trace | Version 0.5 interprets the selected PE32 entry point and stops at the first unsupported API/instruction; this is not gameplay |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -71,10 +72,10 @@ binary, not a desktop built or customized by this repository. See
 dependencies, controls and remaining checks. Commercial applications have not
 been tested by us.
 
-The companion runs only self-authored diagnostic code. Its original native PE fixture has no
+The native execution probes run only self-authored diagnostic code. The original native PE fixture has no
 imports, relocations, TLS or CRT and returns `42` through a deliberately tiny
 test entry-point contract. A pass proves that narrow contract, not Win32 app
-compatibility. It does not execute arbitrary files from your game library.
+compatibility. These native probes do not execute files from your game library.
 
 Version 0.3 adds a **Game preflight** page. Choose the folder containing
 `gta_sa.exe`, including a USB folder exposed by the device picker. The app reads
@@ -87,6 +88,13 @@ Version 0.4 adds a separate, automatically running **x86 / Win32 smoke test**.
 It interprets an embedded PE32 program and handles four explicit Win32 calls;
 it does not execute the USB game. The integer interpreter has no FPU/MMX/SSE,
 Direct3D or general Windows API layer. See [`docs/X86_RUNTIME.md`](docs/X86_RUNTIME.md).
+
+Version 0.5 adds **Trace game startup** (**G**). It reads the selected USB game's
+PE32 image through the saved grant, maps bounded virtual memory and interprets
+up to 50,000 guest instructions. Unknown imports stop at their synthetic gates;
+no arbitrary native function is called. `game-startup.txt` records the actual
+stop reason. The trace runs automatically when a saved folder is available.
+This limited integer-only startup is not a game compatibility or gameplay pass.
 
 ## Development direction
 

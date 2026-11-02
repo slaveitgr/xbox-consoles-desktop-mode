@@ -780,7 +780,7 @@ u32 neg_long(x86emu_t *emu, u32 s)
 	register u32 bc;
 
 	CONDITIONAL_SET_FLAG(s != 0, F_CF);
-	res = (u32)-s;
+	res = 0U - s;
 	CONDITIONAL_SET_FLAG((res & 0xffffffff) == 0, F_ZF);
 	CONDITIONAL_SET_FLAG(res & 0x80000000, F_SF);
 	CONDITIONAL_SET_FLAG(PARITY(res & 0xff), F_PF);

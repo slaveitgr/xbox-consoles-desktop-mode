@@ -204,6 +204,34 @@ void FaultsAndBudgets() {
     Check(result.reason == X86StopReason::Halted, "15-byte instruction remains within the architectural limit");
 }
 
+void GuestThreadSegment() {
+    Guest guest;
+    auto config = Config(guest);
+    config.fsBase = kBase + 0x2100;
+    Put(guest, config.fsBase + 4, 0x12345678);
+    const std::vector<std::uint8_t> code{
+        0x64, 0xa1, 0x04, 0x00, 0x00, 0x00, // mov eax, fs:[4]
+        0x64, 0xa3, 0x08, 0x00, 0x00, 0x00, // mov fs:[8], eax
+        0x50,
+        0xff, 0x15, 0x04, 0x20, 0x40, 0x00
+    };
+    std::copy(code.begin(), code.end(), guest.memory.begin());
+    const auto result = RunX86(config);
+    std::uint32_t stored = 0;
+    Check(result.ok && guest.exitCode == 0x12345678, "FS-relative read uses the configured guest TEB base");
+    Check(Get(guest, config.fsBase + 8, stored) && stored == 0x12345678,
+          "FS-relative write reaches guest memory through normal permissions");
+    Check(result.registers.eax == 0x12345678, "guest FS operations preserve the expected 32-bit value");
+
+    Guest missing;
+    auto invalid = Config(missing);
+    invalid.fsBase = 0x7ffde000;
+    std::copy(code.begin(), code.end(), missing.memory.begin());
+    const auto fault = RunX86(invalid);
+    Check(!fault.ok && fault.reason == X86StopReason::MemoryFault,
+          "an unmapped guest FS base faults without accessing the host TEB");
+}
+
 void UnsupportedExtensionsAndConfiguration() {
     const std::vector<std::vector<std::uint8_t>> instructions{
         {0x0f, 0x0b},       // UD2
@@ -244,6 +272,7 @@ void UnsupportedExtensionsAndConfiguration() {
 int main() {
     HostCallsAndIntegerExecution();
     FaultsAndBudgets();
+    GuestThreadSegment();
     UnsupportedExtensionsAndConfiguration();
     std::cout << checks << " x86 interpreter checks; " << failures << " failures\n";
     return failures ? 1 : 0;

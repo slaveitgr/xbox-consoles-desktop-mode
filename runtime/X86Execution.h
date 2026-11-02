@@ -20,6 +20,8 @@ enum class X86StopReason {
 
 struct X86ExecutionConfig {
     X86Registers initial;
+    // Guest FS segment base (for a virtual x86 TEB); host FS is never changed.
+    std::uint32_t fsBase = 0;
     std::uint64_t instructionLimit = 100000;
     void* context = nullptr;
     // Guest addresses are virtual: callbacks copy bytes; never cast a guest

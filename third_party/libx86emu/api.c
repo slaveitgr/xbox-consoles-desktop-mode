@@ -617,15 +617,15 @@ API_SYM void x86emu_dump(x86emu_t *emu, int flags)
     );
     x86emu_log(emu, "eip=%08x eflags=%08x", emu->x86.R_EIP, emu->x86.R_EFLG);
 
-    *fbuf = 0;
-    if(emu->x86.R_EFLG & 0x800) strcat(fbuf, " of");
-    if(emu->x86.R_EFLG & 0x400) strcat(fbuf, " df");
-    if(emu->x86.R_EFLG & 0x200) strcat(fbuf, " if");
-    if(emu->x86.R_EFLG & 0x080) strcat(fbuf, " sf");
-    if(emu->x86.R_EFLG & 0x040) strcat(fbuf, " zf");
-    if(emu->x86.R_EFLG & 0x010) strcat(fbuf, " af");
-    if(emu->x86.R_EFLG & 0x004) strcat(fbuf, " pf");
-    if(emu->x86.R_EFLG & 0x001) strcat(fbuf, " cf");
+    snprintf(fbuf, sizeof fbuf, "%s%s%s%s%s%s%s%s",
+      emu->x86.R_EFLG & 0x800 ? " of" : "",
+      emu->x86.R_EFLG & 0x400 ? " df" : "",
+      emu->x86.R_EFLG & 0x200 ? " if" : "",
+      emu->x86.R_EFLG & 0x080 ? " sf" : "",
+      emu->x86.R_EFLG & 0x040 ? " zf" : "",
+      emu->x86.R_EFLG & 0x010 ? " af" : "",
+      emu->x86.R_EFLG & 0x004 ? " pf" : "",
+      emu->x86.R_EFLG & 0x001 ? " cf" : "");
 
     if(*fbuf) x86emu_log(emu, " ;%s", fbuf);
 

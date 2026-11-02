@@ -37,6 +37,9 @@ void Append32(Bytes& bytes, std::uint32_t value) {
 }
 Bytes Fixture() { return xcdm::samples::X86Win32PeBytes(); }
 auto Load(const Bytes& bytes) { return xcdm::runtime::LoadPe32Image(bytes.data(), bytes.size()); }
+auto LoadStartup(const Bytes& bytes) {
+    return xcdm::runtime::LoadPe32Image(bytes.data(), bytes.size(), xcdm::runtime::Pe32Profile::StartupTrace);
+}
 auto Run(const Bytes& bytes, std::uint64_t budget = 100000) {
     return xcdm::runtime::ExecuteWin32IntegerImage(bytes.data(), bytes.size(), budget);
 }
@@ -49,6 +52,11 @@ void Rejects(const Bytes& bytes, const std::string& label) {
     Check(!result.ok, label + " rejected by loader");
     Check(!result.message.empty(), label + " includes a diagnostic");
     Check(result.image.bytes.empty(), label + " does not expose a partial mapped image");
+}
+void RejectsStartup(const Bytes& bytes, const std::string& label) {
+    const auto result = LoadStartup(bytes);
+    Check(!result.ok, label + " rejected by startup loader");
+    Check(!result.message.empty() && result.image.bytes.empty(), label + " fails with a diagnostic and no partial image");
 }
 void AppendExit(Bytes& code, std::uint8_t value = 0) {
     code.insert(code.end(), {0x6a, value, 0xff, 0x15}); // push exit code; call [ExitProcess]
@@ -245,6 +253,171 @@ void SuccessfulAndFailedCalls() {
     Check(!Run(bytes).passed, "unsupported debug text does not pass as an empty success");
 }
 
+Bytes DelayFixture(bool legacyVa = false) {
+    auto bytes = Fixture();
+    const auto address = [legacyVa](std::uint32_t rva) { return legacyVa ? Base + rva : rva; };
+    Directory(bytes, 13, 0x2100, 64);
+    const auto descriptor = ImportFile + 0x100;
+    Put32(bytes, descriptor, legacyVa ? 0 : 1);
+    Put32(bytes, descriptor + 4, address(0x2190));
+    Put32(bytes, descriptor + 8, address(0x2180));
+    Put32(bytes, descriptor + 12, address(0x2160));
+    Put32(bytes, descriptor + 16, address(0x2140));
+    Put32(bytes, ImportFile + 0x140, address(0x21a0));
+    Put32(bytes, ImportFile + 0x144, 0x80000007U);
+    // Delay IAT values are linker helper VAs, not copies of the name table.
+    Put32(bytes, ImportFile + 0x160, Base + 0x1000);
+    Put32(bytes, ImportFile + 0x164, Base + 0x1000);
+    const std::string library = "D3D9.dll", symbol = "Direct3DCreate9";
+    std::copy(library.begin(), library.end(), bytes.begin() + ImportFile + 0x190);
+    std::copy(symbol.begin(), symbol.end(), bytes.begin() + ImportFile + 0x1a2);
+    return bytes;
+}
+
+std::size_t ImportRaw(std::uint32_t rva) { return ImportFile + rva - 0x2000; }
+Bytes LargeImportImage() {
+    auto bytes = Fixture();
+    bytes.resize(ImportFile + 0x18000 + 0x200, 0);
+    std::fill(bytes.begin() + ImportFile, bytes.end(), 0);
+    Put32(bytes, Sections + 40 + 8, 0x18000);
+    Put32(bytes, Sections + 40 + 16, 0x18000);
+    Put32(bytes, Sections + 80 + 12, 0x30000);
+    Put32(bytes, Sections + 80 + 20, ImportFile + 0x18000);
+    Put32(bytes, Optional + 56, 0x40000);
+    Directory(bytes, 1, 0, 0); Directory(bytes, 12, 0, 0);
+    const std::string library = "KERNEL32.dll";
+    std::copy(library.begin(), library.end(), bytes.begin() + ImportRaw(0x2100));
+    return bytes;
+}
+
+void StartupDelayImports() {
+    const auto plain = LoadStartup(Fixture());
+    Check(plain.ok && plain.image.imports.size() == 4 && !plain.image.imports[0].delayed,
+          "startup profile preserves normal import identities");
+    for (const bool legacy : {false, true}) {
+        const auto bytes = DelayFixture(legacy);
+        Check(!Load(bytes).ok, "fixture profile still rejects delay imports");
+        const auto result = LoadStartup(bytes);
+        Check(result.ok && result.image.imports.size() == 6, "startup profile collects normal plus RVA/VA delay imports");
+        if (result.ok && result.image.imports.size() == 6) {
+            const auto& named = result.image.imports[4];
+            const auto& ordinal = result.image.imports[5];
+            Check(named.delayed && named.library == "D3D9.dll" && named.name == "Direct3DCreate9" &&
+                  !named.byOrdinal && named.iatRva == 0x2160, "delay name and PE32 IAT RVA normalized");
+            Check(ordinal.delayed && ordinal.byOrdinal && ordinal.ordinal == 7 && ordinal.name.empty(),
+                  "delay ordinal flag is not mistaken for a legacy VA");
+            Check(std::equal(bytes.begin() + ImportFile + 0x160, bytes.begin() + ImportFile + 0x16c,
+                             result.image.bytes.begin() + 0x2160), "loader preserves linker delay helper addresses and terminator");
+            Check(std::all_of(result.image.imports.begin(), result.image.imports.begin() + 4,
+                              [](const auto& imported) { return !imported.delayed; }), "normal imports are not marked delayed");
+        }
+    }
+    auto bytes = DelayFixture();
+    Directory(bytes, 1, 0, 0);
+    Check(LoadStartup(bytes).ok && LoadStartup(bytes).image.imports.size() == 2,
+          "delay imports are inspected even when the normal directory is absent");
+    bytes = DelayFixture();
+    std::fill(bytes.begin() + ImportFile + 0x100, bytes.begin() + ImportFile + 0x140, 0);
+    Check(LoadStartup(bytes).ok, "an empty bounded delay descriptor table is accepted");
+    bytes = DelayFixture(); Directory(bytes, 13, 0x2100, 31);
+    RejectsStartup(bytes, "truncated delay descriptor");
+    bytes = DelayFixture(); Directory(bytes, 13, 0x2100, 32);
+    RejectsStartup(bytes, "delay descriptors lack null terminator");
+    bytes = DelayFixture(); Directory(bytes, 13, 0x21f0, 64);
+    RejectsStartup(bytes, "delay descriptor directory crosses section boundary");
+    bytes = DelayFixture(); Directory(bytes, 13, 0x2010, 64);
+    RejectsStartup(bytes, "normal and delay descriptor directories overlap");
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x100, 2);
+    RejectsStartup(bytes, "reserved delay descriptor attribute bits");
+    for (const auto field : {4U, 12U, 16U}) {
+        bytes = DelayFixture(); Put32(bytes, ImportFile + 0x100 + field, 0);
+        RejectsStartup(bytes, "missing required delay pointer " + std::to_string(field));
+    }
+    for (const auto field : {4U, 8U, 12U, 16U, 20U, 24U}) {
+        bytes = DelayFixture(true); Put32(bytes, ImportFile + 0x100 + field, Base - 4);
+        RejectsStartup(bytes, "legacy delay pointer below image base " + std::to_string(field));
+    }
+    bytes = DelayFixture(true); Put32(bytes, ImportFile + 0x140, Base - 4);
+    RejectsStartup(bytes, "legacy delay import-by-name VA below image base");
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x140, 0x7ffffffeU);
+    RejectsStartup(bytes, "delay import-by-name hint outside guest image");
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x144, 0x80010007U);
+    RejectsStartup(bytes, "delay ordinal contains reserved high bits");
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x110, 0x21f8);
+    Put32(bytes, ImportFile + 0x1f8, 0x80000001); Put32(bytes, ImportFile + 0x1fc, 0x80000002);
+    RejectsStartup(bytes, "delay lookup lacks terminator before section end");
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x114, 0x21fc);
+    RejectsStartup(bytes, "delay ancillary table is too short for its import count and terminator");
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x108, 0x3000);
+    RejectsStartup(bytes, "delay module handle pointer is not writable");
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x10c, 0x3000);
+    RejectsStartup(bytes, "delay IAT is not writable");
+    for (std::uint32_t iat : {0x2060U, 0x2061U, 0x2070U}) {
+        bytes = DelayFixture(); Put32(bytes, ImportFile + 0x10c, iat);
+        RejectsStartup(bytes, "delay IAT overlaps normal slot, partial slot or terminator " + std::to_string(iat));
+    }
+    bytes = DelayFixture(); Put32(bytes, ImportFile + 0x140, 0x21ee);
+    std::fill(bytes.begin() + ImportFile + 0x1f0, bytes.begin() + MessageFile, 'A');
+    RejectsStartup(bytes, "delay symbol name is unterminated at section end");
+    bytes = DelayFixture();
+    Put32(bytes, ImportFile + 0x114, 0x21c0); Put32(bytes, ImportFile + 0x118, 0x21d0);
+    Check(LoadStartup(bytes).ok, "bounded ancillary delay tables may be declared without being executed");
+    for (unsigned index : {5U, 9U, 14U}) {
+        bytes = DelayFixture(); Directory(bytes, index, 0x2000, 32);
+        RejectsStartup(bytes, "startup profile still rejects execution-affecting directory " + std::to_string(index));
+    }
+    bytes = DelayFixture(); Put32(bytes, Sections + 36, 0xe0000020U);
+    RejectsStartup(bytes, "startup profile still rejects writable/executable sections");
+    Check(!xcdm::runtime::LoadPe32Image(bytes.data(), bytes.size(), static_cast<xcdm::runtime::Pe32Profile>(99)).ok,
+          "unrecognized profile cannot broaden loader behavior");
+}
+
+void SharedStartupLimits() {
+    const auto libraries = [](unsigned normal, unsigned delay) {
+        auto bytes = LargeImportImage();
+        Directory(bytes, 1, 0x2000, (normal + 1) * 20);
+        Directory(bytes, 13, 0x5000, (delay + 1) * 32);
+        for (unsigned n = 0; n < normal + delay; ++n) {
+            const std::uint32_t lookup = 0xa000 + n * 8, iat = 0xb000 + n * 8;
+            Put32(bytes, ImportRaw(lookup), 0x80000007); Put32(bytes, ImportRaw(iat), 0x80000007);
+            if (n < normal) {
+                const auto at = ImportRaw(0x2000) + n * 20;
+                Put32(bytes, at, lookup); Put32(bytes, at + 12, 0x2100); Put32(bytes, at + 16, iat);
+            } else {
+                const auto at = ImportRaw(0x5000) + (n - normal) * 32;
+                Put32(bytes, at, 1); Put32(bytes, at + 4, 0x2100);
+                Put32(bytes, at + 12, iat); Put32(bytes, at + 16, lookup);
+            }
+        }
+        return bytes;
+    };
+    const auto exactLibraries = LoadStartup(libraries(1, 255));
+    Check(exactLibraries.ok && exactLibraries.image.imports.size() == 256,
+          "shared normal/delay library count accepts exactly 256");
+    RejectsStartup(libraries(1, 256), "shared normal/delay library count exceeds 256");
+    const auto symbols = [](unsigned normal, unsigned delay) {
+        auto bytes = LargeImportImage();
+        Directory(bytes, 1, 0x2000, 40); Directory(bytes, 13, 0x2040, 64);
+        Put32(bytes, ImportRaw(0x2000), 0x4000); Put32(bytes, ImportRaw(0x200c), 0x2100);
+        Put32(bytes, ImportRaw(0x2010), 0xc100);
+        Put32(bytes, ImportRaw(0x2040), 1); Put32(bytes, ImportRaw(0x2044), 0x2100);
+        Put32(bytes, ImportRaw(0x204c), 0x15100); Put32(bytes, ImportRaw(0x2050), 0x15000);
+        for (unsigned n = 0; n < normal; ++n) {
+            Put32(bytes, ImportRaw(0x4000 + n * 4), 0x80000007);
+            Put32(bytes, ImportRaw(0xc100 + n * 4), 0x80000007);
+        }
+        for (unsigned n = 0; n < delay; ++n) {
+            Put32(bytes, ImportRaw(0x15000 + n * 4), 0x80000007);
+            Put32(bytes, ImportRaw(0x15100 + n * 4), 0x80000007);
+        }
+        return bytes;
+    };
+    const auto exactImports = LoadStartup(symbols(8191, 1));
+    Check(exactImports.ok && exactImports.image.imports.size() == 8192 && exactImports.image.imports.back().delayed,
+          "shared normal/delay symbol count accepts exactly 8192");
+    RejectsStartup(symbols(8191, 2), "shared normal/delay symbol count exceeds 8192");
+}
+
 void RuntimeMemoryPermissions() {
     // A positive RW control makes these tests distinguish access enforcement
     // from an engine that simply does not implement MOV r/m32,imm32.
@@ -294,6 +467,8 @@ int main() {
     RejectedImages();
     ImportBoundaries();
     SuccessfulAndFailedCalls();
+    StartupDelayImports();
+    SharedStartupLimits();
     RuntimeMemoryPermissions();
     std::cout << checks << " PE32 loader and Win32 execution checks; " << failures << " failures\n";
     return failures ? 1 : 0;

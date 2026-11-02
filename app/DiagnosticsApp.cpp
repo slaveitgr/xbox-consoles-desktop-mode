@@ -78,11 +78,12 @@ constexpr std::array<D2D1_RECT_F, 3> Buttons{{
     {1496.0f, 770.0f, 1768.0f, 840.0f}
 }};
 constexpr D2D1_RECT_F PageButton{1476.0f, 134.0f, 1796.0f, 194.0f};
-constexpr std::array<D2D1_RECT_F, 4> GameButtons{{
-    {96.0f, 755.0f, 560.0f, 817.0f},
-    {584.0f, 755.0f, 1004.0f, 817.0f},
-    {1028.0f, 755.0f, 1412.0f, 817.0f},
-    {1436.0f, 755.0f, 1796.0f, 817.0f}
+constexpr std::array<D2D1_RECT_F, 5> GameButtons{{
+    {96.0f, 755.0f, 416.0f, 817.0f},
+    {441.0f, 755.0f, 761.0f, 817.0f},
+    {786.0f, 755.0f, 1106.0f, 817.0f},
+    {1131.0f, 755.0f, 1451.0f, 817.0f},
+    {1476.0f, 755.0f, 1796.0f, 817.0f}
 }};
 constexpr wchar_t GameFolderToken[] = L"GamePreflightFolder";
 constexpr std::uint64_t MaxGameImageBytes = 64ULL * 1024 * 1024;
@@ -262,12 +263,13 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
                 if (key == VirtualKey::O) InspectGameFolderAsync(true);
                 else if (key == VirtualKey::R || key == VirtualKey::F5) InspectGameFolderAsync(false);
                 else if (key == VirtualKey::T) RunWin32Probe32Async();
+                else if (key == VirtualKey::G) TraceGameStartupAsync();
                 else if (key == VirtualKey::S) SaveGamePageReports();
                 else if (key == VirtualKey::Enter || key == VirtualKey::Space) ActivateGameSelection();
                 else if (key == VirtualKey::Tab || key == VirtualKey::Right || key == VirtualKey::Down)
-                    m_gameSelection = (m_gameSelection + 1) % 4;
+                    m_gameSelection = (m_gameSelection + 1) % 5;
                 else if (key == VirtualKey::Left || key == VirtualKey::Up)
-                    m_gameSelection = (m_gameSelection + 3) % 4;
+                    m_gameSelection = (m_gameSelection + 4) % 5;
                 else if (key == VirtualKey::Escape) TogglePage();
                 else return;
             } else if (m_page == Page::Controllers) {
@@ -375,6 +377,7 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
         ReadSelectedController();
         RunProbesAsync(-1);
         RunWin32Probe32Async();
+        TraceGameStartupAsync();
         while (!m_closed) {
             if (m_visible && !m_suspended) {
                 m_window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessAllIfPresent);
@@ -679,9 +682,9 @@ private:
             }
             if (m_page == Page::Game) {
                 if (edge(GamepadButtons::DPadRight) || edge(GamepadButtons::DPadDown))
-                    m_gameSelection = (m_gameSelection + 1) % 4;
+                    m_gameSelection = (m_gameSelection + 1) % 5;
                 if (edge(GamepadButtons::DPadLeft) || edge(GamepadButtons::DPadUp))
-                    m_gameSelection = (m_gameSelection + 3) % 4;
+                    m_gameSelection = (m_gameSelection + 4) % 5;
                 if (edge(GamepadButtons::A)) ActivateGameSelection();
                 if (edge(GamepadButtons::X)) SaveGamePageReports();
                 return;
@@ -710,6 +713,7 @@ private:
         if (m_gameSelection == 0) InspectGameFolderAsync(true);
         else if (m_gameSelection == 1) InspectGameFolderAsync(false);
         else if (m_gameSelection == 2) RunWin32Probe32Async();
+        else if (m_gameSelection == 3) TraceGameStartupAsync();
         else SaveGamePageReports();
     }
 
@@ -717,9 +721,134 @@ private:
         if (m_closed) return;
         if (!m_gameReport.empty()) SaveGameReportAsync();
         if (m_x86Complete) SaveX86ReportAsync();
-        if (m_gameReport.empty() && !m_x86Complete)
-            m_gameStatus = m_x86Busy ? L"The x86 test is running. Its report is saved automatically when it finishes." :
-                L"No results yet. Run the x86 test or inspect the game folder first.";
+        if (m_traceComplete) SaveGameStartupReportAsync();
+        if (m_gameReport.empty() && !m_x86Complete && !m_traceComplete)
+            m_gameStatus = m_x86Busy || m_traceBusy ? L"Execution checks are running. Reports are saved automatically when they finish." :
+                L"No results yet. Run an execution check or inspect the game folder first.";
+    }
+
+    fire_and_forget TraceGameStartupAsync() {
+        if (m_traceBusy || m_traceSaving || m_closed) co_return;
+        auto lifetime = get_strong();
+        m_traceBusy = true;
+        m_traceComplete = false;
+        m_traceSummary = L"Opening the selected game folder for a bounded startup trace...";
+        m_traceStatus = L"No folder picker is needed for a saved folder grant.";
+        StorageFolder folder = m_gameFolder;
+        std::wstring sourcePath;
+        std::wstring failure;
+        try {
+            // Resolve the stored grant on the UI thread; never reopen the picker
+            // or stage a copy of the game just to repeat the startup trace.
+            if (!folder) {
+                const auto grants = Windows::Storage::AccessCache::StorageApplicationPermissions::FutureAccessList();
+                if (grants.ContainsItem(GameFolderToken))
+                    folder = co_await grants.GetFolderAsync(GameFolderToken);
+                else failure = L"Choose game folder first. No saved folder grant is available.";
+            }
+            if (m_closed) { m_traceBusy = false; co_return; }
+            if (folder) {
+                sourcePath = folder.Path().c_str();
+                if (!m_gameFolder || m_gameFolder == folder) {
+                    m_gameFolder = folder;
+                    m_gameFolderLabel = folder.DisplayName().c_str();
+                    m_gameFolderPath = sourcePath;
+                }
+            }
+        } catch (hresult_error const& error) {
+            failure = ApiError(L"Saved folder access failed", error) + L". Choose game folder again if the USB location changed.";
+        } catch (...) {
+            failure = L"Saved folder access failed. Choose game folder again to grant access to the USB.";
+        }
+
+        const auto dispatcher = m_window.Dispatcher();
+        xcdm::runtime::Win32Probe32Result result;
+        bool runnerInvoked = false;
+        std::uint64_t fileSize = 0;
+        std::wstring fingerprint;
+        if (failure.empty()) {
+            m_traceSummary = L"Reading gta_sa.exe and executing at most 50,000 guest instructions...";
+            try {
+                co_await resume_background();
+                const auto file = folder.GetFileAsync(L"gta_sa.exe").get();
+                const auto stream = file.OpenReadAsync().get();
+                fileSize = stream.Size();
+                if (fileSize == 0 || fileSize > MaxGameImageBytes) {
+                    failure = L"Startup trace skipped: gta_sa.exe must be between 1 byte and 64 MiB.";
+                } else {
+                    Windows::Storage::Streams::DataReader reader(stream.GetInputStreamAt(0));
+                    const auto wanted = static_cast<std::uint32_t>(fileSize);
+                    const auto loaded = reader.LoadAsync(wanted).get();
+                    if (loaded != wanted) {
+                        failure = L"Startup trace skipped: the executable read was incomplete. Check the USB connection.";
+                    } else {
+                        std::vector<std::uint8_t> bytes(wanted);
+                        reader.ReadBytes(bytes);
+                        runnerInvoked = true;
+                        result = xcdm::runtime::TraceWin32Startup32(bytes.data(), bytes.size(), 50000);
+                        try {
+                            const auto algorithm = Windows::Security::Cryptography::Core::HashAlgorithmProvider::OpenAlgorithm(
+                                Windows::Security::Cryptography::Core::HashAlgorithmNames::Sha256());
+                            const auto hash = algorithm.HashData(
+                                Windows::Security::Cryptography::CryptographicBuffer::CreateFromByteArray(bytes));
+                            fingerprint = Windows::Security::Cryptography::CryptographicBuffer::EncodeToHexString(hash).c_str();
+                        } catch (...) { fingerprint = L"Unavailable"; }
+                    }
+                }
+            } catch (hresult_error const& error) {
+                failure = ApiError(L"Startup trace read failed", error) + L". " + error.message().c_str();
+            } catch (...) {
+                failure = L"Startup trace could not complete. Reconnect the USB and retry with G.";
+            }
+        }
+        try { co_await resume_foreground(dispatcher); }
+        catch (...) {
+            OutputDebugStringW(L"Game startup trace could not return to the UI dispatcher.\n");
+            co_return;
+        }
+        m_traceBusy = false;
+        if (m_closed) co_return;
+        m_traceComplete = true;
+        m_traceTime = UtcNow();
+        m_traceSummary = failure.empty() ? Wide(result.summary) : failure;
+        std::wostringstream report;
+        report << L"Xbox Desktop Mode / bounded game startup trace\n"
+               << L"Trace completed: " << m_traceTime << L"\n"
+               << L"Device family: " << m_deviceFamily << L"\nOS version: " << m_osVersion << L"\n"
+               << L"Application architecture: x64\nGuest architecture: x86 / PE32\n"
+               << L"Source folder: " << sourcePath << L"\nFile: gta_sa.exe\n"
+               << L"File size: " << fileSize << L" bytes\nSHA-256: " << fingerprint << L"\n"
+               << L"Instruction budget: 50000\nRunner invoked: " << (runnerInvoked ? L"yes" : L"no") << L"\n"
+               << L"Guest explicitly exited zero: " << (runnerInvoked && failure.empty() && result.passed ? L"yes" : L"no") << L"\n"
+               << L"Stop summary: " << m_traceSummary << L"\n\n" << Wide(result.report) << L"\n"
+               << L"Guest execution is bounded and stops at missing Win32 APIs or unsupported instructions.\n"
+               << L"This is a startup trace, not a gameplay or compatibility pass. The D3D9 game runtime is not implemented.\n";
+        try {
+            const auto version = Package::Current().Id().Version();
+            report << L"Package version: " << version.Major << L'.' << version.Minor << L'.'
+                   << version.Build << L'.' << version.Revision << L"\n";
+        } catch (...) { report << L"Package version unavailable\n"; }
+        m_traceReport = report.str();
+        m_traceStatus = L"Trace stopped. Saving game-startup.txt...";
+        SaveGameStartupReportAsync();
+    }
+
+    fire_and_forget SaveGameStartupReportAsync() {
+        if (m_traceBusy || m_traceSaving || m_closed || !m_traceComplete) co_return;
+        auto lifetime = get_strong();
+        m_traceSaving = true;
+        const auto report = m_traceReport;
+        try {
+            const auto file = co_await ApplicationData::Current().LocalFolder().CreateFileAsync(
+                L"game-startup.txt", CreationCollisionOption::ReplaceExisting);
+            co_await FileIO::WriteTextAsync(file, hstring(report), Windows::Storage::Streams::UnicodeEncoding::Utf8);
+            if (!m_closed) m_traceStatus = L"Saved game-startup.txt. G repeats the bounded trace.";
+        } catch (hresult_error const& error) {
+            if (!m_closed) m_traceStatus = ApiError(L"Startup report save failed", error) + L". Press S to retry.";
+        } catch (...) {
+            if (!m_closed) m_traceStatus = L"Startup report save failed. Press S to retry.";
+        }
+        m_traceSaving = false;
     }
 
     fire_and_forget RunWin32Probe32Async() {
@@ -1339,7 +1468,7 @@ private:
     }
 
     void RenderGame() {
-        Text(L"Choose the folder containing gta_sa.exe on your USB. Files are inspected in place.",
+        Text(L"USB inspection and bounded startup execution. Missing APIs or instructions stop the trace; no gameplay.",
              {96, 218, 1796, 248}, m_small.get(), 0xAAB9AF);
         Fill({96, 256, 748, 724}, 0x151F19, 14.0f);
         Border({96, 256, 748, 724}, 0x2B3C30, 1.0f, 14.0f);
@@ -1360,22 +1489,29 @@ private:
         Text(m_x86Summary.substr(0, 120), {124, 604, 720, 660}, m_small.get(), 0xD1DCD5);
         Text(m_x86Status, {124, 666, 720, 719}, m_small.get(), 0x9FB0A4);
         Text(L"Executable inspection", {806, 277, 1768, 324}, m_heading.get(), 0xF0F5F1);
-        Text(m_gameSummary, {806, 338, 1768, 528}, m_body.get(),
+        Text(m_gameSummary, {806, 338, 1768, 418}, m_body.get(),
              m_gameMetadataRecognized ? 0xD1DCD5 : 0xF1C875);
-        Text(L"The x86 test runs our own embedded PE32 program and four Win32 functions. Its result is separate from game-file inspection.\n\nThe San Andreas Win32/D3D9 runtime is not implemented; gta_sa.exe is not executed.",
-             {806, 541, 1768, 711}, m_small.get(), 0xF1C875);
-        const std::array<std::wstring, 4> labels{{
+        Fill({806, 431, 1768, 433}, 0x2B3C30);
+        Text(L"Game startup trace", {806, 445, 1768, 488}, m_heading.get(), 0xF1C875);
+        Text(L"Trace: " + m_traceTime, {806, 493, 1768, 522}, m_small.get(), 0x9FB0A4);
+        Text(m_traceSummary.substr(0, 240), {806, 529, 1768, 616}, m_small.get(), 0xF1C875);
+        Text(m_traceStatus, {806, 624, 1768, 677}, m_small.get(), 0x9FB0A4);
+        Text(L"Startup trace only. D3D9 gameplay is not implemented.", {806, 685, 1768, 714}, m_small.get(), 0xF1C875);
+        const std::array<std::wstring, 5> labels{{
             m_gameBusy ? L"Inspecting..." : L"Choose game folder",
-            L"Rescan selected folder",
+            L"Rescan folder",
             m_x86Busy ? L"Running x86 test..." : L"Run x86 test",
-            m_gameSaving || m_x86Saving ? L"Saving..." : L"Save reports"
+            m_traceBusy ? L"Tracing startup..." : L"Trace game startup",
+            m_gameSaving || m_x86Saving || m_traceSaving ? L"Saving..." : L"Save reports"
         }};
         for (std::size_t index = 0; index < GameButtons.size(); ++index) {
             const auto rect = GameButtons[index];
             const bool canSave = (!m_gameBusy && !m_gameSaving && !m_gameReport.empty()) ||
-                (!m_x86Busy && !m_x86Saving && m_x86Complete);
+                (!m_x86Busy && !m_x86Saving && m_x86Complete) ||
+                (!m_traceBusy && !m_traceSaving && m_traceComplete);
             const bool disabled = index == 2 ? m_x86Busy || m_x86Saving :
-                (index == 3 ? !canSave : m_gameBusy || m_gameSaving);
+                (index == 3 ? m_traceBusy || m_traceSaving :
+                    (index == 4 ? !canSave : m_gameBusy || m_gameSaving));
             Fill(rect, disabled ? 0x243128 : (Contains(rect, m_pointer) ? 0x96F36F : 0x87DD61), 8.0f);
             if (m_gameSelection == static_cast<int>(index))
                 Border({rect.left - 5, rect.top - 5, rect.right + 5, rect.bottom + 5}, 0xDEFBCF, 2.0f, 11.0f);
@@ -1384,11 +1520,11 @@ private:
         }
         Fill({96, 840, 1796, 938}, 0x121C16, 14.0f);
         Text(m_gameStatus, {124, 851, 1768, 908}, m_small.get(), 0xD1DCD5);
-        Text(L"Reports in local storage: game-preflight.txt (USB metadata), x86-runtime.txt (execution test)",
+        Text(L"Local reports: game-preflight.txt (metadata), x86-runtime.txt (self-test), game-startup.txt (USB startup trace)",
              {124, 909, 1768, 937}, m_small.get(), 0x9FB0A4);
         Text(L"D-pad  Select action     A  Activate     X  Save reports     Y  Runtime checks",
              {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
-        Text(L"Keyboard: O choose folder  |  R rescan  |  T x86 test  |  S save  |  arrows / Tab select  |  Enter activate  |  C switch page",
+        Text(L"Keyboard: O folder  |  R inspect  |  T self-test  |  G trace game  |  S save  |  arrows / Tab select  |  Enter activate  |  C page",
              {96, 1006, 1796, 1043}, m_small.get(), 0x9FB0A4);
     }
 
@@ -1526,6 +1662,10 @@ private:
     std::wstring m_x86Summary{L"Runs an embedded x86 program through the interpreter and Win32 bridge."};
     std::wstring m_x86Status{L"The test starts automatically. T runs it again."};
     std::wstring m_x86TestTime{L"Not run"}, m_x86Report;
+    bool m_traceBusy{false}, m_traceSaving{false}, m_traceComplete{false};
+    std::wstring m_traceSummary{L"Use the selected USB game folder for a bounded x86 startup trace."};
+    std::wstring m_traceStatus{L"The saved folder is tried automatically. G repeats the trace."};
+    std::wstring m_traceTime{L"Not run"}, m_traceReport;
     bool m_rawApiOkay{false}, m_gamepadApiOkay{false}, m_associationWarning{false};
     bool m_rawReadingOkay{false}, m_gamepadReadingOkay{false};
     std::uint32_t m_rawCount{0}, m_gamepadCount{0};

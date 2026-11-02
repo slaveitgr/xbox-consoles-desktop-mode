@@ -7,6 +7,8 @@
 
 namespace xcdm::runtime {
 
+enum class Pe32Profile { Fixture, StartupTrace };
+
 struct Pe32Section {
     std::uint32_t rva = 0;
     std::uint32_t size = 0;
@@ -21,6 +23,7 @@ struct Pe32Import {
     std::uint16_t ordinal = 0;
     bool byOrdinal = false;
     std::uint32_t iatRva = 0;
+    bool delayed = false;
 };
 
 struct Pe32Image {
@@ -39,9 +42,12 @@ struct Pe32LoadResult {
 };
 
 // Maps a bounded PE32/i386 image into a guest byte vector, never native
-// executable memory. This initial profile rejects DLLs, TLS, relocations,
-// delay imports, CLR and writable/executable sections. Imports are collected,
-// not resolved to host pointers. It is not a general Windows loader.
-Pe32LoadResult LoadPe32Image(const std::uint8_t* bytes, std::size_t size) noexcept;
+// executable memory. Both profiles reject DLLs, TLS, relocations, CLR and
+// writable/executable sections. Fixture rejects delay imports; StartupTrace
+// collects bounded normal and delay imports, retaining original IAT bytes.
+// Imports are not resolved to host pointers. This is not a general NT loader:
+// dependencies are not loaded and DLL initialization is not performed.
+Pe32LoadResult LoadPe32Image(const std::uint8_t* bytes, std::size_t size,
+    Pe32Profile profile = Pe32Profile::Fixture) noexcept;
 
 } // namespace xcdm::runtime

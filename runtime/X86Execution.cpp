@@ -203,7 +203,7 @@ X86ExecutionResult RunX86(const X86ExecutionConfig& config) noexcept {
         // virtual and is resolved only through the callbacks above.
         emu->x86.R_CR0 = 1;
         for (std::size_t i = 0; i < 6; ++i) {
-            emu->x86.seg[i].base = 0;
+            emu->x86.seg[i].base = i == R_FS_INDEX ? config.fsBase : 0;
             emu->x86.seg[i].limit = 0xffffffffU;
             // libx86emu stores descriptor flags compactly: D/B is bit 10,
             // rather than bit 14 of the descriptor's original high word.

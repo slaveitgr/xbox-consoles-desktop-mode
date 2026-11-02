@@ -2,6 +2,7 @@
 
 #include "Pe32Image.h"
 #include "X86Execution.h"
+#include "LowAddressProbe.h"
 #include "../samples/X86Win32Fixture.h"
 
 #include <algorithm>
@@ -16,6 +17,7 @@ namespace {
 constexpr std::uint32_t StackBase = 0x10000000;
 constexpr std::uint32_t StackSize = 64 * 1024;
 constexpr std::uint32_t GateBase = 0x7ff00000;
+constexpr std::uint32_t TebBase = 0x7ffde000;
 
 bool Range(std::size_t at, std::size_t size, std::size_t total) noexcept {
     return at <= total && size <= total - at;
@@ -26,6 +28,7 @@ std::string Hex(std::uint32_t n) {
 struct Guest {
     Pe32Image image;
     std::vector<std::uint8_t> stack = std::vector<std::uint8_t>(StackSize);
+    std::vector<std::uint8_t> environment = std::vector<std::uint8_t>(8192);
     std::uint32_t lastError = 0, exitCode = 0;
     bool exited = false;
     std::string debug, failure;
@@ -34,6 +37,8 @@ struct Guest {
     std::uint8_t* Pointer(std::uint32_t address, std::size_t size, bool write, bool execute) noexcept {
         if (address >= StackBase && Range(address - StackBase, size, stack.size()))
             return execute ? nullptr : stack.data() + (address - StackBase);
+        if (address >= TebBase && Range(address - TebBase, size, environment.size()))
+            return execute ? nullptr : environment.data() + (address - TebBase);
         if (address < image.base) return nullptr;
         const auto rva = address - image.base;
         if (!Range(rva, size, image.bytes.size())) return nullptr;
@@ -59,6 +64,20 @@ struct Guest {
         return true;
     }
 };
+
+bool Supported(const Pe32Import& imported) {
+    auto library = imported.library;
+    std::transform(library.begin(), library.end(), library.begin(), [](unsigned char c) {
+        return static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
+    });
+    return library == "KERNEL32.DLL" && !imported.byOrdinal &&
+        (imported.name == "SetLastError" || imported.name == "GetLastError" ||
+         imported.name == "OutputDebugStringA" || imported.name == "ExitProcess");
+}
+
+std::string ImportName(const Pe32Import& imported) {
+    return imported.library + "!" + (imported.byOrdinal ? "#" + std::to_string(imported.ordinal) : imported.name);
+}
 
 bool Read(void* opaque, std::uint32_t address, std::uint8_t* out, std::size_t size, bool fetch) noexcept {
     if (!out || !size) return false;
@@ -86,8 +105,14 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
         if (offset % 16 || index >= guest.image.imports.size()) {
             guest.failure = "Invalid Win32 guest import gate."; return X86HostCallAction::Fault;
         }
-        const auto& name = guest.image.imports[index].name;
+        const auto& imported = guest.image.imports[index];
+        const auto& name = imported.name;
         if (guest.calls.size() >= 128) { guest.failure = "Win32 call trace limit reached."; return X86HostCallAction::Fault; }
+        if (!Supported(imported)) {
+            guest.calls.push_back(ImportName(imported));
+            guest.failure = "Missing Win32 API: " + ImportName(imported);
+            return X86HostCallAction::Fault;
+        }
         const std::uint32_t arguments = name == "GetLastError" ? 0 : 4;
         std::uint32_t returnAddress = 0, argument = 0;
         if (state.esp > UINT32_MAX - 8 || !guest.Read32(state.esp, returnAddress) ||
@@ -104,8 +129,14 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
         if (!guest.Pointer(returnAddress, 1, false, true)) {
             guest.failure = "Win32 return address is outside executable guest memory."; return X86HostCallAction::Fault;
         }
-        if (name == "SetLastError") { guest.lastError = argument; state.eax = 0; }
-        else if (name == "GetLastError") state.eax = guest.lastError;
+        if (name == "SetLastError") {
+            guest.lastError = argument;
+            if (!guest.Write32(TebBase + 0x34, argument)) return X86HostCallAction::Fault;
+            state.eax = 0;
+        } else if (name == "GetLastError") {
+            if (!guest.Read32(TebBase + 0x34, guest.lastError)) return X86HostCallAction::Fault;
+            state.eax = guest.lastError;
+        }
         else if (name == "OutputDebugStringA") {
             std::string output;
             bool ended = false;
@@ -130,14 +161,15 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
     } catch (...) { return X86HostCallAction::Fault; }
 }
 
-Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uint64_t limit, bool verifyFixture) {
+Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uint64_t limit, bool verifyFixture, bool startupTrace = false) {
     std::ostringstream report;
     report << "Xbox Desktop Mode / x86 Win32 execution\n"
            << "Engine: libx86emu, bounded protected-mode integer interpreter\n"
            << "Native guest code/JIT: no\nFPU/MMX/SSE: not implemented by this engine\n"
-           << "Host API profile: KERNEL32 SetLastError, GetLastError, OutputDebugStringA, ExitProcess\n";
+           << "Host API profile: KERNEL32 SetLastError, GetLastError, OutputDebugStringA, ExitProcess\n"
+           << "Operation: " << (startupTrace ? "bounded supplied-image startup trace" : "self-authored fixture execution") << '\n';
     if (!limit || limit > 1000000) return {false, "Invalid x86 instruction budget.", report.str()};
-    auto mapped = LoadPe32Image(bytes, size);
+    auto mapped = LoadPe32Image(bytes, size, startupTrace ? Pe32Profile::StartupTrace : Pe32Profile::Fixture);
     if (!mapped.ok) {
         report << "Loader stopped: " << mapped.message << '\n';
         return {false, "PE32 guest mapping failed: " + mapped.message, report.str()};
@@ -147,16 +179,19 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
     const auto imageEnd = static_cast<std::uint64_t>(guest.image.base) + guest.image.bytes.size();
     if (guest.image.base < StackBase + StackSize && imageEnd > StackBase)
         return {false, "PE32 image overlaps the reserved guest stack.", report.str()};
+    // A deliberately small, virtual single-thread environment, not the host's
+    // TEB/PEB. Supports initial CRT SEH setup and a truthful empty process state.
+    guest.Write32(TebBase, 0xffffffffU); // NT_TIB.ExceptionList
+    guest.Write32(TebBase + 4, StackBase + StackSize);
+    guest.Write32(TebBase + 8, StackBase);
+    guest.Write32(TebBase + 0x18, TebBase); // NT_TIB.Self
+    guest.Write32(TebBase + 0x20, 1); // Emulated process identity
+    guest.Write32(TebBase + 0x24, 1); // Emulated thread identity
+    guest.Write32(TebBase + 0x30, TebBase + 4096);
+    guest.Write32(TebBase + 4096 + 8, guest.image.base);
     for (std::size_t i = 0; i < guest.image.imports.size(); ++i) {
         const auto& imported = guest.image.imports[i];
-        auto library = imported.library;
-        std::transform(library.begin(), library.end(), library.begin(), [](unsigned char c) {
-            return static_cast<char>(c >= 'a' && c <= 'z' ? c - 'a' + 'A' : c);
-        });
-        const bool supported = library == "KERNEL32.DLL" && !imported.byOrdinal &&
-            (imported.name == "SetLastError" || imported.name == "GetLastError" ||
-             imported.name == "OutputDebugStringA" || imported.name == "ExitProcess");
-        if (!supported) {
+        if (!Supported(imported) && !startupTrace) {
             report << "Unresolved import: " << imported.library << '!' <<
                 (imported.byOrdinal ? "#" + std::to_string(imported.ordinal) : imported.name) << '\n';
             return {false, "Unsupported PE32 import; guest execution was not started.", report.str()};
@@ -169,6 +204,7 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
     config.initial.esp = StackBase + StackSize - 16;
     config.initial.eflags = 2;
     config.instructionLimit = limit;
+    if (startupTrace) config.fsBase = TebBase;
     config.context = &guest;
     config.readMemory = Read;
     config.writeMemory = Write;
@@ -187,9 +223,24 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
            << "\nDebug output: " << guest.debug << "\nWin32 call trace:\n";
     for (const auto& call : guest.calls) report << "  " << call << '\n';
     if (!guest.failure.empty()) report << "Host-call failure: " << guest.failure << '\n';
-    report << "Result: " << (passed ? "passed" : "failed") << '\n'
-           << "Scope: self-authored integer fixture and four guest Win32 host calls.\n"
+    if (startupTrace) {
+        report << "Mapped sections:\n";
+        for (const auto& section : guest.image.sections)
+            report << "  " << Hex(guest.image.base + section.rva) << " size " << section.size << " "
+                   << (section.readable ? 'R' : '-') << (section.writable ? 'W' : '-') << (section.executable ? 'X' : '-') << '\n';
+        report << "Registered import gates: " << guest.image.imports.size() << "\nEntry bytes:";
+        const auto rva = guest.image.entry - guest.image.base;
+        for (std::size_t n = 0; n < 32 && n < guest.image.bytes.size() - rva; ++n)
+            report << ' ' << std::hex << std::setw(2) << std::setfill('0') << static_cast<unsigned>(guest.image.bytes[rva + n]);
+        report << std::dec << '\n';
+    }
+    report << "Result: " << (passed ? "guest exited 0" : (startupTrace ? "startup stopped" : "failed")) << '\n'
+           << "Scope: " << (startupTrace ? "bounded integer-only startup trace; unknown APIs stop execution" : "self-authored integer fixture and four guest Win32 host calls") << ".\n"
            << "San Andreas, graphics, audio, filesystem, threads and general Windows APIs are not implemented.\n";
+    if (startupTrace) {
+        const auto reason = guest.failure.empty() ? executed.message : guest.failure;
+        return {passed, (passed ? "Guest exited 0. " : "Stopped at " + Hex(executed.registers.eip) + ": ") + reason, report.str()};
+    }
     return {passed, passed ? "PASS: PE32 x86 program executed with four Win32 host calls." :
         "FAIL: x86/Win32 program stopped; see x86-runtime.txt for the exact reason.", report.str()};
 }
@@ -202,7 +253,17 @@ Win32Probe32Result ExecuteWin32IntegerImage(const std::uint8_t* bytes, std::size
 Win32Probe32Result RunWin32Probe32() noexcept {
     try {
         const auto& fixture = samples::X86Win32PeBytes();
-        return Execute(fixture.data(), fixture.size(), 100000, true);
+        auto result = Execute(fixture.data(), fixture.size(), 100000, true);
+        const auto low = RunLowAddressProbe();
+        result.report += "\nSeparate native low-address capability diagnostic (not a CPU-test pass criterion):\n";
+        result.report += low.status == ProbeStatus::Passed ? "Status: Passed\n" :
+            (low.status == ProbeStatus::Unsupported ? "Status: Unsupported\n" : "Status: Failed\n");
+        result.report += low.message + "\nError code: " + std::to_string(low.errorCode) + "\n";
+        return result;
     } catch (...) { return {}; }
+}
+Win32Probe32Result TraceWin32Startup32(const std::uint8_t* bytes, std::size_t size, std::uint64_t limit) noexcept {
+    try { return Execute(bytes, size, limit, false, true); }
+    catch (...) { return {}; }
 }
 } // namespace xcdm::runtime

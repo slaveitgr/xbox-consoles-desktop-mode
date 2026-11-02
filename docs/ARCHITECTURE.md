@@ -45,6 +45,7 @@ Version 0.4 adds an independent PE32 path: `Pe32Image` maps bounded guest
 sections and imports, `X86Execution` supplies checked virtual-memory callbacks
 to the pinned libx86emu integer interpreter, and `Win32Probe32` marshals four
 explicit stdcall host gates. Its embedded self-authored fixture proves that
-execution path separately from USB metadata and native x64 probes. It does not
-connect the USB game's image to the interpreter. FPU/MMX/SSE, game APIs and
-guest graphics are absent. See `X86_RUNTIME.md` for scope and tests.
+execution path separately from USB metadata and native x64 probes. Version 0.5
+adds a bounded USB-image entry-point trace with a virtual TEB/PEB, FS base,
+normal/delay-import gates and explicit stops at unknown APIs. FPU/MMX/SSE,
+game APIs and guest graphics are absent. See `X86_RUNTIME.md` for scope and tests.
