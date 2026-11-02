@@ -14,6 +14,8 @@ jobs:
     name: Compile native UWP host
     runs-on: windows-2022
     timeout-minutes: 30
+    env:
+      MSBUILDDISABLENODEREUSE: '1'
     defaults:
       run:
         shell: pwsh
@@ -28,6 +30,8 @@ jobs:
           persist-credentials: false
           sparse-checkout: |
             include
+            source
+            platform
             lib/sdl2/include
             lib/simde
             lib/softfloat
@@ -36,7 +40,12 @@ jobs:
           python-version: '3.12'
       - name: Generate original package assets
         run: python tools/generate_assets.py
+      # Install missing UWP tools before launching any MSBuild worker. Cached
+      # MSBuild nodes cause the official installer to reject modification (8006).
+      - name: Compile unsigned UWP host
+        run: ./tools/ci/build_windows_host.ps1
       - name: Build and test portable contracts
+        if: ${{ !cancelled() }}
         run: |
           cmake -S . -B build/windows-contracts -A x64
           if ($LASTEXITCODE -ne 0) { throw 'Contract configure failed.' }
@@ -44,8 +53,6 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Contract build failed.' }
           ctest --test-dir build/windows-contracts -C Release --output-on-failure
           if ($LASTEXITCODE -ne 0) { throw 'Contract tests failed.' }
-      - name: Compile unsigned UWP host
-        run: ./tools/ci/build_windows_host.ps1
       - name: Build and check UWP non-executable memory adapter
         if: ${{ !cancelled() }}
         run: |

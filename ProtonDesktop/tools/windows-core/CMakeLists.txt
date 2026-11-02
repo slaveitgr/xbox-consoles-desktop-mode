@@ -71,7 +71,15 @@ set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
 set(SDL_FORCE_STATIC_VCRT OFF CACHE BOOL "" FORCE)
-add_subdirectory("${BOXEDWINE_SOURCE}/lib/sdl2" "${CMAKE_CURRENT_BINARY_DIR}/sdl2" EXCLUDE_FROM_ALL)
+set(SDL_VIDEO_OPENGL OFF CACHE BOOL "" FORCE)
+set(SDL_VIDEO_OPENGLES OFF CACHE BOOL "" FORCE)
+# SDL's pinned build declares CMake 2.8 compatibility. CMake 4 requires an
+# explicit compatibility floor for this unchanged third-party subdirectory.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+include("${CMAKE_CURRENT_SOURCE_DIR}/prepare_sdl_overlay.cmake")
+set(sdl_overlay "${CMAKE_CURRENT_BINARY_DIR}/upstream-overlay/sdl2")
+proton_prepare_sdl_overlay("${BOXEDWINE_SOURCE}/lib/sdl2" "${sdl_overlay}")
+add_subdirectory("${sdl_overlay}" "${CMAKE_CURRENT_BINARY_DIR}/sdl2" EXCLUDE_FROM_ALL)
 
 set(core_sources)
 foreach(directory emulation io kernel sdl util x11 x11wire opengl vulkan)
