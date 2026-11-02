@@ -177,7 +177,7 @@ both self-authored ELF controls. Package SHA-256:
 `4e102c5c53a312934e983a1147d766cdd50a87c1c677aa9b1abf7e2df63f0e6a`.
 Artifact SHA-256:
 `73efe7978d404a55131967140ca3925b357bc427c678e0515009f6dce1a066ff`.
-This package is not signed, installed or activated. The independent software
+At this CI packaging stage the package was not signed, installed or activated. The independent software
 SDL job in the same workflow failed its nested CMake compiler-link probe;
 the successful package does not turn that separate failure into a pass.
 
@@ -203,9 +203,23 @@ integration; guest-x64 support does not inherently require a new renderer.
 
 ## Next proof
 
-1. Package and activate the real-core probe, then execute CPU/ELF64 checks in
-   app context and on Xbox. A successful app link alone does not satisfy this.
-2. Complete the Wine lifecycle using the existing pinned kernel/ZIP/VFS, with
+The real-core probe has since been locally developer-signed, installed and
+activated on **Xbox One X** (SystemOS `26100.10448`, app `0.1.0.0`). The actual
+app-owned JSON retrieved over verified Device Portal reports **907 passed,
+0 failed**, positive ELF exit **0** after 20 instructions, and negative ELF
+exit **9** after 7 instructions. All three phases returned with complete logs;
+the user photo confirms the displayed result. Separate phase logs were not
+downloaded. This is CPU/ELF execution evidence, not sustained UI stability,
+rootfs/Wine execution or Explorer desktop qualification.
+
+The software SDL driver also passed **300 actual pixel checks on desktop
+Windows with APP headers and Store CRT**, source
+`a7316b0fb34e2ffe2b844c28e98835a0f6424d1b`, run `41492970294`.
+It does not qualify GPU, CoreWindow or Wine pixels.
+
+1. Build the new native SDL/WinRT Wine application and retain the complete
+   session/kernel/VFS graph in a real APP link.
+2. Exercise the Wine lifecycle using the existing pinned kernel/ZIP/VFS, with
    explicit load failure and owned guest-worker completion. Qualify the
    filesystem and display a real Wine application before
    attempting Explorer desktop and applying the Windows 11-inspired theme.

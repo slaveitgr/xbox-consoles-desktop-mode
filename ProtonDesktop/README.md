@@ -4,11 +4,15 @@ Separate native UWP port starter for Xbox One X. The intended session runs the
 real Wine Explorer desktop inside a **native Boxedwine64 interpreter**, presented
 through a UWP graphics surface. No HTML desktop and no WebAssembly are used.
 
-**Current milestone: real guest-x64 core running on Linux and Windows, and a
-successfully linked UWP diagnostic core using the Store C++ runtime.** The full
-Wine backend factory remains unavailable. An opt-in CoreApplication probe is
-being built to execute the actual CPU/ELF checks in app context. No ProtonDesktop
-Xbox or Wine runtime result exists yet.
+**Current milestone: the packaged x64 interpreter has executed on Xbox One X.**
+Its actual app-owned report passed 907 CPU64 checks and both self-authored ELF
+controls (guest exits 0 and 9). This qualifies those diagnostics, not sustained
+app stability or Wine. No Wine executable or rootfs has run yet.
+
+The new opt-in native Wine application uses existing SDL/WinRT and the real
+pinned kernel/VFS, targeting Wine → wineboot → Explorer in one owned session.
+Its complete Windows build and device execution are being qualified separately.
+The earlier default host's backend factory remains unavailable.
 
 The pinned interpreter compiled from 252 translation units. Its CPU64 tests
 passed **907/907**, and our own static ELF64 passed arithmetic, memory, branch,
@@ -81,10 +85,13 @@ and device lifecycle have not been exercised.
 Development source and Windows checks now live on the isolated
 [`codex/protondesktop` branch](https://github.com/slaveitgr/xbox-consoles-desktop-mode/tree/codex/protondesktop/ProtonDesktop)
 of the existing repository. The `codex/x86-runtime` XWindows OS branch is unchanged.
-No ProtonDesktop release, signing or installation has occurred. Two unqualified
+The diagnostic0.1.0.0 package was locally developer-signed and installed on One X.
+No public release or Wine desktop result exists. Two unqualified
 rootfs ZIP candidates have now been assembled locally from verified Debian
 packages; see `rootfs/README.md` for hashes, limitations and RAM-only storage.
-Executed diagnostics so far use only self-authored ELF64 and upstream CPU tests.
+Executed diagnostics use only self-authored ELF64 and upstream CPU tests; the
+One X result was retrieved from the installed app, with separate phase logs not
+yet downloaded.
 No Wine executable has run in this project.
 
 ## Next native milestone

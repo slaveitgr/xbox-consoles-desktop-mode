@@ -24,6 +24,26 @@ if(BUILD_TESTING)
   # Opt-in profile tests use real pinned headers and checked source overlays.
   # The default portable run still needs no upstream checkout/download.
   if(BOXEDWINE_SOURCE)
+    enable_language(C)
+    find_package(Threads REQUIRED)
+    add_library(protondesktop_guest_workers STATIC backend/uwp/UwpGuestWorkers.cpp)
+    target_include_directories(protondesktop_guest_workers PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
+    target_compile_features(protondesktop_guest_workers PUBLIC cxx_std_17)
+    target_link_libraries(protondesktop_guest_workers PUBLIC Threads::Threads)
+    add_executable(protondesktop_guest_worker_tests tests/UwpGuestWorkersTests.cpp)
+    target_link_libraries(protondesktop_guest_worker_tests PRIVATE protondesktop_guest_workers)
+    add_test(NAME protondesktop_guest_workers COMMAND protondesktop_guest_worker_tests)
+    add_executable(protondesktop_guest_softfloat_tests tests/UwpGuestSoftFloatTests.cpp
+      "${BOXEDWINE_SOURCE}/lib/softfloat/source/softfloat_state.c")
+    target_include_directories(protondesktop_guest_softfloat_tests PRIVATE
+      "${BOXEDWINE_SOURCE}/lib/softfloat/source/include"
+      "${BOXEDWINE_SOURCE}/lib/softfloat/source/8086-SSE")
+    target_link_libraries(protondesktop_guest_softfloat_tests PRIVATE protondesktop_guest_workers)
+    if(MSVC)
+      target_compile_definitions(protondesktop_guest_softfloat_tests PRIVATE BOXEDWINE_MSVC)
+    endif()
+    add_test(NAME protondesktop_softfloat_tls COMMAND protondesktop_guest_softfloat_tests)
+    add_subdirectory(backend/archive)
     add_subdirectory(tools/uwp-core/tests)
     if(WIN32)
       target_compile_definitions(proton-uwp-profile-tests PRIVATE
@@ -35,6 +55,12 @@ if(BUILD_TESTING)
   add_test(NAME protondesktop_boot_contract COMMAND protondesktop_contract_tests)
   find_package(Python3 COMPONENTS Interpreter QUIET)
   if(Python3_Interpreter_FOUND)
+    if(BOXEDWINE_SOURCE)
+      add_test(NAME protondesktop_owned_workers_overlay COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tests/OwnedWorkersOverlayTests.py --source "${BOXEDWINE_SOURCE}")
+      add_test(NAME protondesktop_wine_session_overlay COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_CURRENT_SOURCE_DIR}/tools/runtime/test_wine_session_overlay.py --source "${BOXEDWINE_SOURCE}")
+    endif()
     add_test(NAME protondesktop_python_gates COMMAND ${Python3_EXECUTABLE}
       -m unittest discover -s ${CMAKE_CURRENT_SOURCE_DIR}/tests -p test_*.py -v)
     add_test(NAME protondesktop_rootfs_archive_gates COMMAND ${Python3_EXECUTABLE}

@@ -36,7 +36,7 @@
     "guest_x64_windows_compile": true,
     "uwp_api_partition": false,
     "uwp_pixel_presenter": false,
-    "elf64_selftests_on_uwp": false,
+    "elf64_selftests_on_uwp": true,
     "licensed_rootfs_manifest": false,
     "wine64_application_window_on_xbox": false,
     "wine_explorer_desktop_on_xbox": false
@@ -144,10 +144,44 @@
     "package_sha256": "4e102c5c53a312934e983a1147d766cdd50a87c1c677aa9b1abf7e2df63f0e6a",
     "artifact_sha256": "73efe7978d404a55131967140ca3925b357bc427c678e0515009f6dce1a066ff",
     "executable_sha256": "56332f2fc5d30945b42585cf06fd44c3c5245e9dc773a54ce5c7f7cc34657d4a",
-    "signed": false,
-    "installed_on_xbox": false,
-    "app_activated": false,
-    "cpu_tests_executed_in_app": false,
-    "wine_executed": false
+    "signed": true,
+    "installed_on_xbox": true,
+    "app_activated": true,
+    "cpu_tests_executed_in_app": true,
+    "wine_executed": false,
+    "signed_package_sha256": "bc8f86897476e6328cab3101a883808d80305a4d475d2c50b43b362ce2e570b4"
+  },
+  "xbox_core_diagnostic_evidence": {
+    "source_commit": "ce43dcba3a8d1cf8fd4eff70140682e790def88b",
+    "upstream_pin": "58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4",
+    "device": "Xbox One X",
+    "system_os": "26100.10448.amd64fre.xb_flt_2702ge.261028-2200",
+    "installed_version": "0.1.0.0",
+    "cpu64_checks_passed": 907,
+    "cpu64_checks_failed": 0,
+    "positive_guest_exit": 0,
+    "positive_instructions": 20,
+    "negative_guest_exit": 9,
+    "negative_instructions": 7,
+    "all_phases_returned_and_logs_complete": true,
+    "evidence": "Actual app-owned JSON retrieved through verified Device Portal; user photo confirms displayed result",
+    "separate_phase_logs_downloaded": false,
+    "sustained_app_stability_qualified": false,
+    "wine_executed": false,
+    "rootfs_executed": false,
+    "explorer_desktop_verified": false
+  },
+  "windows_software_pixel_evidence": {
+    "source_commit": "a7316b0fb34e2ffe2b844c28e98835a0f6424d1b",
+    "run_id": 41492970294,
+    "checks_passed": 300,
+    "api_family": "WINAPI_FAMILY_APP",
+    "app_crt_selected": true,
+    "executed_in_desktop_windows": true,
+    "artifact_sha256": "c38e916a63e15f3dd92d3a3039ce3a33ee24a9e928ba9d9cdd53188a7ff3bc37",
+    "executable_sha256": "ffbc68c63b4ac8df66a2b22625d9c3dc5edbf2001ac9e51243594f320523e4dd",
+    "gpu_presentation_tested": false,
+    "wine_executed": false,
+    "xbox_tested": false
   }
 }

@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   windows-host:
-    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') && !contains(github.event.head_commit.message, '[sdlwinrt-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') && !contains(github.event.head_commit.message, '[sdlwinrt-only]') && !contains(github.event.head_commit.message, '[wine-app-only]') }}
     name: Compile native UWP host
     runs-on: windows-2022
     timeout-minutes: 30
@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: warn
 
   windows-core:
-    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') && !contains(github.event.head_commit.message, '[sdlwinrt-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') && !contains(github.event.head_commit.message, '[sdlwinrt-only]') && !contains(github.event.head_commit.message, '[wine-app-only]') }}
     name: Build and run actual x64 interpreter on Windows
     runs-on: windows-2022
     timeout-minutes: 30
@@ -311,4 +311,69 @@ jobs:
         with:
           name: protondesktop-sdl-winrt-compile
           path: ProtonDesktop/artifacts/sdl-winrt/
+          if-no-files-found: warn
+
+
+  wine-app:
+    name: Build actual native Wine desktop application
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[wine-app-only]') }}
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      MSBUILDDISABLENODEREUSE: '1'
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ProtonDesktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: andrewnakas/Boxedwine64
+          ref: 58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4
+          path: ProtonDesktop/external/Boxedwine64-full
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate original package assets
+        run: python tools/generate_assets.py
+      - name: Ensure official UWP SDK and C++ tools
+        run: ./tools/ci/build_windows_host.ps1
+      - name: Check real archive and guest worker contracts on Windows
+        run: |
+          $source = (Resolve-Path external/Boxedwine64-full).Path
+          cmake -S . -B build/wine-contracts -A x64 "-DBOXEDWINE_SOURCE=$source"
+          if ($LASTEXITCODE -ne 0) { throw 'Wine contracts configure failed.' }
+          cmake --build build/wine-contracts --config Release --target protondesktop_guest_worker_tests protondesktop_guest_softfloat_tests proton-archive-tests --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Wine contracts build failed.' }
+          ctest --test-dir build/wine-contracts -C Release -R 'protondesktop_guest_workers|protondesktop_softfloat_tls|protondesktop_owned_workers_overlay|protondesktop_wine_session_overlay|proton-real-minizip' --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Wine contracts failed.' }
+      - name: Build existing native SDL WinRT library
+        id: wine_sdl_build
+        if: ${{ !cancelled() }}
+        run: ./tools/ci/build_sdl_winrt.ps1
+      - name: Build retained Wine kernel and session
+        id: wine_core_build
+        if: ${{ !cancelled() && steps.wine_sdl_build.outcome == 'success' }}
+        run: ./tools/ci/build_wine_core.ps1
+      - name: Package real Wine session application
+        if: ${{ !cancelled() && steps.wine_core_build.outcome == 'success' }}
+        run: |
+          $builtins = (Get-Content artifacts/wine-core/clang-builtins-path.txt -Raw).Trim()
+          ./tools/ci/build_wine_app.ps1 -WineLibDir artifacts/wine-core/native-libs -SdlWinrtDir build/sdl-winrt/out -ClangBuiltins $builtins
+      - name: Upload actual Wine application build evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protondesktop-native-wine-build
+          path: |
+            ProtonDesktop/artifacts/sdl-winrt/
+            ProtonDesktop/artifacts/wine-core/
+            ProtonDesktop/artifacts/uwp-wine/
+            ProtonDesktop/build/sdl-winrt/out/*.dll
+            ProtonDesktop/build/sdl-winrt/out/*.lib
+            ProtonDesktop/build/wine-core/compile_commands.json
+            ProtonDesktop/build/wine-core/qualification-scope.txt
+            ProtonDesktop/build/wine-contracts/Testing/Temporary/LastTest.log
           if-no-files-found: warn

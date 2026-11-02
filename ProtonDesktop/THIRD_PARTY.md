@@ -15,7 +15,9 @@ all corresponding source, licenses and attribution, including local patches.
 The current clang-cl diagnostic links the official LLVM compiler-rt builtins
 archive. Its Apache-2.0 license with LLVM exceptions and legacy notices are
 retained in `notices/compiler-rt-LICENSE.txt`, taken from the LLVM 19.1.5 source.
-The SDL2 zlib-style notice is retained in `notices/SDL2-COPYING.txt`. Our SDL
+The SDL2 zlib-style notice is retained in `notices/SDL2-COPYING.txt`. The pinned
+zlib and MiniZip sources are built directly for rootfs ZIP access; their notices
+are retained in `notices/zlib-README.txt` and `notices/minizip-LICENSE.txt`. Our SDL
 build-local overlays modify the pinned SDL source; their source and attribution
 must accompany distributed builds. These notices do not qualify the separate
 Debian/Wine rootfs payload for redistribution.

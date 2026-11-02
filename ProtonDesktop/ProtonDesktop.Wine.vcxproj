@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Release|x64"><Configuration>Release</Configuration><Platform>x64</Platform></ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <ProjectGuid>{304D3B45-43F6-4760-A3FC-D21C86CF321D}</ProjectGuid>
+    <RootNamespace>ProtonDesktopWine</RootNamespace>
+    <ProjectName>ProtonDesktop.Wine</ProjectName>
+    <DefaultLanguage>en-US</DefaultLanguage>
+    <MinimumVisualStudioVersion>17.0</MinimumVisualStudioVersion>
+    <ApplicationType>Windows Store</ApplicationType>
+    <ApplicationTypeRevision>10.0</ApplicationTypeRevision>
+    <AppContainerApplication>true</AppContainerApplication>
+    <WindowsTargetPlatformVersion Condition="'$(WindowsTargetPlatformVersion)' == ''">10.0.26100.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformMinVersion>10.0.17763.0</WindowsTargetPlatformMinVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+    <UseDebugLibraries>false</UseDebugLibraries>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <PropertyGroup>
+    <TargetName>ProtonDesktop.Wine</TargetName>
+    <OutDir>$(ProjectDir)build\uwp-wine\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)build\uwp-wine\obj\$(Configuration)\</IntDir>
+    <AppxPackageDir>$(ProjectDir)artifacts\uwp-wine\packages\</AppxPackageDir>
+    <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
+    <AppxBundle>Never</AppxBundle>
+    <GenerateAppInstallerFile>false</GenerateAppInstallerFile>
+    <AppxAutoIncrementPackageRevision>false</AppxAutoIncrementPackageRevision>
+  </PropertyGroup>
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <LanguageStandard>stdcpp17</LanguageStandard>
+      <CompileAsWinRT>true</CompileAsWinRT>
+      <ConformanceMode>false</ConformanceMode>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <DebugInformationFormat>ProgramDatabase</DebugInformationFormat>
+      <AdditionalOptions>/bigobj /Zc:__cplusplus /Zc:twoPhase- /utf-8 %(AdditionalOptions)</AdditionalOptions>
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+      <WarningLevel>Level4</WarningLevel>
+      <ExceptionHandling>Sync</ExceptionHandling>
+      <AdditionalIncludeDirectories>$(ProjectDir);$(ProtonSdlIncludeDir);%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <PreprocessorDefinitions>WINAPI_FAMILY=WINAPI_FAMILY_APP;SDL_BUILDING_WINRT=1;_WIN32_WINNT=0x0A00;WINVER=0x0A00;UNICODE;_UNICODE;WIN32_LEAN_AND_MEAN;NOMINMAX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <RuntimeLibrary>MultiThreadedDLL</RuntimeLibrary>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateWindowsMetadata>false</GenerateWindowsMetadata>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(ProtonWineLibDir)\proton-wine-core.lib;$(ProtonWineLibDir)\protondesktop_zip.lib;$(ProtonWineLibDir)\protondesktop_uwp_memory.lib;$(ProtonWineLibDir)\protondesktop_uwp_host_services.lib;$(ProtonWineLibDir)\protondesktop_uwp_socket_pair.lib;$(ProtonSdlWinrtDir)\SDL2.lib;$(ProtonClangBuiltins);WindowsApp.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <AdditionalOptions>/APPCONTAINER %(AdditionalOptions)</AdditionalOptions>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="app\WineApp.cpp" />
+    <ClInclude Include="backend\runtime\WineSession.h" />
+    <AppxManifest Include="WinePackage.appxmanifest" />
+    <Image Include="Assets\Logo44.png" />
+    <Image Include="Assets\Logo150.png" />
+    <Image Include="Assets\StoreLogo.png" />
+    <Image Include="Assets\WideLogo.png" />
+    <Image Include="Assets\SplashScreen.png" />
+    <Content Include="$(ProtonSdlWinrtDir)\SDL2.dll">
+      <Link>SDL2.dll</Link><DeploymentContent>true</DeploymentContent>
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="LICENSE"><DeploymentContent>true</DeploymentContent></None>
+    <None Include="THIRD_PARTY.md"><DeploymentContent>true</DeploymentContent></None>
+    <None Include="notices\*.txt"><DeploymentContent>true</DeploymentContent></None>
+  </ItemGroup>
+  <Target Name="ValidateWineInputs" BeforeTargets="PrepareForBuild">
+    <Error Condition="'$(Configuration)' != 'Release' Or '$(Platform)' != 'x64'" Text="The native Wine application requires Release|x64 and Store /MD runtime archives." />
+    <Error Condition="!Exists('$(ProtonSdlIncludeDir)\SDL.h') Or !Exists('$(ProtonSdlIncludeDir)\SDL_main.h')" Text="Set ProtonSdlIncludeDir to the pinned SDL include directory." />
+    <Error Condition="!Exists('$(ProtonSdlWinrtDir)\SDL2.dll') Or !Exists('$(ProtonSdlWinrtDir)\SDL2.lib')" Text="Set ProtonSdlWinrtDir to the actual native MSVC/C++CX SDL WinRT DLL and import library. The headless static SDL is not supported here." />
+    <Error Condition="!Exists('$(ProtonWineLibDir)\proton-wine-core.lib') Or !Exists('$(ProtonWineLibDir)\protondesktop_zip.lib') Or !Exists('$(ProtonWineLibDir)\protondesktop_uwp_memory.lib') Or !Exists('$(ProtonWineLibDir)\protondesktop_uwp_host_services.lib') Or !Exists('$(ProtonWineLibDir)\protondesktop_uwp_socket_pair.lib')" Text="Set ProtonWineLibDir to the genuine Wine-enabled APP-family core, ZIP and platform archives." />
+    <Error Condition="'$(ProtonClangBuiltins)' == '' Or !Exists('$(ProtonClangBuiltins)')" Text="The official clang x64 compiler-rt builtins archive is required." />
+  </Target>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+</Project>

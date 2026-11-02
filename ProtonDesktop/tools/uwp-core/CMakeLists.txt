@@ -33,6 +33,8 @@ add_compile_definitions(WINAPI_FAMILY=WINAPI_FAMILY_APP SDL_BUILDING_WINRT=1 _WI
 # Do not inherit the desktop platform's broad default Win32 import list.
 set(CMAKE_C_STANDARD_LIBRARIES "WindowsApp.lib")
 set(CMAKE_CXX_STANDARD_LIBRARIES "WindowsApp.lib")
+option(PROTON_ENABLE_WINE_SESSION "Link the real Wine kernel/VFS/session with native SDL WinRT" OFF)
+set(PROTON_SDL_WINRT_DIR "" CACHE PATH "Actual built SDL WinRT DLL and import-library directory")
 set(PROTON_UWP_CRT_DIR "" CACHE PATH "VC x64 Store CRT library directory")
 if(NOT EXISTS "${PROTON_UWP_CRT_DIR}/msvcrt.lib" OR
    NOT EXISTS "${PROTON_UWP_CRT_DIR}/msvcprt.lib")
@@ -57,6 +59,20 @@ if(NOT EXISTS "${PROTON_CLANG_BUILTINS}")
   message(FATAL_ERROR "Select the installed official x64 compiler-rt builtins library")
 endif()
 
+# Wine uses the existing native WinRT library; the CPU-only diagnostic keeps
+# its independently qualified SDL common implementation. No duplicate SDLs.
+if(PROTON_ENABLE_WINE_SESSION)
+  if(NOT EXISTS "${PROTON_SDL_WINRT_DIR}/SDL2.lib" OR NOT EXISTS "${PROTON_SDL_WINRT_DIR}/SDL2.dll")
+    message(FATAL_ERROR "Build the pinned native SDL WinRT DLL before the Wine session")
+  endif()
+  add_library(proton_sdl_winrt SHARED IMPORTED GLOBAL)
+  set_target_properties(proton_sdl_winrt PROPERTIES
+    IMPORTED_IMPLIB "${PROTON_SDL_WINRT_DIR}/SDL2.lib"
+    IMPORTED_LOCATION "${PROTON_SDL_WINRT_DIR}/SDL2.dll")
+  set(proton_sdl_target proton_sdl_winrt)
+  set(proton_sdl_includes "${BOXEDWINE_SOURCE}/lib/sdl2/include")
+  set(proton_sdl_config "${BOXEDWINE_SOURCE}/lib/sdl2/include/SDL_config_winrt.h")
+else()
 # Genuine SDL common, event, atomic, CPU, thread and timer implementation.
 # Existing disabled subsystem implementations may return 'unsupported'; no
 # substitute graphics, filesystem, audio or kernel behavior is supplied.
@@ -90,6 +106,11 @@ add_subdirectory("${sdl_overlay}" "${CMAKE_CURRENT_BINARY_DIR}/sdl2" EXCLUDE_FRO
 # those hide unresolved APIs in this APP-family diagnostic.
 set_property(TARGET SDL2-static PROPERTY LINK_LIBRARIES WindowsApp)
 set_property(TARGET SDL2-static PROPERTY INTERFACE_LINK_LIBRARIES WindowsApp)
+
+  set(proton_sdl_target SDL2-static)
+  set(proton_sdl_includes "${CMAKE_CURRENT_BINARY_DIR}/sdl2/include" "${sdl_overlay}/include")
+  set(proton_sdl_config "${CMAKE_CURRENT_BINARY_DIR}/sdl2/include/SDL_config.h")
+endif()
 
 # Reuse actual tested replacement methods, without duplicate desktop Platform.
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
@@ -136,18 +157,36 @@ list(APPEND platform_sources "${native_system_overlay}")
 file(GLOB softfloat_sources CONFIGURE_DEPENDS
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/*.c"
   "${BOXEDWINE_SOURCE}/lib/softfloat/source/8086-SSE/*.c")
+if(PROTON_ENABLE_WINE_SESSION)
+  include("${PROTONDESKTOP_ROOT}/tools/runtime/prepare_wine_session.cmake")
+  # Checked overlays preserve the pinned VFS/kernel startup and expose accurate
+  # load outcomes. Their generated paths are supplied by the runtime helper.
+  proton_prepare_wine_session("${BOXEDWINE_SOURCE}" "${profile_overlay}" wine_session_sources)
+  list(APPEND core_sources ${wine_session_sources}
+    "${PROTONDESKTOP_ROOT}/backend/runtime/WineSession.cpp"
+    "${PROTONDESKTOP_ROOT}/backend/uwp/UwpGuestWorkers.cpp")
+  add_subdirectory("${PROTONDESKTOP_ROOT}/backend/archive" "${CMAKE_CURRENT_BINARY_DIR}/archive")
+endif()
 add_library(proton-uwp-core-objects OBJECT ${core_sources} ${platform_sources} ${softfloat_sources})
 target_compile_features(proton-uwp-core-objects PRIVATE cxx_std_20)
 target_compile_definitions(proton-uwp-core-objects PRIVATE
   BOXEDWINE_GUEST_X64=1 BOXEDWINE_64=1 BOXEDWINE_MSVC BOXEDWINE_MULTI_THREADED
   BOXEDWINE_HAS_SETJMP BOXEDWINE_DISABLE_UI SDL2=1 SDL_MAIN_HANDLED SIMDE_SSE2_NO_NATIVE
-  USING_GENERATED_CONFIG_H PROTONDESKTOP_UWP_PROFILE=1)
+  PROTONDESKTOP_UWP_PROFILE=1)
+if(PROTON_ENABLE_WINE_SESSION)
+  target_compile_definitions(proton-uwp-core-objects PRIVATE BOXEDWINE_ZLIB=1 PROTONDESKTOP_OWNED_GUEST_WORKERS=1)
+  target_include_directories(proton-uwp-core-objects BEFORE PRIVATE "${profile_overlay}/include" "${profile_overlay}/source/sdl")
+else()
+  target_compile_definitions(proton-uwp-core-objects PRIVATE USING_GENERATED_CONFIG_H)
+endif()
 target_include_directories(proton-uwp-core-objects PRIVATE
   "${PROTONDESKTOP_ROOT}"
-  "${CMAKE_CURRENT_BINARY_DIR}/sdl2/include" "${sdl_overlay}/include"
+  ${proton_sdl_includes}
   "${BOXEDWINE_SOURCE}/include" "${BOXEDWINE_SOURCE}/lib/simde"
   "${BOXEDWINE_SOURCE}/platform/sdl"
   "${BOXEDWINE_SOURCE}/source/kernel" "${BOXEDWINE_SOURCE}/source/kernel/devs"
+  "${BOXEDWINE_SOURCE}/source/io" "${BOXEDWINE_SOURCE}/source/x11"
+  "${BOXEDWINE_SOURCE}/source/sdl" "${BOXEDWINE_SOURCE}/source/x11wire"
   "${BOXEDWINE_SOURCE}/source/kernel/sys"
   "${BOXEDWINE_SOURCE}/source/emulation/cpu/normal"
   "${BOXEDWINE_SOURCE}/lib/glew/include" "${BOXEDWINE_SOURCE}/lib/pugixml/src"
@@ -157,25 +196,40 @@ target_include_directories(proton-uwp-core-objects PRIVATE
 target_compile_options(proton-uwp-core-objects PRIVATE /O1 /Gy /Gw /W3
   "$<$<COMPILE_LANGUAGE:CXX>:/EHsc>"
   "$<$<COMPILE_LANGUAGE:CXX>:/FI${PROTONDESKTOP_ROOT}/tools/windows-core/int128_compat.h>"
-  "/FI${CMAKE_CURRENT_BINARY_DIR}/sdl2/include/SDL_config.h")
-# Same genuine core objects for opt-in packaged CoreApplication diagnostics.
-# The default desktop/host build never consumes these archives.
-add_library(proton-uwp-core-archive STATIC
+  "/FI${proton_sdl_config}")
+if(PROTON_ENABLE_WINE_SESSION)
+  set(proton_archive_target proton-wine-core)
+  set(proton_link_target proton-wine-linkcheck)
+  set(proton_link_source WineLinkProbe.cpp)
+  set(proton_extra_libraries protondesktop_zip)
+else()
+  set(proton_archive_target proton-uwp-core-archive)
+  set(proton_link_target proton-uwp-core-linkcheck)
+  set(proton_link_source LinkProbe.cpp)
+endif()
+add_library(${proton_archive_target} STATIC
   $<TARGET_OBJECTS:proton-uwp-core-objects>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_memory>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_host>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_socket>)
-file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native-library-paths.txt" CONTENT
-  "$<TARGET_FILE:proton-uwp-core-archive>\n$<TARGET_FILE:SDL2-static>\n$<TARGET_FILE:protondesktop_uwp_memory>\n$<TARGET_FILE:protondesktop_uwp_host_services>\n$<TARGET_FILE:protondesktop_uwp_socket_pair>\n")
+if(PROTON_ENABLE_WINE_SESSION)
+  file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native-library-paths.txt" CONTENT
+    "$<TARGET_FILE:proton-wine-core>\n$<TARGET_FILE:protondesktop_zip>\n$<TARGET_FILE:protondesktop_uwp_memory>\n$<TARGET_FILE:protondesktop_uwp_host_services>\n$<TARGET_FILE:protondesktop_uwp_socket_pair>\n")
+else()
+  file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native-library-paths.txt" CONTENT
+    "$<TARGET_FILE:proton-uwp-core-archive>\n$<TARGET_FILE:SDL2-static>\n$<TARGET_FILE:protondesktop_uwp_memory>\n$<TARGET_FILE:protondesktop_uwp_host_services>\n$<TARGET_FILE:protondesktop_uwp_socket_pair>\n")
+endif()
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/clang-builtins-path.txt" CONTENT "${PROTON_CLANG_BUILTINS}\n")
-add_executable(proton-uwp-core-linkcheck LinkProbe.cpp
+add_executable(${proton_link_target} ${proton_link_source}
   $<TARGET_OBJECTS:proton-uwp-core-objects>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_memory>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_host>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_socket>)
-target_link_options(proton-uwp-core-linkcheck PRIVATE /APPCONTAINER /OPT:REF /OPT:ICF /SUBSYSTEM:CONSOLE)
-target_link_libraries(proton-uwp-core-linkcheck PRIVATE SDL2-static
+target_include_directories(${proton_link_target} PRIVATE "${PROTONDESKTOP_ROOT}")
+target_compile_features(${proton_link_target} PRIVATE cxx_std_17)
+target_link_options(${proton_link_target} PRIVATE /APPCONTAINER /OPT:REF /OPT:ICF /SUBSYSTEM:CONSOLE)
+target_link_libraries(${proton_link_target} PRIVATE ${proton_sdl_target} ${proton_extra_libraries}
   protondesktop_uwp_memory protondesktop_uwp_host_services protondesktop_uwp_socket_pair
   "${PROTON_CLANG_BUILTINS}" WindowsApp)
 file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/qualification-scope.txt" CONTENT
-  "source=${source_pin}\nkind=WindowsStore APP compile/link diagnostic only\npackaged=no\nrun=no\nWine=no\nSDL presentation/audio/filesystem/controller subsystems=disabled\nsoftware bitmap metadata=BGRA32 (no host renderer/GL/GDI claim)\nCPU/proc host telemetry nodes=omitted\nhost JIT/code writes=rejected before callback\nStore CRT=${PROTON_UWP_CRT_DIR}\nMissing required platform services must fail link\n")
+  "source=${source_pin}\nkind=WindowsStore APP compile/link diagnostic only\npackaged=no\nrun=no\nWine=no\nWine-session-closure=${PROTON_ENABLE_WINE_SESSION}\nSDL=${proton_sdl_target}\nStore CRT=${PROTON_UWP_CRT_DIR}\nMissing required platform services must fail link\n")

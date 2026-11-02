@@ -202,9 +202,18 @@ void ProtonSdlWinrtCompileGuard(Windows::UI::Core::CoreWindow^) {}
     $arguments | ConvertTo-Json | Set-Content (Join-Path $artifacts 'msbuild-arguments.json')
     & $msbuild @arguments 2>&1 | Tee-Object (Join-Path $artifacts 'build.log')
     if ($LASTEXITCODE -ne 0) { throw 'Actual existing SDL WinRT MSVC /ZW build failed. Inspect build.log/binlog; no fallback was attempted.' }
+    # The UWP targets append ProjectName (SDL2-UWP) to OutDir. Search only the
+    # freshly recreated output directory and retain the actual emitted pair.
+    $dllCandidates = @(Get-ChildItem -LiteralPath $output -Recurse -File -Filter SDL2.dll)
+    if ($dllCandidates.Count -ne 1) { throw 'Expected one actual SDL WinRT DLL in the fresh output tree.' }
+    $emittedDll = $dllCandidates[0].FullName
+    $emittedLibrary = [System.IO.Path]::ChangeExtension($emittedDll, '.lib')
+    if (-not (Test-Path $emittedLibrary)) { throw 'The actual native SDL import library was not produced beside its DLL.' }
+    $proof['emittedDllRelativePath'] = [System.IO.Path]::GetRelativePath($buildRoot, $emittedDll)
     $dll = Join-Path $output 'SDL2.dll'
     $library = Join-Path $output 'SDL2.lib'
-    if (-not (Test-Path $dll) -or -not (Test-Path $library)) { throw 'The native DLL/import library was not produced.' }
+    if ($emittedDll -ne $dll) { Copy-Item -LiteralPath $emittedDll -Destination $dll }
+    if ($emittedLibrary -ne $library) { Copy-Item -LiteralPath $emittedLibrary -Destination $library }
     foreach ($mode in @('headers', 'imports', 'exports')) {
         & dumpbin "/$mode" $dll | Set-Content (Join-Path $artifacts "$mode.txt")
         if ($LASTEXITCODE -ne 0) { throw "dumpbin /$mode failed." }
