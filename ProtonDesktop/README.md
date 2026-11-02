@@ -4,28 +4,34 @@ Separate native UWP port starter for Xbox One X. The intended session runs the
 real Wine Explorer desktop inside a **native Boxedwine64 interpreter**, presented
 through a UWP graphics surface. No HTML desktop and no WebAssembly are used.
 
-**Current milestone: the packaged x64 interpreter has executed on Xbox One X.**
-Its actual app-owned report passed 907 CPU64 checks and both self-authored ELF
-controls (guest exits 0 and 9). This qualifies those diagnostics, not sustained
-app stability or Wine on the console. A separate Linux-host test has now run
-the actual rootfs `wine64 --version` through the interpreter, printing
-`wine-8.0 (Debian 8.0~repack-4)` and reaching guest exit 0. That test used no
-graphics and does not qualify UWP execution. A later Linux test reached actual
-`wineboot --init` exit 0 after fixing shared server-clock mappings and inherited
-shared memory. A complete, consistently built ZIP-enabled Linux runtime then
-rendered the real Wine Explorer folder view and taskbar on a 1280×720 canvas;
-an actual SDL mouse event opened Wine's Start menu. This is Linux software-video
-evidence. Clean wineserver shutdown, prefix finalization and Xbox Wine execution
-remain unqualified.
+**Current milestone: real Wine execution and a Wine window on Xbox One X.**
+The installed native 0.2 application verified both app-local runtime ZIP hashes,
+ran `wine64 --version` to guest exit 0, and displayed Wine's initial configuration
+dialog at 1920×1080. Device Portal captured the actual console image. The app
+then terminated before the main wineboot completed or Explorer was started.
+Its recorded app memory budget was 1 GiB, with a later process snapshot near
+932 MB of private working set. Memory exhaustion is a hypothesis, not a confirmed
+termination reason. A per-package Game-mode retest is pending; a complete Xbox
+Wine desktop and sustained stability are not established.
+
+A complete, consistently built ZIP-enabled Linux runtime rendered the real Wine
+Explorer folder view and taskbar on a 1280×720 canvas; an SDL mouse event opened
+Wine's Start menu. This is Linux software-video evidence. Forced controller
+shutdown joined all 115 guest workers in a separate real-Wine test, while clean
+wineserver shutdown and prefix finalization remain unqualified. The earlier
+Xbox diagnostic passed 907 CPU64 checks and both self-authored ELF controls
+(guest exits 0 and 9).
 
 The new opt-in native Wine application uses existing SDL/WinRT and the real
 pinned kernel/VFS, targeting Wine → wineboot → Explorer in one owned session.
 Its complete Windows/UWP build, retained kernel link, native SDL WinRT library
 and unsigned package succeeded in
-[run 41512425674](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41512425674).
-That build includes the shared-memory, file-lock and process-ID fixes; it has
-not been deployed. Complete desktop composition, cross-client input and
-cancellation fixes are being integrated into the next package.
+[run 41521265311](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41521265311),
+including all six Windows contract tests. That exact build was independently
+digest-checked, signed with the existing development certificate, and installed
+as a same-identity update preserving LocalState. It includes shared-memory,
+file-lock, process-ID, full desktop composition, cross-client input and checked
+thread-cancellation overlays. This is a development test, not a public release.
 The earlier default host's backend factory remains unavailable.
 
 The pinned interpreter compiled from 252 translation units. Its CPU64 tests
