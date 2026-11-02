@@ -6,6 +6,7 @@
 #include "../samples/X86Win32Fixture.h"
 
 #include <algorithm>
+#include <array>
 #include <cstring>
 #include <iomanip>
 #include <sstream>
@@ -72,7 +73,8 @@ bool Supported(const Pe32Import& imported) {
     });
     return library == "KERNEL32.DLL" && !imported.byOrdinal &&
         (imported.name == "SetLastError" || imported.name == "GetLastError" ||
-         imported.name == "OutputDebugStringA" || imported.name == "ExitProcess");
+         imported.name == "OutputDebugStringA" || imported.name == "ExitProcess" ||
+         imported.name == "GetVersionExA");
 }
 
 std::string ImportName(const Pe32Import& imported) {
@@ -137,6 +139,50 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
             if (!guest.Read32(TebBase + 0x34, guest.lastError)) return X86HostCallAction::Fault;
             state.eax = guest.lastError;
         }
+        else if (name == "GetVersionExA") {
+            // These are the ANSI Win32 layouts, independent of the x64 host
+            // ABI. Accept only the two supported sizes; a caller-provided
+            // size must never control an unchecked host memset/copy.
+            constexpr std::uint32_t InfoSize = 148, ExSize = 156;
+            std::uint32_t size = 0;
+            if (!guest.Read32(argument, size)) {
+                guest.failure = "GetVersionExA requires a readable guest buffer size.";
+                return X86HostCallAction::Fault;
+            }
+            if (size != InfoSize && size != ExSize) {
+                // Bridge policy matches the existing x64 version shim.
+                // Native Windows does not document this exact error code.
+                guest.lastError = 122; // ERROR_INSUFFICIENT_BUFFER
+                if (!guest.Write32(TebBase + 0x34, guest.lastError))
+                    return X86HostCallAction::Fault;
+                state.eax = 0;
+            } else {
+                auto* output = guest.Pointer(argument, size, true, false);
+                const auto end = static_cast<std::uint64_t>(argument) + size;
+                const auto frameEnd = static_cast<std::uint64_t>(state.esp) + 8;
+                if (!output || (argument < frameEnd && state.esp < end)) {
+                    guest.failure = "GetVersionExA requires a complete writable guest buffer outside its live stdcall frame.";
+                    return X86HostCallAction::Fault;
+                }
+                std::array<std::uint8_t, ExSize> version{};
+                const auto put = [&version](std::size_t at, std::uint32_t value) {
+                    for (unsigned byte = 0; byte < 4; ++byte)
+                        version[at + byte] = static_cast<std::uint8_t>(value >> (byte * 8));
+                };
+                // Explicit virtual desktop profile, matching the upstream
+                // x64 shim. It is not the Xbox OS or manifest-sensitive
+                // native GetVersionEx behavior. szCSDVersion stays empty.
+                put(0, size);
+                put(4, 10);
+                put(8, 0);
+                put(12, 19045);
+                put(16, 2); // VER_PLATFORM_WIN32_NT
+                if (size == ExSize) version[154] = 1; // VER_NT_WORKSTATION
+                std::memcpy(output, version.data(), size);
+                state.eax = 1;
+                // Successful version queries preserve the guest's last error.
+            }
+        }
         else if (name == "OutputDebugStringA") {
             std::string output;
             bool ended = false;
@@ -166,7 +212,8 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
     report << "Xbox Desktop Mode / x86 Win32 execution\n"
            << "Engine: libx86emu, bounded protected-mode integer interpreter\n"
            << "Native guest code/JIT: no\nFPU/MMX/SSE: not implemented by this engine\n"
-           << "Host API profile: KERNEL32 SetLastError, GetLastError, OutputDebugStringA, ExitProcess\n"
+           << "Host API profile: KERNEL32 SetLastError, GetLastError, OutputDebugStringA, ExitProcess, GetVersionExA\n"
+           << "GetVersionExA policy: virtual Windows 10.0.19045 workstation, not the host OS; ANSI 148/156-byte structures, no manifest version negotiation.\n"
            << "Operation: " << (startupTrace ? "bounded supplied-image startup trace" : "self-authored fixture execution") << '\n';
     if (!limit || limit > 1000000) return {false, "Invalid x86 instruction budget.", report.str()};
     auto mapped = LoadPe32Image(bytes, size, startupTrace ? Pe32Profile::StartupTrace : Pe32Profile::Fixture);

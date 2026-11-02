@@ -145,12 +145,12 @@ jobs:
           Invoke-WebRequest 'https://github.com/Pedro1234-code/DesktopMode_uwp/releases/download/21286/DesktopMode_1.0.46.0_x64.msix' -OutFile $source
           $expected = '4691181e07f68f8d8c58e96ad44d4a01a9d2ccf1381669fd3ffa61d1e492beea'
           if ((Get-FileHash $source -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Upstream package digest mismatch.' }
-          ./tools/repack-desktop.ps1 -SourcePackage $source -BridgeDirectory artifacts/upstream-bridge-x86/Release -OutputDirectory artifacts/patched-desktop -Version 1.0.46.2
+          ./tools/repack-desktop.ps1 -SourcePackage $source -BridgeDirectory artifacts/upstream-bridge-x86/Release -OutputDirectory artifacts/patched-desktop -Version 1.0.46.3
       - name: Upload development desktop with patched bridge
         if: success()
         uses: actions/upload-artifact@v4
         with:
-          name: desktopmode-x64-1.0.46.2-PE32-startup-DEV-SIGNED
+          name: desktopmode-x64-1.0.46.3-PE32-startup-DEV-SIGNED
           path: |
             artifacts/patched-desktop/*.msix
             artifacts/patched-desktop/*.cer

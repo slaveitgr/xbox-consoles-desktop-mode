@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(XboxDesktopModeResearch VERSION 0.7.0 LANGUAGES C CXX)
+project(XboxDesktopModeResearch VERSION 0.8.0 LANGUAGES C CXX)
 
 include(CTest)
 option(XCDM_SANITIZERS "Enable address/undefined sanitizers for portable host tests" OFF)

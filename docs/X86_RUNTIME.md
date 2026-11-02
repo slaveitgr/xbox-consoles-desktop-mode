@@ -36,7 +36,8 @@ shows a separate execution result alongside USB metadata.
 - The interpreter implements regular integer x86 and basic protected mode.
   **FPU, MMX and SSE are absent.** This engine establishes the execution and
   host-call interfaces; it is not a San Andreas performance solution.
-- The only Win32 calls are the four above. Files, threads, callbacks, audio,
+- Version 0.8 also implements bounded ANSI `GetVersionExA`, described below.
+  The only Win32 calls are those five. Files, threads, callbacks, audio,
   DirectInput, Direct3D 9 and general DLL loading are not implemented.
 - The initial loader requires fixed-base PE32 executables, 4-KiB section and
   512-byte file alignment. It rejects DLLs, TLS, relocations and CLR. The strict
@@ -76,7 +77,7 @@ imports are bound to stop gates instead of being reported as implemented.
 Normal and delayed imports share bounded counts. Eager delay gates bypass the
 linker's lazy resolution helper for this diagnostic profile.
 
-The four implemented APIs retain their exact guest behavior. All other APIs,
+The implemented APIs retain their documented bridge behavior. All other APIs,
 unsupported CPU instructions, invalid memory accesses and exhausted budgets stop
 the trace. An explicit guest exit of zero still does not establish compatibility.
 No game files are copied or modified by the trace.
@@ -94,6 +95,27 @@ The physical 0.5 test passed the embedded integer program and simultaneous
 low-address reservations. Its San Andreas trace stopped before executing any
 game instructions because of guest section flags. The 0.6 startup-only change
 allows those guest flags; the next report must establish the actual stop point.
+
+## ANSI version-query adapter, version 0.8
+
+`GetVersionExA` marshals one 32-bit stdcall pointer into guest memory. It accepts
+exactly the 148-byte `OSVERSIONINFOA` and 156-byte `OSVERSIONINFOEXA` layouts.
+It preserves the size, returns a fixed virtual Windows 10.0.19045 / NT workstation
+profile, clears CSD/service-pack/suite/reserved fields, and preserves last-error
+on success. The profile agrees with the upstream x64 bridge; it is not the Xbox
+OS version or native manifest-dependent version negotiation.
+
+The complete output range must be writable and must not overlap the live
+stdcall return/argument frame. Invalid pointers stop with a marshalling fault
+before output changes. An unsupported size returns FALSE and guest last-error
+122 (`ERROR_INSUFFICIENT_BUFFER`), following bridge policy; Microsoft does not
+guarantee that particular error code. No native host structure or pointer is
+exposed to the guest. Guest-executed regression programs verify both layouts,
+buffer boundaries, calling convention, registers and last-error behavior.
+
+Primary API/layout references: [GetVersionExA](https://learn.microsoft.com/en-us/windows/win32/api/sysinfoapi/nf-sysinfoapi-getversionexa),
+[OSVERSIONINFOA](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-osversioninfoa),
+[OSVERSIONINFOEXA](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-osversioninfoexa).
 
 ## Build and desktop integration
 

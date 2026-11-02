@@ -17,7 +17,8 @@ struct Win32Probe32Result {
 Win32Probe32Result RunWin32Probe32() noexcept;
 
 // Bounded integer-only guest runner with SetLastError, GetLastError,
-// OutputDebugStringA and guest-only ExitProcess. Other imports fail closed.
+// OutputDebugStringA, guest-only ExitProcess and bounded ANSI GetVersionExA
+// (virtual Windows 10.0.19045 profile). Other imports fail closed.
 // Exposed for malformed-image/host-call regression tests. The UWP app does not
 // pass USB executables here. A successful exit is not game compatibility.
 Win32Probe32Result ExecuteWin32IntegerImage(const std::uint8_t* bytes,

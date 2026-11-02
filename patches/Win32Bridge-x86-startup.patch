@@ -62,7 +62,7 @@
 +            if (character >= 'a' && character <= 'z') character -= 'a' - 'A';
 +        return library == "KERNEL32.DLL" && !symbol.byOrdinal &&
 +            (symbol.name == "SetLastError" || symbol.name == "GetLastError" ||
-+             symbol.name == "OutputDebugStringA" || symbol.name == "ExitProcess");
++             symbol.name == "OutputDebugStringA" || symbol.name == "ExitProcess" || symbol.name == "GetVersionExA");
 +    }
 +
      constexpr DWORD GuestExitException = 0xE0424242u;
