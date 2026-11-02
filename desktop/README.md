@@ -82,7 +82,8 @@ desktop applications, native readiness and zero rejected messages; the LAN
 listener is stopped after the test. No Wine guest was executed on the console.
 
 Opt-in native integration smoke tests are requested only by a local
-`mihawk-native-smoke.json` file containing explicit `lan`/`browser` booleans.
+`mihawk-native-smoke.json` file containing explicit `lan`/`browser` booleans, or `shellCapture: true` for a
+fixed five-second PNG capture of the original trusted desktop view.
 They are off by default and never triggered by a website. Remove the file
 after testing. Separate desktop, browser and smoke status JSON files under
 LocalState record actual results; a successful build is not hardware proof.
@@ -93,3 +94,13 @@ light/dark surfaces inspired by Windows 11. Original SVG branding lives in
 `branding/`; upstream notices remain in the package. The future native Wine
 desktop should adapt Mihawk's Wine theme to these same visual choices; the
 frontend styling does not implement or prove that Wine desktop.
+
+
+Version **1.0.48.0** was built and installed on the same One X. The package and
+live page identify the product as XWindows OS; the original identity is retained
+for updates. Native startup accepted two messages and rejected none, with a
+1920×1080 viewport at DPR 1 and no startup error. A real WebView2 desktop PNG
+capture succeeded on the console. The temporary capture configuration was
+removed and ordinary startup revalidated. Existing personalization preferences
+are preserved; **Personalization → Background → XWindows Blue** selects the new
+wallpaper. See [`../docs/XWINDOWS_OS.md`](../docs/XWINDOWS_OS.md).

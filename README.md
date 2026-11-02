@@ -13,7 +13,7 @@ licensed reference code and theme components, with its credits preserved.
 
 | Component | Verified status |
 | --- | --- |
-| Native UWP desktop | Version 1.0.47.3 installed on One X; native RPC ready, zero rejected startup messages, 1920×1080 viewport at DPR 1 |
+| Native UWP desktop | Version 1.0.48.0 installed on One X; native RPC ready, zero rejected startup messages, 1920×1080 viewport at DPR 1 |
 | Product and design | XWindows OS branding and a compact Windows 11-inspired desktop replace the previous product presentation |
 | Edge WebView2 | Trusted desktop runs on Edge 150.0.4078.112; separate public browser initialized on One X |
 | LAN transfer | Physical upload/download and content hash passed, with missing-token, wrong-token, foreign-origin and traversal-name rejection; listener stopped after testing |
@@ -25,6 +25,8 @@ licensed reference code and theme components, with its credits preserved.
 The current desktop build and native Wine source work are documented in
 [`desktop/README.md`](desktop/README.md) and
 [`desktop/wine-explorer/README.md`](desktop/wine-explorer/README.md).
+The XWindows OS hardware result is recorded in [`docs/XWINDOWS_OS.md`](docs/XWINDOWS_OS.md).
+The proposed first application port is assessed in [`docs/AE_APP_PORT.md`](docs/AE_APP_PORT.md).
 The earlier runtime measurements below remain historical evidence, separate
 from the desktop appearance and the proposed native Wine port.
 
