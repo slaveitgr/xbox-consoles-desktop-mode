@@ -36,8 +36,9 @@ shows a separate execution result alongside USB metadata.
 - The interpreter implements regular integer x86 and basic protected mode.
   **FPU, MMX and SSE are absent.** This engine establishes the execution and
   host-call interfaces; it is not a San Andreas performance solution.
-- Version 0.8 also implements bounded ANSI `GetVersionExA`, described below.
-  The only Win32 calls are those five. Files, threads, callbacks, audio,
+- Versions 0.8 and 0.9 add bounded ANSI `GetVersionExA` and
+  `GetModuleHandleA`, described below. The only Win32 calls are those six.
+  Files, threads, callbacks, audio,
   DirectInput, Direct3D 9 and general DLL loading are not implemented.
 - The initial loader requires fixed-base PE32 executables, 4-KiB section and
   512-byte file alignment. It rejects DLLs, TLS, relocations and CLR. The strict
@@ -117,6 +118,23 @@ Primary API/layout references: [GetVersionExA](https://learn.microsoft.com/en-us
 [OSVERSIONINFOA](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-osversioninfoa),
 [OSVERSIONINFOEXA](https://learn.microsoft.com/en-us/windows/win32/api/winnt/ns-winnt-osversioninfoexa).
 
+## Guest module-handle adapter, version 0.9
+
+`GetModuleHandleA(NULL)` returns the base address of the mapped guest executable,
+matching the virtual PEB image base. The call takes one 32-bit stdcall argument,
+returns a guest value in EAX, balances the stack and preserves last-error on
+success. It never returns a native host module handle.
+
+Named module lookup is not implemented: a non-NULL argument must point to a
+readable, NUL-terminated guest ANSI name within 512 bytes (including the NUL).
+A valid name returns NULL with guest last-error 126 (`ERROR_MOD_NOT_FOUND`),
+including names of DLLs whose imports have stop gates. No guest DLL has actually
+been loaded by creating those gates. Invalid, unreadable or unterminated names
+stop with a controlled guest marshalling fault. This is a deliberately limited
+adapter, not a complete module registry or Windows loader.
+
+Primary API reference: [GetModuleHandleA](https://learn.microsoft.com/en-us/windows/win32/api/libloaderapi/nf-libloaderapi-getmodulehandlea).
+
 ## Build and desktop integration
 
 `tools/build-upstream.ps1 -WithX86Backend` applies the checked-in overlay to a
@@ -125,7 +143,7 @@ companion. The submodule itself remains unchanged. Public WinRT classes retain
 their existing ABI; two additional C exports support headless component tests.
 
 `tools/repack-desktop.ps1` verifies the original package block map and compares
-the replacement WinRT metadata contract before updating DesktopMode to 1.0.46.1.
+the replacement WinRT metadata contract before updating the DesktopMode package version.
 It retains the existing shell/Gecko payload and package identity, replaces the
 bridge, includes licenses and signs with a temporary community development
 certificate. This is a test repack, not an independently rebuilt full shell.

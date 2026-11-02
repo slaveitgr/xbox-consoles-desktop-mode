@@ -74,7 +74,7 @@ bool Supported(const Pe32Import& imported) {
     return library == "KERNEL32.DLL" && !imported.byOrdinal &&
         (imported.name == "SetLastError" || imported.name == "GetLastError" ||
          imported.name == "OutputDebugStringA" || imported.name == "ExitProcess" ||
-         imported.name == "GetVersionExA");
+         imported.name == "GetVersionExA" || imported.name == "GetModuleHandleA");
 }
 
 std::string ImportName(const Pe32Import& imported) {
@@ -138,6 +138,33 @@ X86HostCallAction HostCall(void* opaque, X86Registers& state) noexcept {
         } else if (name == "GetLastError") {
             if (!guest.Read32(TebBase + 0x34, guest.lastError)) return X86HostCallAction::Fault;
             state.eax = guest.lastError;
+        }
+        else if (name == "GetModuleHandleA") {
+            if (!argument) {
+                // This is the mapped guest executable, never a host HMODULE.
+                // A successful query does not change the guest's last error.
+                state.eax = guest.image.base;
+            } else {
+                // Named modules do not have a guest loader/registry yet. Still
+                // validate the entire bounded ANSI name before returning the
+                // truthful lookup failure; do not pass guest pointers to a
+                // host API or manufacture a handle for a DLL name.
+                constexpr std::uint32_t NameLimit = 512;
+                bool ended = false;
+                for (std::uint32_t offset = 0; offset < NameLimit; ++offset) {
+                    if (argument > UINT32_MAX - offset) break;
+                    const auto* character = guest.Pointer(argument + offset, 1, false, false);
+                    if (!character) break;
+                    if (!*character) { ended = true; break; }
+                }
+                if (!ended) {
+                    guest.failure = "GetModuleHandleA requires a readable NUL-terminated ANSI guest name within 512 bytes.";
+                    return X86HostCallAction::Fault;
+                }
+                if (!guest.Write32(TebBase + 0x34, 126)) return X86HostCallAction::Fault;
+                guest.lastError = 126; // ERROR_MOD_NOT_FOUND
+                state.eax = 0;
+            }
         }
         else if (name == "GetVersionExA") {
             // These are the ANSI Win32 layouts, independent of the x64 host
@@ -212,8 +239,9 @@ Win32Probe32Result Execute(const std::uint8_t* bytes, std::size_t size, std::uin
     report << "Xbox Desktop Mode / x86 Win32 execution\n"
            << "Engine: libx86emu, bounded protected-mode integer interpreter\n"
            << "Native guest code/JIT: no\nFPU/MMX/SSE: not implemented by this engine\n"
-           << "Host API profile: KERNEL32 SetLastError, GetLastError, OutputDebugStringA, ExitProcess, GetVersionExA\n"
+           << "Host API profile: KERNEL32 SetLastError, GetLastError, OutputDebugStringA, ExitProcess, GetVersionExA, GetModuleHandleA\n"
            << "GetVersionExA policy: virtual Windows 10.0.19045 workstation, not the host OS; ANSI 148/156-byte structures, no manifest version negotiation.\n"
+           << "GetModuleHandleA policy: NULL returns the guest executable base; named lookup is unavailable and returns NULL with ERROR_MOD_NOT_FOUND (126) after validating a NUL-terminated ANSI name within 512 readable guest bytes. No host modules are exposed.\n"
            << "Operation: " << (startupTrace ? "bounded supplied-image startup trace" : "self-authored fixture execution") << '\n';
     if (!limit || limit > 1000000) return {false, "Invalid x86 instruction budget.", report.str()};
     auto mapped = LoadPe32Image(bytes, size, startupTrace ? Pe32Profile::StartupTrace : Pe32Profile::Fixture);

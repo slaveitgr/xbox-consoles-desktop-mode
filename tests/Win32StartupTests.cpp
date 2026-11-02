@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <iostream>
 #include <stdexcept>
-#include <stdexcept>
 #include <string>
 #include <utility>
 #include <vector>
@@ -23,7 +22,7 @@ void Put32(Bytes& bytes, std::size_t at, std::uint32_t value) {
 }
 bool Has(const std::string& text, const char* part) { return text.find(part) != std::string::npos; }
 void Call(Bytes& bytes, std::uint32_t iat) { bytes.insert(bytes.end(), {0xff, 0x15}); Dword(bytes, iat); }
-void Exit(Bytes& bytes, std::uint8_t code) { bytes.insert(bytes.end(), {0x6a, code}); Call(bytes, 0x40206c); bytes.insert(bytes.end(), {0xeb, 0xfe}); }
+void Exit(Bytes& bytes, std::uint8_t code, std::uint32_t base = 0x400000) { bytes.insert(bytes.end(), {0x6a, code}); Call(bytes, base + 0x206c); bytes.insert(bytes.end(), {0xeb, 0xfe}); }
 Bytes Program(Bytes code) {
     if (code.size() > 0x200) throw std::length_error("guest test exceeds its code section");
     auto bytes = xcdm::samples::X86Win32PeBytes();
@@ -44,7 +43,6 @@ auto Trace(const Bytes& bytes, std::uint64_t limit = 50000) {
 constexpr std::uint32_t VersionIat = 0x402068;
 constexpr std::uint32_t VersionBuffer = 0x402120;
 constexpr std::uint32_t ExpectedBuffer = 0x403100;
-constexpr std::uint32_t SavedEsp = 0x402100;
 constexpr std::uint32_t InitialError = 0x1234abcd;
 
 // These programs verify the public stdcall contract from inside the guest.
@@ -72,39 +70,40 @@ struct GuestAssertions {
         const auto distance = code.size() + 2 - loop;
         code.insert(code.end(), {0x75, static_cast<std::uint8_t>(256U - distance)});
     }
-    Bytes Finish() {
-        Exit(code, 0);
+    Bytes Finish(std::uint32_t base = 0x400000) {
+        Exit(code, 0, base);
         const auto failure = code.size();
-        Exit(code, 1);
+        Exit(code, 1, base);
         for (auto at : failures) Put32(code, at, static_cast<std::uint32_t>(failure - (at + 4)));
         return code;
     }
 };
 
 void Push(Bytes& code, std::uint32_t value) { code.push_back(0x68); Dword(code, value); }
-void BeginVersionCall(GuestAssertions& guest, std::uint32_t pointer) {
-    Push(guest.code, InitialError); Call(guest.code, 0x402060);
+void BeginSingleArgumentCall(GuestAssertions& guest, std::uint32_t pointer, std::uint32_t base = 0x400000) {
+    Push(guest.code, InitialError); Call(guest.code, base + 0x2060);
     for (const auto reg : {3U, 5U, 6U, 7U}) {
         guest.code.push_back(static_cast<std::uint8_t>(0xb8U + reg));
         Dword(guest.code, 0x11223300U + reg);
     }
-    guest.code.insert(guest.code.end(), {0x89, 0x25}); Dword(guest.code, SavedEsp); // mov [saved],esp
-    Push(guest.code, pointer); Call(guest.code, VersionIat);
+    guest.code.insert(guest.code.end(), {0x89, 0x25}); Dword(guest.code, base + 0x2100); // mov [saved],esp
+    Push(guest.code, pointer); Call(guest.code, base + 0x2068);
 }
-void CheckVersionReturn(GuestAssertions& guest, bool success, std::uint32_t error) {
-    guest.Eax(success ? 1 : 0);
-    guest.code.insert(guest.code.end(), {0x3b, 0x25}); Dword(guest.code, SavedEsp); // cmp esp,[saved]
+void CheckApiReturn(GuestAssertions& guest, std::uint32_t value, std::uint32_t error, std::uint32_t base = 0x400000) {
+    guest.Eax(value);
+    guest.code.insert(guest.code.end(), {0x3b, 0x25}); Dword(guest.code, base + 0x2100); // cmp esp,[saved]
     guest.Equal();
     for (const auto reg : {3U, 5U, 6U, 7U}) guest.Register(reg, 0x11223300U + reg);
-    Call(guest.code, 0x402064); guest.Eax(error);
+    Call(guest.code, base + 0x2064); guest.Eax(error);
 }
-Bytes VersionProgram(Bytes code) {
+Bytes ThirdImportProgram(Bytes code, const std::string& name) {
     auto image = Program(std::move(code));
-    const std::string name = "GetVersionExA";
+    if (name.size() >= 0x1e) throw std::length_error("guest import name exceeds its fixture slot");
     std::fill(image.begin() + 0x4c2, image.begin() + 0x4e0, 0);
     std::copy(name.begin(), name.end(), image.begin() + 0x4c2);
     return image;
 }
+Bytes VersionProgram(Bytes code) { return ThirdImportProgram(std::move(code), "GetVersionExA"); }
 void Place(Bytes& image, std::size_t offset, const Bytes& value) {
     if (offset > image.size() || value.size() > image.size() - offset)
         throw std::length_error("guest test data exceeds fixture");
@@ -120,8 +119,8 @@ void VersionSuccess(std::uint32_t size, std::uint32_t pointer, bool sectionEnd, 
     Put32(expected, 4, size); Put32(expected, 8, 10); Put32(expected, 12, 0);
     Put32(expected, 16, 19045); Put32(expected, 20, 2);
     if (size == 156) expected.at(4 + 154) = 1; // VER_NT_WORKSTATION
-    GuestAssertions guest; BeginVersionCall(guest, pointer);
-    CheckVersionReturn(guest, true, InitialError);
+    GuestAssertions guest; BeginSingleArgumentCall(guest, pointer);
+    CheckApiReturn(guest, 1, InitialError);
     guest.Memory(pointer - 4, ExpectedBuffer, span);
     auto image = VersionProgram(guest.Finish());
     Place(image, 0x400 + (pointer - 4 - 0x402000), initial);
@@ -132,8 +131,8 @@ void VersionSuccess(std::uint32_t size, std::uint32_t pointer, bool sectionEnd, 
 }
 void VersionInvalidSize(std::uint32_t size) {
     Bytes unchanged(164, 0xa5); Put32(unchanged, 4, size);
-    GuestAssertions guest; BeginVersionCall(guest, VersionBuffer);
-    CheckVersionReturn(guest, false, 122); // ERROR_INSUFFICIENT_BUFFER, virtual profile policy
+    GuestAssertions guest; BeginSingleArgumentCall(guest, VersionBuffer);
+    CheckApiReturn(guest, 0, 122); // ERROR_INSUFFICIENT_BUFFER, virtual profile policy
     guest.Memory(VersionBuffer - 4, ExpectedBuffer, static_cast<std::uint32_t>(unchanged.size()));
     auto image = VersionProgram(guest.Finish());
     Place(image, 0x51c, unchanged); Place(image, 0x700, unchanged);
@@ -160,18 +159,18 @@ void GetVersionExTests() {
 
     // Wrong-size rejection requires only its four-byte size field, including
     // at the end of a readable, nonwritable section.
-    GuestAssertions shortSize; BeginVersionCall(shortSize, 0x4031fc);
-    CheckVersionReturn(shortSize, false, 122);
+    GuestAssertions shortSize; BeginSingleArgumentCall(shortSize, 0x4031fc);
+    CheckApiReturn(shortSize, 0, 122);
     shortSize.code.push_back(0xa1); Dword(shortSize.code, 0x4031fc); shortSize.Eax(147);
     auto image = VersionProgram(shortSize.Finish()); Put32(image, 0x7fc, 147);
     Check(Trace(image).passed, "GetVersionExA wrong-size failure needs only four readable bytes and performs no write");
 
     for (const auto pointer : {0U, 0x20000000U, 0xfffffffeU, 0x4031feU}) {
-        GuestAssertions guest; BeginVersionCall(guest, pointer); Exit(guest.code, 0);
+        GuestAssertions guest; BeginSingleArgumentCall(guest, pointer); Exit(guest.code, 0);
         VersionFault(VersionProgram(guest.code), "GetVersionExA faults on null, unmapped or wrapping size-field address");
     }
     for (const auto pointer : {0x403020U, 0x400040U, 0x4021fcU}) {
-        GuestAssertions guest; BeginVersionCall(guest, pointer); Exit(guest.code, 0);
+        GuestAssertions guest; BeginSingleArgumentCall(guest, pointer); Exit(guest.code, 0);
         image = VersionProgram(guest.code);
         const auto raw = pointer == 0x403020U ? 0x620U : pointer == 0x400040U ? 0x40U : 0x5fcU;
         Put32(image, raw, 148);
@@ -186,6 +185,84 @@ void GetVersionExTests() {
     Dword(overlap.code, 148); overlap.code.push_back(0x50); // push eax
     Call(overlap.code, VersionIat); Exit(overlap.code, 0);
     VersionFault(VersionProgram(overlap.code), "GetVersionExA rejects output overlapping its live return address and argument frame");
+}
+
+Bytes ModuleProgram(Bytes code) { return ThirdImportProgram(std::move(code), "GetModuleHandleA"); }
+void ModuleNull(std::uint32_t base, const char* label) {
+    GuestAssertions guest; BeginSingleArgumentCall(guest, 0, base);
+    guest.Eax(base);
+    guest.code.push_back(0xa3); Dword(guest.code, base + 0x2104); // save returned guest handle
+    CheckApiReturn(guest, base, InitialError, base);
+    guest.code.push_back(0xa1); Dword(guest.code, base + 0x2104);
+    guest.code.insert(guest.code.end(), {0x0f, 0xb7, 0x00}); // movzx eax,word [handle]
+    guest.Eax(0x5a4d); // handle addresses the mapped DOS header
+    guest.code.push_back(0xa1); Dword(guest.code, base + 0x2104);
+    guest.code.insert(guest.code.end(), {0x8b, 0x50, 0x3c, 0x01, 0xd0, 0x8b, 0x00}); // handle + e_lfanew -> PE signature
+    guest.Eax(0x4550);
+    auto image = ModuleProgram(guest.Finish(base));
+    Put32(image, 0xb4, base); // a second fixed preferred base, not relocation support
+    const auto result = Trace(image);
+    Check(result.passed, label);
+    if (!result.passed) std::cerr << result.report;
+}
+void ModuleName(const Bytes& name, const char* label) {
+    GuestAssertions guest; BeginSingleArgumentCall(guest, 0x403020);
+    CheckApiReturn(guest, 0, 126);
+    guest.Memory(0x403020, ExpectedBuffer, static_cast<std::uint32_t>(name.size()));
+    auto image = ModuleProgram(guest.Finish());
+    Place(image, 0x620, name); Place(image, 0x700, name);
+    const auto result = Trace(image);
+    Check(result.passed, label);
+    if (!result.passed) std::cerr << result.report;
+}
+void ModuleFault(Bytes image, const char* label) {
+    const auto result = Trace(image);
+    const bool faulted = !result.passed &&
+        Has(result.report, "Host-call failure: GetModuleHandleA") &&
+        Has(result.report, "NUL-terminated ANSI guest name within 512 bytes") &&
+        Has(result.report, "Guest last error: 0x1234abcd") &&
+        !Has(result.report, "\n  ExitProcess\n");
+    Check(faulted, label);
+    if (!faulted) std::cerr << result.report;
+}
+void GetModuleHandleTests() {
+    ModuleNull(0x400000, "GetModuleHandleA(NULL) returns the readable guest image header and preserves last-error/stdcall/nonvolatile registers");
+    ModuleNull(0x5100000, "GetModuleHandleA(NULL) follows a second fixed preferred guest base rather than a constant or host module");
+    for (const auto* name : {"", "KERNEL32.dll", "kernel32", "x86-win32-fixture.exe", "gta_sa.exe", "C:\\games\\gta_sa.exe"}) {
+        Bytes text(name, name + std::char_traits<char>::length(name)); text.push_back(0);
+        ModuleName(text, "GetModuleHandleA named lookup returns NULL/error 126 without modifying the input or inventing handles");
+    }
+    ModuleName(Bytes{'n', 0x80, 0xff, 0}, "GetModuleHandleA accepts non-ASCII ANSI name bytes before returning the explicit named-lookup failure");
+
+    // NUL at the exact last readable byte is enough; scanning past it would
+    // cross the section boundary and fault.
+    GuestAssertions terminal; BeginSingleArgumentCall(terminal, 0x4031ff);
+    CheckApiReturn(terminal, 0, 126);
+    auto image = ModuleProgram(terminal.Finish()); image[0x7ff] = 0;
+    Check(Trace(image).passed, "GetModuleHandleA accepts an empty name terminated at the final readable byte");
+
+    GuestAssertions longest; BeginSingleArgumentCall(longest, 0x403000);
+    CheckApiReturn(longest, 0, 126);
+    image = ModuleProgram(longest.Finish());
+    std::fill(image.begin() + 0x600, image.end(), 'a'); image[0x7ff] = 0;
+    Check(Trace(image).passed, "GetModuleHandleA accepts a NUL at offset 511 within its 512-byte bound");
+
+    for (const auto pointer : {0x20000000U, 0xffffffffU, 0x403200U, 0x4031ffU}) {
+        GuestAssertions guest; BeginSingleArgumentCall(guest, pointer); Exit(guest.code, 0);
+        image = ModuleProgram(guest.code); image[0x7ff] = 'x';
+        ModuleFault(image, "GetModuleHandleA faults on unmapped/wrapping pointers or an unterminated name at the mapped boundary");
+    }
+    GuestAssertions unterminated; BeginSingleArgumentCall(unterminated, 0x403000); Exit(unterminated.code, 0);
+    image = ModuleProgram(unterminated.code);
+    std::fill(image.begin() + 0x600, image.end(), 'a');
+    ModuleFault(image, "GetModuleHandleA faults when all 512 readable name bytes lack NUL");
+
+    // Keep byte 512 mapped and terminated to distinguish the API's scan cap
+    // from an incidental section-boundary read failure.
+    image.resize(0xa00, 0);
+    Put32(image, 0x178 + 80 + 8, 0x400); Put32(image, 0x178 + 80 + 16, 0x400);
+    image[0x800] = 0;
+    ModuleFault(image, "GetModuleHandleA rejects NUL at offset 512 even when that byte is readable");
 }
 }
 int main() {
@@ -233,6 +310,7 @@ int main() {
     const auto bad = xcdm::runtime::TraceWin32Startup32(nullptr, 100);
     Check(!bad.passed && Has(bad.report, "Loader stopped"), "startup refuses invalid file input with a useful report");
     GetVersionExTests();
+    GetModuleHandleTests();
     std::cout << checks << " bounded Win32 startup checks; " << failures << " failures\n";
     return failures ? 1 : 0;
 }
