@@ -16,6 +16,7 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 | Desktop and Win32Bridge source | Pinned upstream source; bridge compiles, independent full desktop build still pending |
 | Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
 | Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
+| USB game inspection | Game page reads `gta_sa.exe` from a user-selected folder and reports PE32/PE32+ metadata; console validation is pending |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -49,6 +50,10 @@ These tests check the constrained parser and platform behavior. Linux reports
 native execution as **Unsupported**, never as an Xbox pass. Windows host results
 must also be recorded separately from physical Xbox results.
 
+The separate game preflight parser inspects both PE32 and PE32+ headers and
+imports without executing them. Its tests include malformed input. Metadata
+recognition does not establish game compatibility.
+
 ## Build for Developer Mode
 
 See [`docs/BUILD.md`](docs/BUILD.md) for Windows prerequisites, companion packaging
@@ -69,6 +74,13 @@ The companion runs only self-authored diagnostic code. Its PE fixture has no
 imports, relocations, TLS or CRT and returns `42` through a deliberately tiny
 test entry-point contract. A pass proves that narrow contract, not Win32 app
 compatibility. It does not execute arbitrary files from your game library.
+
+Version 0.3 adds a **Game preflight** page. Choose the folder containing
+`gta_sa.exe`, including a USB folder exposed by the device picker. The app reads
+the executable in place and saves `game-preflight.txt` to its own LocalState;
+copying the game through the desktop is unnecessary. The system picker and USB
+grant still require validation on the actual Xbox. See
+[`docs/GAME_PREFLIGHT.md`](docs/GAME_PREFLIGHT.md) for controls and report scope.
 
 ## Development direction
 

@@ -1,11 +1,12 @@
 cmake_minimum_required(VERSION 3.20)
-project(XboxDesktopModeResearch VERSION 0.1.0 LANGUAGES CXX)
+project(XboxDesktopModeResearch VERSION 0.3.0 LANGUAGES CXX)
 
 include(CTest)
 option(XCDM_SANITIZERS "Enable address/undefined sanitizers for portable host tests" OFF)
 
 add_library(xcdm_runtime STATIC
     runtime/PeImage.cpp
+    runtime/GamePreflight.cpp
     runtime/RuntimeProbe.cpp
     samples/Return42Fixture.cpp)
 target_include_directories(xcdm_runtime PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -29,4 +30,7 @@ if(BUILD_TESTING)
     add_executable(runtime_probe_tests tests/RuntimeProbeTests.cpp)
     target_link_libraries(runtime_probe_tests PRIVATE xcdm_runtime)
     add_test(NAME runtime_probe_contract COMMAND runtime_probe_tests)
+    add_executable(game_preflight_tests tests/GamePreflightTests.cpp)
+    target_link_libraries(game_preflight_tests PRIVATE xcdm_runtime)
+    add_test(NAME game_preflight_contract COMMAND game_preflight_tests)
 endif()

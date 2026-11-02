@@ -19,7 +19,13 @@
 #include <winrt/Windows.Foundation.Collections.h>
 #include <winrt/Windows.Gaming.Input.h>
 #include <winrt/Windows.Graphics.Display.h>
+#include <winrt/Windows.Security.Cryptography.h>
+#include <winrt/Windows.Security.Cryptography.Core.h>
 #include <winrt/Windows.Storage.h>
+#include <winrt/Windows.Storage.AccessCache.h>
+#include <winrt/Windows.Storage.Pickers.h>
+#include <winrt/Windows.Storage.Search.h>
+#include <winrt/Windows.Storage.Streams.h>
 #include <winrt/Windows.System.h>
 #include <winrt/Windows.System.Profile.h>
 #include <winrt/Windows.UI.Core.h>
@@ -27,6 +33,7 @@
 #include <winrt/Windows.UI.ViewManagement.h>
 
 #include "runtime/RuntimeProbe.h"
+#include "runtime/GamePreflight.h"
 
 #include <algorithm>
 #include <array>
@@ -34,6 +41,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cwctype>
+#include <exception>
 #include <ctime>
 #include <iomanip>
 #include <iterator>
@@ -68,6 +77,15 @@ constexpr std::array<D2D1_RECT_F, 3> Buttons{{
     {1496.0f, 770.0f, 1768.0f, 840.0f}
 }};
 constexpr D2D1_RECT_F PageButton{1476.0f, 134.0f, 1796.0f, 194.0f};
+constexpr std::array<D2D1_RECT_F, 3> GameButtons{{
+    {96.0f, 755.0f, 610.0f, 817.0f},
+    {638.0f, 755.0f, 1138.0f, 817.0f},
+    {1412.0f, 755.0f, 1796.0f, 817.0f}
+}};
+constexpr wchar_t GameFolderToken[] = L"GamePreflightFolder";
+constexpr std::uint64_t MaxGameImageBytes = 64ULL * 1024 * 1024;
+constexpr std::uint32_t MaxGameFolderEntries = 256;
+enum class Page { Game, Runtime, Controllers };
 constexpr std::array<D2D1_RECT_F, 4> ControllerButtons{{
     {96.0f, 755.0f, 400.0f, 817.0f},
     {420.0f, 755.0f, 724.0f, 817.0f},
@@ -238,7 +256,18 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
             const auto key = args.VirtualKey();
             if (key == VirtualKey::C) {
                 TogglePage();
-            } else if (m_controllersPage) {
+            } else if (m_page == Page::Game) {
+                if (key == VirtualKey::O) InspectGameFolderAsync(true);
+                else if (key == VirtualKey::R || key == VirtualKey::F5) InspectGameFolderAsync(false);
+                else if (key == VirtualKey::S) SaveGameReportAsync();
+                else if (key == VirtualKey::Enter || key == VirtualKey::Space) ActivateGameSelection();
+                else if (key == VirtualKey::Tab || key == VirtualKey::Right || key == VirtualKey::Down)
+                    m_gameSelection = (m_gameSelection + 1) % 3;
+                else if (key == VirtualKey::Left || key == VirtualKey::Up)
+                    m_gameSelection = (m_gameSelection + 2) % 3;
+                else if (key == VirtualKey::Escape) TogglePage();
+                else return;
+            } else if (m_page == Page::Controllers) {
                 if (key == VirtualKey::S) SaveReportAsync();
                 else if (key == VirtualKey::R || key == VirtualKey::F5) RefreshControllers(true);
                 else if (key == VirtualKey::Tab || key == VirtualKey::Right || key == VirtualKey::Down)
@@ -275,7 +304,17 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
                 args.Handled(true);
                 return;
             }
-            if (m_controllersPage) {
+            if (m_page == Page::Game) {
+                for (std::size_t index = 0; index < GameButtons.size(); ++index) {
+                    if (!Contains(GameButtons[index], m_pointer)) continue;
+                    m_gameSelection = static_cast<int>(index);
+                    ActivateGameSelection();
+                    args.Handled(true);
+                    break;
+                }
+                return;
+            }
+            if (m_page == Page::Controllers) {
                 for (std::size_t index = 0; index < ControllerButtons.size(); ++index) {
                     if (!Contains(ControllerButtons[index], m_pointer)) continue;
                     if (index == 0) SelectController(-1);
@@ -338,7 +377,7 @@ struct DiagnosticsApp : implements<DiagnosticsApp, IFrameworkView> {
                 if (m_closed || !m_visible || m_suspended) continue;
                 RefreshControllers(false);
                 PollGamepad();
-                if (m_controllersPage) ReadSelectedController();
+                if (m_page == Page::Controllers) ReadSelectedController();
                 Render();
             } else {
                 m_window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessOneAndAllPending);
@@ -412,11 +451,12 @@ private:
     }
 
     void TogglePage() {
-        m_controllersPage = !m_controllersPage;
+        m_page = m_page == Page::Game ? Page::Runtime :
+            (m_page == Page::Runtime ? Page::Controllers : Page::Game);
         // Changing pages must not reinterpret a held button as a new action.
         m_controllerConnected = false;
         m_previousButtons = 0;
-        if (m_controllersPage) {
+        if (m_page == Page::Controllers) {
             RefreshControllers(true);
             ReadSelectedController();
         }
@@ -633,7 +673,16 @@ private:
                 TogglePage();
                 return;
             }
-            if (m_controllersPage) {
+            if (m_page == Page::Game) {
+                if (edge(GamepadButtons::DPadRight) || edge(GamepadButtons::DPadDown))
+                    m_gameSelection = (m_gameSelection + 1) % 3;
+                if (edge(GamepadButtons::DPadLeft) || edge(GamepadButtons::DPadUp))
+                    m_gameSelection = (m_gameSelection + 2) % 3;
+                if (edge(GamepadButtons::A)) ActivateGameSelection();
+                if (edge(GamepadButtons::X)) SaveGameReportAsync();
+                return;
+            }
+            if (m_page == Page::Controllers) {
                 if (edge(GamepadButtons::LeftShoulder)) SelectController(-1);
                 else if (edge(GamepadButtons::RightShoulder)) SelectController(1);
                 if (edge(GamepadButtons::X)) SaveReportAsync();
@@ -651,6 +700,201 @@ private:
             m_controllerConnected = false;
             m_gamepad = nullptr;
         }
+    }
+
+    void ActivateGameSelection() {
+        if (m_gameSelection == 0) InspectGameFolderAsync(true);
+        else if (m_gameSelection == 1) InspectGameFolderAsync(false);
+        else SaveGameReportAsync();
+    }
+
+    fire_and_forget InspectGameFolderAsync(bool chooseFolder) {
+        if (m_gameBusy || m_gameSaving || m_closed) co_return;
+        auto lifetime = get_strong();
+        m_gameBusy = true;
+        m_gameStatus = chooseFolder ? L"Choose the USB folder containing gta_sa.exe." :
+            L"Opening the selected game folder...";
+        StorageFolder folder = m_gameFolder;
+        std::wstring failure;
+        try {
+            // Pickers must be created and displayed on the CoreWindow UI thread.
+            // Their grant authorizes this folder directly; game files stay on USB.
+            if (chooseFolder) {
+                Windows::Storage::Pickers::FolderPicker picker;
+                picker.ViewMode(Windows::Storage::Pickers::PickerViewMode::List);
+                picker.SuggestedStartLocation(Windows::Storage::Pickers::PickerLocationId::ComputerFolder);
+                picker.FileTypeFilter().Append(L"*");
+                folder = co_await picker.PickSingleFolderAsync();
+                if (!folder) {
+                    m_gameStatus = L"Folder selection cancelled. Choose a folder to inspect its game files.";
+                    m_gameBusy = false;
+                    co_return;
+                }
+            } else if (!folder) {
+                const auto grants = Windows::Storage::AccessCache::StorageApplicationPermissions::FutureAccessList();
+                if (grants.ContainsItem(GameFolderToken))
+                    folder = co_await grants.GetFolderAsync(GameFolderToken);
+                else {
+                    m_gameStatus = L"Choose a game folder first. No saved folder is available.";
+                    m_gameBusy = false;
+                    co_return;
+                }
+            }
+            if (m_closed) { m_gameBusy = false; co_return; }
+            m_gameFolder = folder;
+            m_gameFolderLabel = folder.DisplayName().c_str();
+            m_gameFolderPath = folder.Path().c_str();
+            try {
+                Windows::Storage::AccessCache::StorageApplicationPermissions::FutureAccessList().AddOrReplace(
+                    GameFolderToken, folder);
+            } catch (...) {
+                // A session grant is still usable if persistence is unavailable.
+            }
+        } catch (hresult_error const& error) {
+            failure = ApiError(L"Folder access failed", error) + L". " + error.message().c_str();
+        } catch (...) {
+            failure = L"Folder access failed. The Xbox file picker or USB location may be unavailable.";
+        }
+
+        const auto dispatcher = m_window.Dispatcher();
+        std::wstring summary;
+        std::wstring details;
+        std::wstring inventory;
+        bool metadataRecognized = false;
+        if (failure.empty()) {
+            m_gameStatus = L"Reading gta_sa.exe and folder metadata directly from the selected location...";
+            m_gameSummary = L"Inspecting executable metadata...";
+            try {
+                co_await resume_background();
+                // Storage I/O and PE parsing never block the UI render loop.
+                const auto file = folder.GetFileAsync(L"gta_sa.exe").get();
+                const auto stream = file.OpenReadAsync().get();
+                const auto size = stream.Size();
+                if (size == 0 || size > MaxGameImageBytes) {
+                    summary = L"Executable skipped: file size is outside the 1 byte to 64 MiB inspection limit.";
+                    details = summary + L"\nFile size: " + std::to_wstring(size) + L" bytes\n";
+                } else {
+                    Windows::Storage::Streams::DataReader reader(stream.GetInputStreamAt(0));
+                    const auto wanted = static_cast<std::uint32_t>(size);
+                    const auto loaded = reader.LoadAsync(wanted).get();
+                    if (loaded != wanted) {
+                        summary = L"Executable read was incomplete. Check that the USB remains connected.";
+                        details = summary + L"\nExpected/read bytes: " + std::to_wstring(wanted) + L"/" +
+                            std::to_wstring(loaded) + L"\n";
+                    } else {
+                        std::vector<std::uint8_t> bytes(wanted);
+                        reader.ReadBytes(bytes);
+                        const auto result = xcdm::runtime::InspectGamePe(bytes.data(), bytes.size());
+                        metadataRecognized = result.ok;
+                        summary = Wide(result.summary);
+                        details = L"File name: gta_sa.exe\nFile size: " + std::to_wstring(size) +
+                            L" bytes\n" + Wide(result.report);
+                        try {
+                            const auto algorithm = Windows::Security::Cryptography::Core::HashAlgorithmProvider::OpenAlgorithm(
+                                Windows::Security::Cryptography::Core::HashAlgorithmNames::Sha256());
+                            const auto hash = algorithm.HashData(
+                                Windows::Security::Cryptography::CryptographicBuffer::CreateFromByteArray(bytes));
+                            details += L"\nSHA-256: ";
+                            details += Windows::Security::Cryptography::CryptographicBuffer::EncodeToHexString(hash).c_str();
+                            details += L"\n";
+                        } catch (hresult_error const& error) {
+                            details += L"\n" + ApiError(L"SHA-256 unavailable", error) + L"\n";
+                        }
+                    }
+                }
+                std::wostringstream listing;
+                listing << L"Root folder files (first " << MaxGameFolderEntries << L" at most):\n";
+                try {
+                    const auto files = folder.GetFilesAsync(
+                        Windows::Storage::Search::CommonFileQuery::DefaultQuery, 0, MaxGameFolderEntries).get();
+                    std::uint32_t modules = 0;
+                    for (auto const& item : files) {
+                        const std::wstring name(item.Name().c_str());
+                        std::wstring extension(item.FileType().c_str());
+                        std::transform(extension.begin(), extension.end(), extension.begin(),
+                            [](wchar_t c) { return static_cast<wchar_t>(towlower(c)); });
+                        if (extension == L".dll" || extension == L".asi") ++modules;
+                        listing << L"  " << name.substr(0, 260) << L"\n";
+                    }
+                    listing << L"DLL/ASI files in this bounded listing: " << modules << L"\n";
+                    if (files.Size() == MaxGameFolderEntries)
+                        listing << L"Listing reached its limit; more files may be present.\n";
+                } catch (hresult_error const& error) {
+                    listing << ApiError(L"Folder listing unavailable", error) << L"\n";
+                }
+                listing << L"Known game folders (presence only):\n";
+                for (auto const* name : {L"data", L"models", L"audio", L"text", L"scripts", L"plugins"}) {
+                    try {
+                        const auto item = folder.TryGetItemAsync(name).get();
+                        listing << L"  " << name << L": " <<
+                            (item && item.IsOfType(StorageItemTypes::Folder) ? L"folder present" : L"not a folder / absent") << L"\n";
+                    } catch (...) { listing << L"  " << name << L": query failed\n"; }
+                }
+                inventory = listing.str();
+            } catch (hresult_error const& error) {
+                failure = ApiError(L"Game read failed", error) + L". " + error.message().c_str();
+            } catch (std::exception const&) {
+                failure = L"Game inspection failed. Reconnect the USB and choose the folder containing gta_sa.exe.";
+            } catch (...) {
+                failure = L"Game inspection failed with an unknown storage or metadata error.";
+            }
+        }
+        // This also covers failures thrown after switching to a background thread.
+        try { co_await resume_foreground(dispatcher); }
+        catch (...) {
+            OutputDebugStringW(L"Game preflight could not return to the UI dispatcher.\n");
+            co_return;
+        }
+        m_gameBusy = false;
+        if (m_closed) co_return;
+        m_gameMetadataRecognized = metadataRecognized && failure.empty();
+        m_gameSummary = failure.empty() ? summary : failure;
+        m_gameScanTime = UtcNow();
+        std::wostringstream report;
+        report << L"Xbox Desktop Mode / Game preflight\n"
+               << L"Report created: " << m_gameScanTime << L"\n"
+               << L"Device family: " << m_deviceFamily << L"\nOS version: " << m_osVersion << L"\n"
+               << L"Application architecture: x64\n"
+               << L"Selected folder: " << m_gameFolderPath << L"\n"
+               << L"Metadata recognized: " << (m_gameMetadataRecognized ? L"yes" : L"no") << L"\n\n"
+               << m_gameSummary << L"\n\n" << details << L"\n" << inventory << L"\n"
+               << L"Operation: metadata inspection in the selected folder. No game was copied or executed.\n"
+               << L"Windows x86 execution and Direct3D 9 game compatibility are not implemented.\n"
+               << L"A readable PE file is not proof that its code can execute on Xbox.\n";
+        try {
+            const auto version = Package::Current().Id().Version();
+            report << L"Package version: " << version.Major << L'.' << version.Minor << L'.'
+                   << version.Build << L'.' << version.Revision << L"\n";
+        } catch (...) { report << L"Package version unavailable\n"; }
+        m_gameReport = report.str();
+        m_gameStatus = failure.empty() ? L"Inspection complete. Saving the metadata report..." :
+            L"Inspection could not complete. Saving the error report; choose the game folder again to retry.";
+        SaveGameReportAsync();
+    }
+
+    fire_and_forget SaveGameReportAsync() {
+        if (m_gameBusy || m_gameSaving || m_closed) co_return;
+        if (m_gameReport.empty()) {
+            m_gameStatus = L"Inspect a game folder first. No game report is available yet.";
+            co_return;
+        }
+        auto lifetime = get_strong();
+        m_gameSaving = true;
+        const auto report = m_gameReport;
+        try {
+            const auto file = co_await ApplicationData::Current().LocalFolder().CreateFileAsync(
+                L"game-preflight.txt", CreationCollisionOption::ReplaceExisting);
+            co_await FileIO::WriteTextAsync(file, hstring(report), Windows::Storage::Streams::UnicodeEncoding::Utf8);
+            if (!m_closed) {
+                m_gameReportPath = file.Path().c_str();
+                m_gameStatus = L"Saved game-preflight.txt. The report contains metadata only; game execution is unavailable.";
+            }
+        } catch (hresult_error const& error) {
+            if (!m_closed) m_gameStatus = ApiError(L"Report save failed", error);
+        } catch (...) {
+            if (!m_closed) m_gameStatus = L"Game report could not be saved. Press Save report to retry.";
+        }
+        m_gameSaving = false;
     }
 
     fire_and_forget RunProbesAsync(int which) {
@@ -1013,6 +1257,48 @@ private:
         Text(label, rect, m_body.get(), 0x13200E);
     }
 
+    void RenderGame() {
+        Text(L"Choose the folder containing gta_sa.exe on your USB. Files are inspected in place.",
+             {96, 218, 1796, 248}, m_small.get(), 0xAAB9AF);
+        Fill({96, 256, 748, 724}, 0x151F19, 14.0f);
+        Border({96, 256, 748, 724}, 0x2B3C30, 1.0f, 14.0f);
+        Fill({776, 256, 1796, 724}, 0x151F19, 14.0f);
+        Border({776, 256, 1796, 724}, 0x2B3C30, 1.0f, 14.0f);
+        Text(L"Selected game folder", {124, 277, 720, 324}, m_heading.get(), 0xF0F5F1);
+        Text(m_gameFolderLabel.empty() ? L"No folder selected" : m_gameFolderLabel,
+             {124, 345, 720, 420}, m_body.get(), 0xD1DCD5);
+        Text(m_gameFolderPath.empty() ? L"Select the folder through the Xbox file picker. A previous selection can be rescanned." :
+             m_gameFolderPath, {124, 432, 720, 562}, m_small.get(), 0xAAB9AF);
+        Text(L"Last inspection: " + m_gameScanTime, {124, 608, 720, 680}, m_small.get(), 0x9FB0A4);
+        Text(L"Executable inspection", {806, 277, 1768, 324}, m_heading.get(), 0xF0F5F1);
+        Text(m_gameSummary, {806, 338, 1768, 528}, m_body.get(),
+             m_gameMetadataRecognized ? 0xD1DCD5 : 0xF1C875);
+        Text(L"Windows x86 execution and Direct3D 9 compatibility are not implemented. This page reads metadata; it does not launch San Andreas.",
+             {806, 555, 1768, 700}, m_small.get(), 0xF1C875);
+        const std::array<std::wstring, 3> labels{{
+            m_gameBusy ? L"Inspecting..." : L"Choose game folder",
+            L"Rescan selected folder",
+            m_gameSaving ? L"Saving..." : L"Save report"
+        }};
+        for (std::size_t index = 0; index < GameButtons.size(); ++index) {
+            const auto rect = GameButtons[index];
+            const bool disabled = m_gameBusy || m_gameSaving;
+            Fill(rect, disabled ? 0x243128 : (Contains(rect, m_pointer) ? 0x96F36F : 0x87DD61), 8.0f);
+            if (m_gameSelection == static_cast<int>(index))
+                Border({rect.left - 5, rect.top - 5, rect.right + 5, rect.bottom + 5}, 0xDEFBCF, 2.0f, 11.0f);
+            Text(labels[index], {rect.left + 20, rect.top + 16, rect.right - 10, rect.bottom},
+                 m_body.get(), disabled ? 0x8D9C92 : 0x13200E);
+        }
+        Fill({96, 840, 1796, 938}, 0x121C16, 14.0f);
+        Text(m_gameStatus, {124, 851, 1768, 908}, m_small.get(), 0xD1DCD5);
+        if (!m_gameReportPath.empty())
+            Text(L"Report: game-preflight.txt in this app's local storage", {124, 909, 1768, 937}, m_small.get(), 0x9FB0A4);
+        Text(L"D-pad  Select action     A  Activate     X  Save report     Y  Runtime checks",
+             {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
+        Text(L"Keyboard: O choose folder  |  R / F5 rescan  |  S save  |  arrows / Tab select  |  Enter activate  |  C switch page",
+             {96, 1006, 1796, 1043}, m_small.get(), 0x9FB0A4);
+    }
+
     void RenderControllers() {
         Text(L"RawGameController: " + m_rawApiStatus + L"   |   Gamepad: " + m_gamepadApiStatus +
              L"   (counts overlap)", {96, 218, 1796, 248}, m_small.get(), 0xAAB9AF);
@@ -1073,7 +1359,7 @@ private:
         ActionButton(ControllerButtons[3], m_saving ? L"Saving..." : L"Save report");
         Fill({96, 840, 1796, 938}, 0x121C16, 14.0f);
         Text(m_actionStatus, {124, 858, 1768, 925}, m_small.get(), 0xD1DCD5);
-        Text(L"LB / RB  Select device     X  Save report     Y  Runtime checks", {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
+        Text(L"LB / RB  Select device     X  Save report     Y  Game preflight", {96, 959, 1796, 998}, m_body.get(), 0xD9E5DD);
         Text(L"Keyboard: arrows / Tab select  |  R / F5 refresh  |  S save  |  C switch page. No controller driver is installed.",
              {96, 1006, 1796, 1043}, m_small.get(), 0x9FB0A4);
     }
@@ -1089,10 +1375,14 @@ private:
         Fill({0, 0, 14, CanvasHeight}, 0x78CF52);
         Fill({96, 211, 1796, 213}, 0x2B3C30);
         Text(L"XBOX DESKTOP MODE", {96, 66, 1300, 107}, m_small.get(), 0x8CEB67);
-        Text(m_controllersPage ? L"Controller diagnostics" : L"Runtime diagnostics", {91, 111, 1450, 192}, m_title.get(), 0xF0F5F1);
+        Text(m_page == Page::Game ? L"Game preflight" : (m_page == Page::Controllers ? L"Controller diagnostics" : L"Runtime diagnostics"),
+             {91, 111, 1450, 192}, m_title.get(), 0xF0F5F1);
         Text(m_deviceFamily + L"  /  x64", {1340, 78, 1796, 116}, m_small.get(), 0xAAB9AF);
-        ActionButton(PageButton, m_controllersPage ? L"Runtime checks" : L"Controllers");
-        if (m_controllersPage) {
+        ActionButton(PageButton, m_page == Page::Game ? L"Runtime checks" :
+            (m_page == Page::Runtime ? L"Controllers" : L"Game preflight"));
+        if (m_page == Page::Game) {
+            RenderGame();
+        } else if (m_page == Page::Controllers) {
             RenderControllers();
         } else {
         ProbeCard(96, L"01", L"Executable memory", L"Write a tiny x64 function, then switch its memory to executable.", m_memoryResult, 0);
@@ -1131,7 +1421,14 @@ private:
     event_token m_activated{}, m_suspending{}, m_resuming{}, m_dpiChanged{};
     bool m_closed{false}, m_visible{true}, m_suspended{false}, m_busy{false}, m_saving{false};
     bool m_controllerConnected{false};
-    bool m_controllersPage{true};
+    Page m_page{Page::Game};
+    StorageFolder m_gameFolder{nullptr};
+    bool m_gameBusy{false}, m_gameSaving{false}, m_gameMetadataRecognized{false};
+    int m_gameSelection{0};
+    std::wstring m_gameFolderLabel, m_gameFolderPath, m_gameReport, m_gameReportPath;
+    std::wstring m_gameSummary{L"Choose the game folder to inspect gta_sa.exe and its imported Windows libraries."};
+    std::wstring m_gameStatus{L"Ready. Choose the USB folder containing gta_sa.exe. No game files need to be copied."};
+    std::wstring m_gameScanTime{L"Not run"};
     bool m_rawApiOkay{false}, m_gamepadApiOkay{false}, m_associationWarning{false};
     bool m_rawReadingOkay{false}, m_gamepadReadingOkay{false};
     std::uint32_t m_rawCount{0}, m_gamepadCount{0};

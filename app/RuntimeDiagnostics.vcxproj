@@ -76,9 +76,11 @@
   <ItemGroup>
     <ClCompile Include="DiagnosticsApp.cpp" />
     <ClCompile Include="..\runtime\PeImage.cpp" />
+    <ClCompile Include="..\runtime\GamePreflight.cpp" />
     <ClCompile Include="..\runtime\RuntimeProbe.cpp" />
     <ClCompile Include="..\samples\Return42Fixture.cpp" />
     <ClInclude Include="..\runtime\PeImage.h" />
+    <ClInclude Include="..\runtime\GamePreflight.h" />
     <ClInclude Include="..\runtime\RuntimeProbe.h" />
     <ClInclude Include="..\samples\Return42Fixture.h" />
     <AppxManifest Include="Package.appxmanifest"><SubType>Designer</SubType></AppxManifest>
