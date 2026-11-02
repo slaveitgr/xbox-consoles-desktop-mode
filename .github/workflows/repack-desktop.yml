@@ -1,0 +1,89 @@
+name: Repackage verified desktop bridge
+
+on:
+  push:
+    paths:
+      - .github/workflows/repack-desktop.yml
+      - tools/repack-desktop.ps1
+  workflow_dispatch:
+    inputs:
+      bridge_run_id:
+        description: Completed build run containing the patched bridge
+        default: '41375751884'
+        required: true
+      bridge_commit:
+        description: Exact source commit expected for that build
+        default: c51e8c6bcba42aead51dc67e77019793688ff37f
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  repackage:
+    runs-on: windows-2022
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      # Pin the previously compiled component so packaging fixes need no new
+      # compiler/toolchain installation. A manual run can select another pin.
+      BRIDGE_RUN_ID: ${{ inputs.bridge_run_id || '41375751884' }}
+      BRIDGE_COMMIT: ${{ inputs.bridge_commit || 'c51e8c6bcba42aead51dc67e77019793688ff37f' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Verify bridge build provenance and wait for its artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $run = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BRIDGE_RUN_ID" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $run.head_sha -cne $env:BRIDGE_COMMIT) { throw 'Bridge source commit mismatch.' }
+          if ($run.head_repository.full_name -cne $env:GITHUB_REPOSITORY) { throw 'Bridge artifact must come from this repository.' }
+          $found = $false
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+            $artifacts = gh api "repos/$env:GITHUB_REPOSITORY/actions/runs/$env:BRIDGE_RUN_ID/artifacts" | ConvertFrom-Json
+            if ($LASTEXITCODE -ne 0) { throw 'Cannot query bridge artifacts.' }
+            $bridge = @($artifacts.artifacts | Where-Object { $_.name -ceq 'win32bridge-x64-PE32-startup-DLL-ONLY' -and -not $_.expired })
+            if ($bridge.Count -eq 1) { $found = $true; break }
+            if ($bridge.Count -gt 1) { throw 'Ambiguous bridge artifacts.' }
+            Start-Sleep -Seconds 2
+          }
+          if (-not $found) { throw 'Patched bridge artifact is not available.' }
+          Write-Host "Verified bridge source commit: $($run.head_sha)"
+          Write-Host "Artifact SHA-256: $($bridge[0].digest)"
+      - name: Download the pinned patched bridge
+        uses: actions/download-artifact@v4
+        with:
+          github-token: ${{ github.token }}
+          run-id: ${{ env.BRIDGE_RUN_ID }}
+          name: win32bridge-x64-PE32-startup-DLL-ONLY
+          path: artifacts/repack-input
+      - name: Repackage the pinned upstream desktop
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $source = 'artifacts/DesktopMode_1.0.46.0_x64.msix'
+          Invoke-WebRequest 'https://github.com/Pedro1234-code/DesktopMode_uwp/releases/download/21286/DesktopMode_1.0.46.0_x64.msix' -OutFile $source
+          ./tools/repack-desktop.ps1 -SourcePackage $source -BridgeDirectory artifacts/repack-input -OutputDirectory artifacts/patched-desktop -Version 1.0.46.1 -ExpectedSourceSha256 '4691181e07f68f8d8c58e96ad44d4a01a9d2ccf1381669fd3ffa61d1e492beea'
+      - name: Reject private signing keys
+        if: always()
+        run: |
+          $keys = @(Get-ChildItem artifacts -Recurse -File -ErrorAction SilentlyContinue | Where-Object { $_.Extension -in @('.pfx', '.p12', '.key') })
+          if ($keys.Count) { throw 'Private signing keys must never be uploaded.' }
+      - name: Upload desktop package and validation records
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktopmode-x64-1.0.46.1-PE32-startup-DEV-SIGNED
+          path: |
+            artifacts/patched-desktop/*.msix
+            artifacts/patched-desktop/*.cer
+            artifacts/patched-desktop/*.json
+            artifacts/patched-desktop/*.txt
+            artifacts/patched-desktop/*.log
+            artifacts/patched-desktop/AppxManifest.xml
+          if-no-files-found: warn

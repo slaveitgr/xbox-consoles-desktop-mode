@@ -256,10 +256,15 @@ public static class WinmdContract {
     Add-Type -TypeDefinition $metadataCode
 }
 
-$bridgeDll = Join-Path $bridge 'Win32Bridge.Runtime.dll'
-$bridgeWinmd = Join-Path $bridge 'Win32Bridge.winmd'
-foreach ($path in @($bridgeDll, $bridgeWinmd)) {
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "Missing bridge component: $path" }
+$bridgeCandidates = @(Get-ChildItem -LiteralPath $bridge -Recurse -File -Filter 'Win32Bridge.Runtime.dll')
+if ($bridgeCandidates.Count -eq 0) { throw "No Win32Bridge.Runtime.dll was found under $bridge." }
+if ($bridgeCandidates.Count -ne 1) {
+    throw 'BridgeDirectory contains multiple Win32Bridge.Runtime.dll files. Supply a directory containing exactly one build.'
+}
+$bridgeDll = $bridgeCandidates[0].FullName
+$bridgeWinmd = Join-Path $bridgeCandidates[0].DirectoryName 'Win32Bridge.winmd'
+if (-not (Test-Path -LiteralPath $bridgeWinmd -PathType Leaf)) {
+    throw "Missing metadata alongside the selected bridge DLL: $bridgeWinmd"
 }
 Test-BridgeDll $bridgeDll
 $sourceHash = (Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash.ToLowerInvariant()
