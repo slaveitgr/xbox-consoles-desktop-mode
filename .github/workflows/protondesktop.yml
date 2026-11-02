@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   windows-host:
-    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[core-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') }}
     name: Compile native UWP host
     runs-on: windows-2022
     timeout-minutes: 30
@@ -76,7 +76,7 @@ jobs:
           if-no-files-found: warn
 
   windows-core:
-    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') }}
+    if: ${{ !contains(github.event.head_commit.message, '[host-only]') && !contains(github.event.head_commit.message, '[uwp-core-only]') && !contains(github.event.head_commit.message, '[platform-only]') && !contains(github.event.head_commit.message, '[sdlvideo-only]') }}
     name: Build and run actual x64 interpreter on Windows
     runs-on: windows-2022
     timeout-minutes: 30
@@ -224,4 +224,52 @@ jobs:
           path: |
             ProtonDesktop/build/platform-contracts/Testing/Temporary/LastTest.log
             ProtonDesktop/build/platform-contracts/CMakeCache.txt
+          if-no-files-found: warn
+
+  sdlvideo-app:
+    name: Qualify real SDL software pixels with APP headers
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[sdlvideo-only]') }}
+    runs-on: windows-2022
+    timeout-minutes: 25
+    env:
+      MSBUILDDISABLENODEREUSE: '1'
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: ProtonDesktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: andrewnakas/Boxedwine64
+          ref: 58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4
+          path: ProtonDesktop/external/Boxedwine64-full
+          persist-credentials: false
+          sparse-checkout: |
+            include
+            source
+            platform
+            lib/sdl2
+            lib/simde
+            lib/softfloat
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate original host assets
+        run: python tools/generate_assets.py
+      - name: Ensure official UWP SDK and CRT components
+        run: ./tools/ci/build_windows_host.ps1
+      - name: Build and run the actual SDL software pipeline
+        run: ./tools/ci/build_sdlvideo_app.ps1
+      - name: Upload software pixel evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: protondesktop-sdlvideo-app-family
+          path: |
+            ProtonDesktop/artifacts/sdlvideo/
+            ProtonDesktop/build/sdlvideo-app/Testing/Temporary/LastTest.log
+            ProtonDesktop/build/sdlvideo-app/compile_commands.json
+            ProtonDesktop/build/sdlvideo-app/CMakeCache.txt
+            ProtonDesktop/build/sdlvideo-app/qualification-scope.txt
           if-no-files-found: warn
