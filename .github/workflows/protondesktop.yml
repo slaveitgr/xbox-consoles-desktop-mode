@@ -158,6 +158,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Contract tests failed.' }
       - name: Compile and link genuine UWP core
         run: ./tools/ci/build_uwp_core.ps1
+      - name: Build unsigned application linked to the real core
+        run: ./tools/ci/build_uwp_probe.ps1
       - name: Upload UWP core evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -165,6 +167,8 @@ jobs:
           name: protondesktop-uwp-core-qualification
           path: |
             ProtonDesktop/artifacts/uwp-core/
+            ProtonDesktop/artifacts/uwp-probe/
+            ProtonDesktop/artifacts/uwp-core-probe/packages/
             ProtonDesktop/build/uwp-core/compile_commands.json
             ProtonDesktop/build/uwp-core/CMakeCache.txt
             ProtonDesktop/build/uwp-core/qualification-scope.txt

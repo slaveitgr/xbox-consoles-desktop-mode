@@ -4,10 +4,11 @@ Separate native UWP port starter for Xbox One X. The intended session runs the
 real Wine Explorer desktop inside a **native Boxedwine64 interpreter**, presented
 through a UWP graphics surface. No HTML desktop and no WebAssembly are used.
 
-**Current milestone: real guest-x64 core running on Linux and Windows, plus a
-compiled native UWP host.** The Boxedwine64 UWP backend is not linked. The native app consequently
-shows an explicit unfinished-backend status instead of a simulated desktop.
-There is no built/signed/deployed MSIX or Xbox runtime result yet.
+**Current milestone: real guest-x64 core running on Linux and Windows, and a
+successfully linked UWP diagnostic core using the Store C++ runtime.** The full
+Wine backend factory remains unavailable. An opt-in CoreApplication probe is
+being built to execute the actual CPU/ELF checks in app context. No ProtonDesktop
+Xbox or Wine runtime result exists yet.
 
 The pinned interpreter compiled from 252 translation units. Its CPU64 tests
 passed **907/907**, and our own static ELF64 passed arithmetic, memory, branch,
@@ -18,10 +19,11 @@ passed the same **907/907 CPU64 checks** and both generated ELF64 controls.
 See [the Linux proof](docs/HEADLESS_CORE_PROOF.md) and
 [the Windows proof](docs/WINDOWS_PORT_PROGRESS.md).
 
-The separate UWP compile diagnostic now reaches final linking: 360 object-build
-steps completed without compiler errors, then 11 unresolved host/profile helpers
-stopped the link. The native UWP host and its boot/platform tests pass on Windows,
-but there is still no linked UWP interpreter or Wine execution.
+The separate UWP diagnostic now **links successfully** with genuine APP-family
+headers and the Store CRT. Real socket, scheduling and string adapters plus
+explicit unsupported audio/telemetry/code-memory policies resolved the previous
+11 link failures. This proves the retained diagnostic call graph, not all Wine
+startup paths or AppContainer activation.
 
 Boxedwine64 has substantive x64 guest support and upstream reports Wine64 GUI
 applications on native macOS. Its Windows desktop project does not include the
@@ -76,8 +78,10 @@ and device lifecycle have not been exercised.
 Development source and Windows checks now live on the isolated
 [`codex/protondesktop` branch](https://github.com/slaveitgr/xbox-consoles-desktop-mode/tree/codex/protondesktop/ProtonDesktop)
 of the existing repository. The `codex/x86-runtime` XWindows OS branch is unchanged.
-No ProtonDesktop release, package signing, installation or rootfs download has
-occurred. Diagnostics run only self-authored ELF64 and upstream CPU tests.
+No ProtonDesktop release, signing or installation has occurred. Two unqualified
+rootfs ZIP candidates have now been assembled locally from verified Debian
+packages; see `rootfs/README.md` for hashes, limitations and RAM-only storage.
+Executed diagnostics so far use only self-authored ELF64 and upstream CPU tests.
 No Wine executable has run in this project.
 
 ## Next native milestone

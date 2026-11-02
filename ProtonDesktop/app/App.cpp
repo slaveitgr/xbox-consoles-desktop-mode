@@ -16,6 +16,14 @@
 #include <cmath>
 #include <cwchar>
 #include <mutex>
+#if defined(PROTON_CORE_PROBE_ENABLED)
+#include "CoreDiagnostics.h"
+#include <winrt/Windows.Storage.h>
+#include <thread>
+#if !WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#error The core probe requires the genuine UWP APP SDK partition.
+#endif
+#endif
 
 using namespace winrt;
 using namespace Windows::ApplicationModel::Core;
@@ -24,6 +32,69 @@ using namespace Windows::UI::Core;
 
 namespace
 {
+#if defined(PROTON_CORE_PROBE_ENABLED)
+    struct CoreProbeState
+    {
+        std::mutex lock;
+        bool finished = false;
+        protondesktop::CoreDiagnosticReport report;
+        std::string persistenceError;
+    };
+
+    std::wstring ProbeErrorText(const std::string& error)
+    {
+        if (error.empty()) return {};
+        const auto size = static_cast<int>(std::min<std::size_t>(error.size(), 2048));
+        const auto length = MultiByteToWideChar(CP_UTF8, 0, error.data(), size, nullptr, 0);
+        if (!length) return L"Diagnostic error details could not be decoded.";
+        std::wstring result(static_cast<std::size_t>(length), L'\0');
+        MultiByteToWideChar(CP_UTF8, 0, error.data(), size, result.data(), length);
+        return result;
+    }
+
+    // The closure owns these values independently of App. There are no raw App
+    // pointers, UI callbacks or detached threads, including on failure paths.
+    void RunAppCoreProbe(const std::shared_ptr<CoreProbeState>& state,
+                         const protondesktop::CoreDiagnosticPaths& paths,
+                         const std::wstring& resultPath) noexcept
+    {
+        protondesktop::CoreDiagnosticReport report;
+        std::string persistenceError;
+        try
+        {
+            if (!protondesktop::WriteCoreDiagnosticReport(resultPath, report, true, persistenceError))
+            {
+                report.status = protondesktop::CoreDiagnosticStatus::Failed;
+                report.error = "The running report could not be saved; core diagnostics were not started";
+            }
+            else
+            {
+                report = protondesktop::RunCoreDiagnostics(paths);
+                if (report.status == protondesktop::CoreDiagnosticStatus::Incomplete)
+                    report.status = protondesktop::CoreDiagnosticStatus::Failed;
+                protondesktop::WriteCoreDiagnosticReport(resultPath, report, false, persistenceError);
+            }
+        }
+        catch (const std::exception& error)
+        {
+            report.status = protondesktop::CoreDiagnosticStatus::Failed;
+            report.error = std::string("Core probe worker exception: ") + error.what();
+            try { protondesktop::WriteCoreDiagnosticReport(resultPath, report, false, persistenceError); }
+            catch (...) { persistenceError = "Saving the failed report also raised an exception"; }
+        }
+        catch (...)
+        {
+            report.status = protondesktop::CoreDiagnosticStatus::Failed;
+            report.error = "Core probe worker raised a nonstandard C++ exception";
+            try { protondesktop::WriteCoreDiagnosticReport(resultPath, report, false, persistenceError); }
+            catch (...) { persistenceError = "Saving the failed report also raised an exception"; }
+        }
+        std::lock_guard<std::mutex> guard(state->lock);
+        state->report = std::move(report);
+        state->persistenceError = std::move(persistenceError);
+        state->finished = true;
+    }
+#endif
     bool DeviceWasLost(HRESULT result) noexcept
     {
         return result == DXGI_ERROR_DEVICE_REMOVED || result == DXGI_ERROR_DEVICE_RESET;
@@ -53,8 +124,12 @@ namespace
         com_ptr<IDWriteFactory> write;
         com_ptr<IDWriteTextFormat> title, body;
         std::unique_ptr<protondesktop::NativeBackend> backend;
+#if defined(PROTON_CORE_PROBE_ENABLED)
+        std::shared_ptr<CoreProbeState> coreProbeState;
+        std::thread coreProbeWorker;
+#endif
 
-        ~App() { StopBackend(); }
+        ~App() { StopBackend(); JoinCoreProbe(); }
 
         void Initialize(const CoreApplicationView& view)
         {
@@ -184,6 +259,85 @@ namespace
             // A real adapter must validate rootfs provenance and mount app-local
             // writable storage before Start. No adapter means no guest launch.
             backend = protondesktop::CreateNativeBackend();
+#if defined(PROTON_CORE_PROBE_ENABLED)
+            StartCoreProbe();
+#endif
+        }
+
+#if defined(PROTON_CORE_PROBE_ENABLED)
+        void StartCoreProbe()
+        {
+            if (coreProbeState) return;
+            coreProbeState = std::make_shared<CoreProbeState>();
+            try
+            {
+                // Resolve WinRT storage while on the owning app thread. Only
+                // plain immutable paths and shared result state cross threads.
+                const auto installed = Windows::ApplicationModel::Package::Current().InstalledLocation().Path();
+                const auto local = Windows::Storage::ApplicationData::Current().LocalFolder().Path();
+                protondesktop::CoreDiagnosticPaths paths;
+                paths.localStateDirectory.assign(local.c_str(), local.size());
+                const std::wstring packageRoot(installed.c_str(), installed.size());
+                paths.positiveElfPath = packageRoot + L"\\DiagnosticPayloads\\guest64-smoke.elf";
+                paths.negativeElfPath = packageRoot + L"\\DiagnosticPayloads\\guest64-negative.elf";
+                const auto resultPath = paths.localStateDirectory + L"\\protondesktop-core-result.json";
+                coreProbeWorker = std::thread([state = coreProbeState, paths = std::move(paths), resultPath]
+                {
+                    RunAppCoreProbe(state, paths, resultPath);
+                });
+            }
+            catch (const hresult_error& error)
+            {
+                std::lock_guard<std::mutex> guard(coreProbeState->lock);
+                coreProbeState->report.status = protondesktop::CoreDiagnosticStatus::Failed;
+                coreProbeState->report.error = "Resolving package/app-local paths failed: " + to_string(error.message());
+                coreProbeState->finished = true;
+            }
+            catch (const std::exception& error)
+            {
+                std::lock_guard<std::mutex> guard(coreProbeState->lock);
+                coreProbeState->report.status = protondesktop::CoreDiagnosticStatus::Failed;
+                coreProbeState->report.error = std::string("Starting the core probe worker failed: ") + error.what();
+                coreProbeState->finished = true;
+            }
+        }
+        std::wstring CoreProbeStatus()
+        {
+            std::wstring text = L"UWP core diagnostics - opt-in probe\n\n";
+            if (!coreProbeState) return text + L"Diagnostic worker has not started.";
+            std::lock_guard<std::mutex> guard(coreProbeState->lock);
+            if (!coreProbeState->finished)
+                return text + L"Running the real CPU64 self-tests and two packaged ELF controls.\n"
+                    L"Logs and result JSON are saved in LocalState.\n\n"
+                    L"No Wine desktop has started.\nClosing waits for the worker; cancellation is not available.";
+            const auto& report = coreProbeState->report;
+            text += report.status == protondesktop::CoreDiagnosticStatus::Passed ?
+                L"All three core diagnostics passed.\n\n" : L"Core diagnostics failed or did not complete.\n\n";
+            if (report.selfTest.summaryParsed && report.selfTest.summaryOccurrences == 1)
+                text += L"CPU64 self-test: " + std::to_wstring(report.selfTest.passed) +
+                    L" passed, " + std::to_wstring(report.selfTest.failed) + L" failed\n";
+            if (report.positive.exitParsed && report.positive.stopParsed)
+                text += L"Positive ELF: guest exit " + std::to_wstring(report.positive.guestExit) +
+                    L", " + std::to_wstring(report.positive.instructions) + L" instructions\n";
+            if (report.negative.exitParsed && report.negative.stopParsed)
+                text += L"Negative ELF: guest exit " + std::to_wstring(report.negative.guestExit) +
+                    L", " + std::to_wstring(report.negative.instructions) + L" instructions\n";
+            if (!report.error.empty()) text += L"\n" + ProbeErrorText(report.error) + L"\n";
+            if (!coreProbeState->persistenceError.empty())
+                text += L"\nReport storage error: " + ProbeErrorText(coreProbeState->persistenceError) + L"\n";
+            text += L"\nLocalState: protondesktop-core-result.json and three phase logs\n"
+                L"Wine/rootfs: not started. Desktop backend remains unavailable.\n"
+                L"This result does not infer Xbox or Wine compatibility.";
+            return text;
+        }
+#endif
+        void JoinCoreProbe() noexcept
+        {
+#if defined(PROTON_CORE_PROBE_ENABLED)
+            // The core exposes no cancellation operation. Joining retains the
+            // app/core state until the synchronous worker has actually stopped.
+            if (coreProbeWorker.joinable()) coreProbeWorker.join();
+#endif
         }
         void Draw()
         {
@@ -196,8 +350,12 @@ namespace
             const auto size = target->GetSize();
             const auto titleRect = D2D1::RectF(64, 58, size.width - 64, 115);
             target->DrawText(L"ProtonDesktop", 13, title.get(), titleRect, ink.get());
-            const wchar_t* status = L"Native UWP port starter\n\nBoxedwine64 UWP backend is not linked.\nNo Wine desktop has started.\n\nNext: interpreter + kernel port, real X11 pixels, validated Wine64 rootfs.";
-            target->DrawText(status, static_cast<UINT32>(wcslen(status)), body.get(),
+#if defined(PROTON_CORE_PROBE_ENABLED)
+            const auto status = CoreProbeStatus();
+#else
+            const std::wstring status = L"Native UWP port starter\n\nBoxedwine64 UWP backend is not linked.\nNo Wine desktop has started.\n\nNext: interpreter + kernel port, real X11 pixels, validated Wine64 rootfs.";
+#endif
+            target->DrawText(status.c_str(), static_cast<UINT32>(status.size()), body.get(),
                 D2D1::RectF(66, 140, size.width - 64, size.height - 64), ink.get());
             const HRESULT result = target->EndDraw();
             if (result == D2DERR_RECREATE_TARGET)
@@ -231,6 +389,7 @@ namespace
                 else window.Dispatcher().ProcessEvents(CoreProcessEventsOption::ProcessOneAndAllPending);
             }
             StopBackend();
+            JoinCoreProbe();
         }
         void Uninitialize()
         {
@@ -241,6 +400,7 @@ namespace
             visibilityChanged.revoke();
             windowClosed.revoke();
             StopBackend();
+            JoinCoreProbe();
         }
     };
     struct AppSource : implements<AppSource, IFrameworkViewSource>

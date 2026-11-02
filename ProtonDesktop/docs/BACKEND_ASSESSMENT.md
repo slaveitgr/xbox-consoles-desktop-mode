@@ -73,7 +73,7 @@ No rootfs ZIP or executable was downloaded for this milestone.
 
 The native UWP host now compiles in Windows CI; see
 [the host proof](WINDOWS_HOST_BUILD.md). Device recreation and suspend/resume
-handling are implemented but remain untested on a device. The 17 portable
+handling are implemented but remain untested on a device. The 63 portable
 boot-request checks validate argument construction and rollback only; they do
 not validate root ownership, artifact provenance or guest compatibility.
 The real FromApp memory and host-service adapters passed 49 and 47 checks

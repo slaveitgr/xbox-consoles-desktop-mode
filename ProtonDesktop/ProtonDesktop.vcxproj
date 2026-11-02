@@ -33,6 +33,12 @@
     <GenerateAppInstallerFile>false</GenerateAppInstallerFile>
     <AppxAutoIncrementPackageRevision>false</AppxAutoIncrementPackageRevision>
     <AppxPackageDir>$(ProjectDir)artifacts\uwp\packages\</AppxPackageDir>
+    <ProtonCoreProbeEnabled Condition="'$(ProtonCoreProbeEnabled)' == ''">false</ProtonCoreProbeEnabled>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(ProtonCoreProbeEnabled)' == 'true'">
+    <OutDir>$(ProjectDir)build\uwp-core-probe\$(Configuration)\</OutDir>
+    <IntDir>$(ProjectDir)build\uwp-core-probe\obj\$(Configuration)\</IntDir>
+    <AppxPackageDir>$(ProjectDir)artifacts\uwp-core-probe\packages\</AppxPackageDir>
   </PropertyGroup>
   <ItemDefinitionGroup>
     <ClCompile>
@@ -57,10 +63,24 @@
       <AdditionalDependencies>windowsapp.lib;d3d11.lib;dxgi.lib;d2d1.lib;dwrite.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(ProtonCoreProbeEnabled)' == 'true'">
+    <ClCompile>
+      <PreprocessorDefinitions>PROTON_CORE_PROBE_ENABLED=1;WINAPI_FAMILY=WINAPI_FAMILY_APP;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+    <Link>
+      <AdditionalDependencies>$(ProtonCoreLibDir)\proton-uwp-core-archive.lib;$(ProtonCoreLibDir)\SDL2.lib;$(ProtonCoreLibDir)\protondesktop_uwp_memory.lib;$(ProtonCoreLibDir)\protondesktop_uwp_host_services.lib;$(ProtonCoreLibDir)\protondesktop_uwp_socket_pair.lib;$(ProtonClangBuiltins);%(AdditionalDependencies)</AdditionalDependencies>
+      <OptimizeReferences>true</OptimizeReferences>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+    </Link>
+  </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="app\App.cpp" />
     <ClCompile Include="core\BootRequest.cpp" />
     <ClCompile Include="backend\NativeBackend.cpp" />
+    <ClCompile Include="app\CoreDiagnostics.cpp">
+      <ExcludedFromBuild Condition="'$(ProtonCoreProbeEnabled)' != 'true'">true</ExcludedFromBuild>
+    </ClCompile>
+    <ClInclude Include="app\CoreDiagnostics.h" />
     <ClInclude Include="core\BootRequest.h" />
     <ClInclude Include="backend\NativeBackend.h" />
     <AppxManifest Include="Package.appxmanifest" />
@@ -71,5 +91,19 @@
     <Image Include="Assets\SplashScreen.png" />
     <None Include="backend.lock.json" />
   </ItemGroup>
+  <ItemGroup Condition="'$(ProtonCoreProbeEnabled)' == 'true'">
+    <None Include="DiagnosticPayloads\guest64-smoke.elf">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+    <None Include="DiagnosticPayloads\guest64-negative.elf">
+      <DeploymentContent>true</DeploymentContent>
+    </None>
+  </ItemGroup>
+  <Target Name="ValidateProtonCoreProbe" BeforeTargets="PrepareForBuild" Condition="'$(ProtonCoreProbeEnabled)' == 'true'">
+    <Error Condition="'$(Configuration)' != 'Release' Or '$(Platform)' != 'x64'" Text="ProtonCoreProbeEnabled requires Release|x64 archives built with the Store /MD CRT." />
+    <Error Condition="!Exists('$(ProtonCoreLibDir)\proton-uwp-core-archive.lib') Or !Exists('$(ProtonCoreLibDir)\SDL2.lib') Or !Exists('$(ProtonCoreLibDir)\protondesktop_uwp_memory.lib') Or !Exists('$(ProtonCoreLibDir)\protondesktop_uwp_host_services.lib') Or !Exists('$(ProtonCoreLibDir)\protondesktop_uwp_socket_pair.lib')" Text="Set ProtonCoreLibDir to the five actual UWP core/SDL/platform archives; desktop or fabricated replacements are not supported." />
+    <Error Condition="'$(ProtonClangBuiltins)' == '' Or !Exists('$(ProtonClangBuiltins)')" Text="Set ProtonClangBuiltins to the installed official clang_rt.builtins-x86_64.lib." />
+    <Error Condition="!Exists('$(ProjectDir)DiagnosticPayloads\guest64-smoke.elf') Or !Exists('$(ProjectDir)DiagnosticPayloads\guest64-negative.elf')" Text="Generate both self-authored DiagnosticPayloads ELF controls before building the opt-in core probe." />
+  </Target>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
 </Project>

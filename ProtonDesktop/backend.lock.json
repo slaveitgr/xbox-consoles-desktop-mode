@@ -26,7 +26,8 @@
     "package_version_manifest": null,
     "redistribution_qualified": false,
     "metadata_package_lock": "rootfs/debian-bookworm.lock.json",
-    "assembly_plan": "rootfs/assembly-plan.json"
+    "assembly_plan": "rootfs/assembly-plan.json",
+    "candidate_assembly": "rootfs/assembly-plan.json#local_candidate_evidence"
   },
   "gates": {
     "guest_x64_windows_compile": true,
@@ -104,6 +105,30 @@
     "full_wine_kernel_closure_qualified": false,
     "imports_audited": false,
     "uwp_executed": false,
+    "wine_executed": false,
+    "xbox_tested": false
+  },
+  "uwp_core_diagnostic_evidence": {
+    "source_commit": "49dd9d66ac9a970ee949a2802fcbc32374f3915c",
+    "run_id": 41482983407,
+    "executable_linked": true,
+    "api_family": "WINAPI_FAMILY_APP",
+    "app_crt_selected": true,
+    "basic_import_guard_passed": true,
+    "full_api_certification": false,
+    "executable_sha256": "72ada15653ea7eff2b87bf186aaa55200c513c282712bfbdc300174187649e11",
+    "artifact_sha256": "d83f8e9dcefb348726a7004a4fff4c9f4f35d3d634683d88b725ec23f9b64c5b",
+    "windows_service_checks": {
+      "boot": 63,
+      "strings": 149,
+      "scheduling": 91,
+      "socket_pair": 79,
+      "memory": 49,
+      "host": 47,
+      "profile": 30
+    },
+    "full_wine_backend_linked": false,
+    "packaged_core_activated": false,
     "wine_executed": false,
     "xbox_tested": false
   }

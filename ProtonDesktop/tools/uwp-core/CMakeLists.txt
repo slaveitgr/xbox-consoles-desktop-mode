@@ -158,6 +158,16 @@ target_compile_options(proton-uwp-core-objects PRIVATE /O1 /Gy /Gw /W3
   "$<$<COMPILE_LANGUAGE:CXX>:/EHsc>"
   "$<$<COMPILE_LANGUAGE:CXX>:/FI${PROTONDESKTOP_ROOT}/tools/windows-core/int128_compat.h>"
   "/FI${CMAKE_CURRENT_BINARY_DIR}/sdl2/include/SDL_config.h")
+# Same genuine core objects for opt-in packaged CoreApplication diagnostics.
+# The default desktop/host build never consumes these archives.
+add_library(proton-uwp-core-archive STATIC
+  $<TARGET_OBJECTS:proton-uwp-core-objects>
+  $<TARGET_OBJECTS:protondesktop_uwp_platform_memory>
+  $<TARGET_OBJECTS:protondesktop_uwp_platform_host>
+  $<TARGET_OBJECTS:protondesktop_uwp_platform_socket>)
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/native-library-paths.txt" CONTENT
+  "$<TARGET_FILE:proton-uwp-core-archive>\n$<TARGET_FILE:SDL2-static>\n$<TARGET_FILE:protondesktop_uwp_memory>\n$<TARGET_FILE:protondesktop_uwp_host_services>\n$<TARGET_FILE:protondesktop_uwp_socket_pair>\n")
+file(GENERATE OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/clang-builtins-path.txt" CONTENT "${PROTON_CLANG_BUILTINS}\n")
 add_executable(proton-uwp-core-linkcheck LinkProbe.cpp
   $<TARGET_OBJECTS:proton-uwp-core-objects>
   $<TARGET_OBJECTS:protondesktop_uwp_platform_memory>

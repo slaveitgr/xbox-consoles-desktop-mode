@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "kind": "unexecuted assembly and first-boot plan",
+  "kind": "assembly plan with local unqualified candidate artifacts",
   "backend_commit": "58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4",
   "package_lock": "debian-bookworm.lock.json",
   "layers_in_mount_order": [
@@ -13,7 +13,6 @@
       "/lib64/ld-linux-x86-64.so.2",
       "/lib/x86_64-linux-gnu/libc.so.6",
       "/lib/x86_64-linux-gnu/libgcc_s.so.1",
-      "/lib/x86_64-linux-gnu/libfreetype.so.6",
       "/etc/ld.so.cache",
       "/etc/localtime",
       "/etc/passwd",
@@ -27,16 +26,16 @@
     "wine64.zip": [
       "/usr/lib/wine/wine64",
       "/usr/lib/wine/wineserver64",
-      "/usr/lib/wine/wineapploader",
       "/usr/lib/x86_64-linux-gnu/wine/x86_64-unix/",
       "/usr/lib/x86_64-linux-gnu/wine/x86_64-windows/",
       "/usr/lib/x86_64-linux-gnu/wine/x86_64-windows/explorer.exe",
       "/usr/lib/x86_64-linux-gnu/wine/x86_64-windows/wineboot.exe",
-      "/usr/lib/x86_64-linux-gnu/wine/x86_64-unix/winex11.drv.so",
+      "/usr/lib/x86_64-linux-gnu/wine/x86_64-unix/winex11.so",
       "/usr/share/wine/",
       "/usr/share/X11/locale/",
       "/usr/share/fontconfig/",
-      "/usr/share/fonts/truetype/liberation2/"
+      "/usr/share/fonts/truetype/liberation2/",
+      "/usr/lib/x86_64-linux-gnu/libfreetype.so.6"
     ],
     "prefix64.zip": [
       "/home/username/.wine/system.reg",
@@ -109,7 +108,7 @@
     "microsoft_assets_included": false
   },
   "prefix_created": false,
-  "rootfs_built": false,
+  "rootfs_built": true,
   "accepted_layer_sha256": null,
   "file_payload_sha256_manifest": null,
   "wine_executed": false,
@@ -221,5 +220,30 @@
       ],
       "on_timeout_or_missing_policy": "fail finalization; do not publish a prepared prefix"
     }
+  },
+  "local_candidate_evidence": {
+    "status": "built_unqualified",
+    "core_package_count": 125,
+    "guest_entries": 5941,
+    "elf_files_checked": 107,
+    "missing_elf_payloads": 0,
+    "private_library_runtime_resolution_pending": 29,
+    "copyright_or_common_license_gap_references": 200,
+    "layers": {
+      "glibc-rootfs64.zip": {
+        "bytes": 2850458,
+        "sha256": "2507d717e4f860789ea54fa0d73a8db8b152827f74ee24d2665c81757b439822"
+      },
+      "wine64.zip": {
+        "bytes": 276707863,
+        "sha256": "a2614a5fbda1e4783f30b2e0fb3a66759c2649a1d86250a386191ba43a8cc0ea"
+      }
+    },
+    "payload_manifest_sha256": "16c5b0b3a993a7220660072826c98ddb2baf4b97af5a0ba8c8717934b743c3cd",
+    "boot_qualified": false,
+    "redistribution_qualified": false,
+    "wine_executed": false,
+    "artifacts_location": "private RAM scratch; small local reports in rootfs/.cache/assembly-evidence",
+    "ld_so_cache": "empty; default library search only, no ldconfig execution"
   }
 }

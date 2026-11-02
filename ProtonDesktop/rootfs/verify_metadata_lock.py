@@ -23,6 +23,7 @@ def require(condition, message):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--fetch-indexes', action='store_true')
+    parser.add_argument('--no-report', action='store_true', help='Verify without rewriting the tracked metadata report')
     args = parser.parse_args()
     lock = json.loads((HERE / 'debian-bookworm.lock.json').read_text())
     cache = HERE / '.cache'; cache.mkdir(exist_ok=True)
@@ -80,12 +81,15 @@ def main():
     for item in upstream['files']:
         require(sha((HERE / item['local']).read_bytes()) == item['sha256'], 'Pinned upstream recipe source changed')
     plan = json.loads((HERE / 'assembly-plan.json').read_text())
-    require(plan['rootfs_built'] is False and plan['wine_executed'] is False and
-            plan['accepted_layer_sha256'] is None, 'Plan overstates execution/artifact proof')
+    require(plan['wine_executed'] is False and
+            plan['accepted_layer_sha256'] is None, 'Plan overstates Wine execution/artifact acceptance')
     result = {'status':'passed','timestamp_utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),
         'signed_release_signatures':len(valid),'binary_package_metadata_records':len(lock['packages']),
         'source_package_metadata_records':len(lock['sources']), 'upstream_source_files':len(upstream['files']),
-        'binaries_downloaded':False,'wine_executed':False,'rootfs_built':False}
-    (metadata / 'lock-verification.json').write_text(json.dumps(result,indent=2)+'\n')
+        'scope':'signed metadata and pinned references only; no payload qualification',
+        'package_binaries_downloaded_by_this_verifier':False,
+        'wine_executed_by_this_verifier':False,'rootfs_assembled_by_this_verifier':False}
+    if not args.no_report:
+        (metadata / 'lock-verification.json').write_text(json.dumps(result,indent=2)+'\n')
     print(json.dumps(result,indent=2))
 if __name__ == '__main__': main()

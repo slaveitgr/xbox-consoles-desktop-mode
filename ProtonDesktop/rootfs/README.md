@@ -1,6 +1,6 @@
 # Wine64 rootfs inputs and first-boot recipe
 
-This directory prepares the real guest filesystem for ProtonDesktop's Boxedwine64 interpreter. **No Wine/rootfs binaries have been downloaded, no rootfs has been built, and Wine has not run.** The current deliverable is a verified metadata lock plus a concrete assembly/first-boot plan.
+This directory now contains a tested offline assembler and the first locally assembled Wine64 base layers for ProtonDesktop. It acquired the 125 exact hash-locked Debian core packages and assembled two real ZIPs in private RAM storage. **Wine has not run, no prepared prefix exists, and the layers are unqualified for boot or redistribution.** The original metadata-only locks remain frozen evidence; current artifact results are separate.
 
 ## Frozen inputs obtained
 
@@ -38,6 +38,41 @@ python3 rootfs/lock_debian_metadata.py --refresh
 
 This replaces the lock from newly fetched official signed metadata. It requires Python 3, `gpg`, `gpgv` and `dpkg`, and never installs packages. Keep the current compressed indexes or archive them with the eventual build evidence: Debian mirror by-hash URLs and pool filenames are content-addressed/referenced here, but long-term mirror retention is not guaranteed.
 
+## Local assembler and current artifact evidence
+
+Run the self-authored archive/ELF fixtures:
+
+```sh
+python3 -m unittest discover -s rootfs -p test_assemble_rootfs.py -v
+```
+
+All **20 tests** pass. They cover exact hash/size rejection, AR/tar truncation, traversal/special-file/link escapes, conflicting and identical package overlaps, hardlink materialization, virtual drive-link encoding, real ELF dependency metadata/missing-library diagnostics, private-library unresolved bindings, and deterministic ZIP bytes on one host. They do not execute Wine or qualify a console runtime.
+
+Assembly is offline by default; missing cached packages cause a clear failure. On a machine with sufficient disk space:
+
+```sh
+python3 rootfs/assemble_rootfs.py
+```
+
+An explicit dependency acquisition and RAM staging example is:
+
+```sh
+python3 rootfs/assemble_rootfs.py --download --work-dir /dev/shm \
+  --output /dev/shm/protondesktop-rootfs-local
+```
+
+Outputs are restricted to ignored `rootfs/.cache` or a private prefixed RAM directory. Package acquisition and artifact copies preserve at least **512 MiB disk reserve**; extracted payload is bounded to **2 GiB**. The local laptop lacks enough disk space to retain these ZIPs while keeping that reserve, so the actual binary outputs remain in `/dev/shm/protondesktop-rootfs-assembled-vh8718jj/`. This RAM storage is volatile. Only the small status/provenance reports were copied to `rootfs/.cache/assembly-evidence/`.
+
+| Actual artifact | Bytes | SHA256 |
+| --- | ---: | --- |
+| `glibc-rootfs64.zip` | 2,850,458 | `2507d717e4f860789ea54fa0d73a8db8b152827f74ee24d2665c81757b439822` |
+| `wine64.zip` | 276,707,863 | `a2614a5fbda1e4783f30b2e0fb3a66759c2649a1d86250a386191ba43a8cc0ea` |
+| `payload-manifest.json` | 3,878,623 | `16c5b0b3a993a7220660072826c98ddb2baf4b97af5a0ba8c8717934b743c3cd` |
+
+The assembly produced **5,941 guest entries** from all 125 core packages, excluding optional ALSA plugins. The report status is `built_unqualified`; CLI exit **2** currently marks the unresolved private-library runtime bindings. It does not hide those edges by inventing a global library search path. Registry initialization, actual Wine startup, prefix shutdown/quiescence and Xbox execution remain untested.
+
+The report also identifies **200 package-notice/common-license gap references**. The package graph does not include Debian's implicit Essential `base-files` payload supplying common license texts, and a complete minimized runtime/license closure has not yet been staged. The assembler does not fetch unlisted packages to hide this gap, and the ZIPs are not qualified for redistribution. The per-package copyright files present in the payload and exact source-package references remain recorded.
+
 ## Match the actual pinned upstream
 
 The source pin is Boxedwine64 `58ecb0fffdd11e05bb62e7f0e80dd1af7c6402a4`. `upstream-sources.lock.json` hashes four exact source scripts retained under `reference/`; none was executed.
@@ -50,8 +85,8 @@ The original `build-prefix64.sh` **requires an existing `prefix64.zip`**. It pat
 
 `assembly-plan.json` is the machine-readable plan. Its three layer hashes remain null until actual artifacts exist.
 
-1. Obtain only the exact core `.deb` files in the lock, verify each byte count/SHA256 **before** extraction, and retain their matching source archive references. This step is not implemented or executed here. Do not run package maintainer scripts on the host. Extract in a separate staging directory with traversal/link checks, then record every retained payload file's SHA256 and source package.
-2. Resolve `DT_NEEDED` recursively from the real `/usr/lib/wine/wine64`, `/usr/lib/wine/wineserver64` and every `x86_64-unix/*.so`, using an ELF parser or `readelf` against extracted files. Do not execute guest binaries to discover dependencies. Add the explicit dlopen-only dependencies listed in `assembly-plan.json`, especially `libgcc_s.so.1` for pthread unwinding and Xcursor/Xrender/Xfixes/Xrandr etc. Close those dependencies too. The package graph is an acquisition superset, not an instruction to ship Perl/package-manager/configuration dependencies.
+1. The implemented `assemble_rootfs.py` acquires only the exact core `.deb` files in the lock when `--download` is explicit, verifies each byte count/SHA256 **before** parsing, and retains matching source references. It parses AR and `data.tar` directly without running Wine, `dpkg`, installers or package maintainer scripts. Payload blobs use private content-addressed staging, not host paths from the archive; virtual links become supported `.link` entries. Conflicting package payloads fail instead of silently overwriting each other. Every retained file has a hash/source provenance record.
+2. Resolve `DT_NEEDED` recursively from the real `/usr/lib/wine/wine64`, `/usr/lib/wine/wineserver64` and every `x86_64-unix/*.so`, using an ELF parser or `readelf` against extracted files. Do not execute guest binaries to discover dependencies. Add the explicit dlopen-only dependencies listed in `assembly-plan.json`, especially `libgcc_s.so.1` for pthread unwinding and Xcursor/Xrender/Xfixes/Xrandr etc. Close those dependencies too. The initial assembler retains the full selected package payload as an inspectable superset; a minimized distribution has not been implemented. Its real static audit currently parses 107 ELF files from 33 Wine/Unix seeds, with zero malformed ELF files and zero absent library payloads. It separately records 29 runtime-resolution-pending edges for private `ntdll.so`/`win32u.so`: those files are present, but runtime Wine loader/load-order resolution is not proven. An empty `/etc/ld.so.cache` and the qualified default/RPATH search do not by themselves prove these private-library bindings.
 3. Preserve real Wine and font/X11 data. Stage `/usr/share/wine`, `/usr/share/X11/locale`, fontconfig configuration and the licensed Liberation fonts. Copy a real UTC TZif from the pinned tzdata package to `/etc/localtime`; an absent zoneinfo target or arbitrary text is insufficient. Supply explicit app-controlled `/etc/passwd` and `/etc/group` entries for `username`, uid/gid **1000**, matching the pinned x64 syscall backend. A files-based NSS configuration and localhost hosts data must accompany them.
 4. Produce the two immutable layers below, plus a writable app-owned guest overlay. Stable ZIP construction must sort names, set one recorded UTC `SOURCE_DATE_EPOCH`, explicitly encode directory entries/permissions and use a recorded Python/zlib version. Store a payload SHA256 manifest, package/source mapping and final ZIP hashes. Bit-for-bit reproducibility is unproven until two independent builds are compared.
 5. Initialize the clean prefix as described below once the actual UWP core/X11 presenter can run it. A prepared prefix layer is generated output from that real boot, not a directory skeleton presented as initialized Wine.
