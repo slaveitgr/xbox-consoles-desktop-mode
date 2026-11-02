@@ -1,5 +1,43 @@
 # Verified baseline
 
+## GetModuleHandleA startup progress, version 0.9
+
+Source commit: `d3b03db19eb4a12c8697bb5966ea2b22c82cb4e9`;
+source tree: `ba8f350287b0075e2678506fdfe5b508b285383d`;
+[Actions run 41413495732](https://github.com/slaveitgr/xbox-consoles-desktop-mode/actions/runs/41413495732).
+All seven Linux ASan/UBSan suites and seven Windows suites passed, including
+**56 bounded startup checks** with 17 new GetModuleHandleA cases. The fixture
+and clean upstream overlay checks passed. CI built and validated desktop repack
+**1.0.46.4**. Console deployment completed with code 0 and success true; version
+1.0.46.4 was registered, launch returned HTTP 200, and `DesktopMode.exe` was
+observed running with that exact package identity. A fresh game file-open trace
+through this desktop version remains unobserved; the 85-instruction result
+below is from diagnostics loading the same packaged DLL.
+
+Physical Xbox One X, OS **10.0.26100.10448**, diagnostics **0.9.0.0**:
+
+- Deployment completed with code 0 and launch returned HTTP 200.
+- The packaged bridge loaded with ABI 1 and no direct fallback. Its SHA-256 is
+  `035c1848d560948623bbf89ac01bdb49d38caf12a5650193d44454c599dc95f3`.
+- The embedded four-call smoke test passed in 13 instructions. The native
+  simultaneous low-address reservation probe also passed and released its
+  reservations, as recorded in `x86-runtime.txt`.
+- The saved USB game trace advanced from 60 to **85 guest instructions and
+  host gates**, returning normally through GetVersionExA and GetModuleHandleA
+  before stopping at unimplemented `KERNEL32.dll!HeapCreate`, gate `0x7ff00760`.
+  Guest last-error remained zero; no ExitProcess call was reached.
+
+Six host APIs are implemented among 218 import gates. No graphics or gameplay
+was demonstrated.
+
+The added API accepts one 32-bit stdcall argument. NULL returns the mapped guest
+image base and preserves last-error; guest tests also read its DOS/PE headers at
+two fixed preferred bases. Named lookup remains unavailable: any readable ANSI
+name with NUL within 512 bytes, including empty and executable names, returns
+NULL with `ERROR_MOD_NOT_FOUND` (126). Unreadable or unterminated names stop with
+a controlled marshalling fault. No host module handle is returned. Tests cover
+stack cleanup, nonvolatile registers, last-error and string boundaries.
+
 ## GetVersionExA startup progress, version 0.8
 
 Source commit: `fe36866d43a7f218e54bf1f8d403e88b7cdb3499`;
@@ -10,9 +48,10 @@ startup checks** with 21 new guest-executed GetVersionExA cases. Desktop repack
 of all **8,858 blockmap files** in CI. Installation on the One X completed:
 upload HTTP 202, deployment code 0, success true. Package version **1.0.46.3**
 was registered, launch returned HTTP 200, and `DesktopMode.exe` was observed
-running with that exact package identity. A fresh game file-open trace through
-this desktop update has not yet been observed; the 0.8 trace below comes from
-the diagnostic app loading the shared packaged DLL.
+running with that exact package identity. The user then opened the game through
+this desktop update. Its retrieved runtime log confirmed the same
+60-instruction GetModuleHandleA stop as the diagnostic app loading the shared
+packaged DLL.
 
 Physical Xbox One X, OS **10.0.26100.10448**, diagnostics **0.8.0.0**:
 

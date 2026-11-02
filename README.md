@@ -12,14 +12,14 @@ submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
 
 | Component | Status |
 | --- | --- |
-| Upstream desktop | Patched repack 1.0.46.3 installed and launched on One X with its process confirmed; the preceding 1.0.46.2 game file-open route was verified |
+| Upstream desktop | Patched repack 1.0.46.4 installed and launched on One X with its process confirmed; the preceding 1.0.46.3 game file-open trace was verified |
 | Desktop and Win32Bridge source | Pinned upstream source; patched bridge builds and passes ABI comparison; repacks retain the upstream shell and Gecko binaries |
 | Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
-| Portable PE validation | Linux sanitizer tests and Windows host tests passed, including malformed images |
+| Portable PE validation | Seven Linux sanitizer suites and seven Windows suites pass for 0.9, including malformed images |
 | USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
-| Integer x86 execution | Version 0.8 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls |
-| Bounded game startup trace | Version 0.8 returns normally from GetVersionExA and reaches 60 guest instructions and host gates before missing GetModuleHandleA; no gameplay or graphics |
-| Patched Win32Bridge | Version 0.8 loads on One X with ABI 1 and no direct fallback; five host APIs implemented; desktop repack 1.0.46.3 passes signature, ABI and 8,858-file blockmap checks |
+| Integer x86 execution | Version 0.9 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls |
+| Bounded game startup trace | Version 0.9 returns normally through GetVersionExA and GetModuleHandleA, reaching 85 guest instructions and host gates before missing HeapCreate; no gameplay or graphics |
+| Patched Win32Bridge | Version 0.9 loads on One X with ABI 1 and no direct fallback; six host APIs implemented; 56 startup checks pass on Linux and Windows |
 | Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
 | Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
 | PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
@@ -125,8 +125,25 @@ and seven Windows suites pass, including 39 startup checks with 21 new version
 query cases. Desktop update **1.0.46.3** passes CI signature, ABI and blockmap
 validation and installed on the One X with deployment code 0. Launch returned
 HTTP 200 and the desktop process was confirmed under package version 1.0.46.3.
-Its fresh game file-open trace remains unobserved; the 0.8 diagnostic app verifies
-the shared DLL's startup behavior.
+The user then opened the game through that desktop; its retrieved runtime log
+confirmed the same 60-instruction GetModuleHandleA stop as the diagnostic app.
+
+Version **0.9** adds `GetModuleHandleA(NULL)`, returning the mapped guest image
+base while preserving last-error. Named module lookup remains unavailable:
+validated ANSI names return NULL and error 126; unreadable or unterminated
+strings cause a controlled fault. No host module handles are exposed. All seven
+Linux ASan/UBSan suites and seven Windows suites pass, including **56 startup
+checks** with 17 new module handle cases. Diagnostics **0.9.0.0** now loads the
+packaged bridge on One X and advances the saved USB trace from 60 to **85
+instructions and host gates**, returning normally through GetModuleHandleA
+before missing `KERNEL32.dll!HeapCreate`. Guest last-error remains zero; no
+ExitProcess call, graphics or gameplay is reached. Six APIs are implemented
+among 218 import gates. The native simultaneous low-address reservation probe
+also passes on the console. Desktop repack **1.0.46.4** passes CI and installed
+with deployment code 0; launch returned HTTP 200 and its matching desktop
+process was confirmed. A fresh game file-open trace through this desktop
+version remains unobserved; diagnostics confirms the shared DLL's
+85-instruction HeapCreate stop.
 
 ## Development direction
 
