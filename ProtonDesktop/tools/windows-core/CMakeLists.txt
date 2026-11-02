@@ -70,9 +70,30 @@ endif()
 set(SDL_SHARED OFF CACHE BOOL "" FORCE)
 set(SDL_STATIC ON CACHE BOOL "" FORCE)
 set(SDL_TEST OFF CACHE BOOL "" FORCE)
-set(SDL_FORCE_STATIC_VCRT OFF CACHE BOOL "" FORCE)
-set(SDL_VIDEO_OPENGL OFF CACHE BOOL "" FORCE)
-set(SDL_VIDEO_OPENGLES OFF CACHE BOOL "" FORCE)
+set(FORCE_STATIC_VCRT OFF CACHE BOOL "" FORCE)
+set(LIBC ON CACHE BOOL "" FORCE)
+set(VIDEO_OPENGL OFF CACHE BOOL "" FORCE)
+set(VIDEO_OPENGLES OFF CACHE BOOL "" FORCE)
+set(VIDEO_VULKAN OFF CACHE BOOL "" FORCE)
+# SDL2.0.12's Windows LIBC branch skips its normal C header probes. Derive
+# these config values from the actual compiler, including intptr_t's width,
+# rather than using the incomplete legacy fallback integer typedefs.
+include(CheckIncludeFile)
+include(CheckCSourceCompiles)
+foreach(header stdint.h inttypes.h stdlib.h stddef.h stdarg.h float.h errno.h)
+  string(TOUPPER "${header}" header_name)
+  string(REPLACE "." "_" header_name "${header_name}")
+  check_include_file("${header}" "PROTON_HAVE_${header_name}")
+  if(PROTON_HAVE_${header_name})
+    set("HAVE_${header_name}" 1)
+  endif()
+endforeach()
+check_c_source_compiles("#include <stdint.h>
+typedef char intptr_matches_host[(sizeof(intptr_t) == sizeof(void*)) ? 1 : -1];
+int main(void) { intptr_t value = 0; return (int)value; }" PROTON_INTPTR_TYPE_VALID)
+if(NOT PROTON_INTPTR_TYPE_VALID)
+  message(FATAL_ERROR "The compiler must provide genuine pointer-width intptr_t in stdint.h")
+endif()
 # SDL's pinned build declares CMake 2.8 compatibility. CMake 4 requires an
 # explicit compatibility floor for this unchanged third-party subdirectory.
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)

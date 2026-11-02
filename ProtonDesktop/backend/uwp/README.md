@@ -59,7 +59,7 @@ The root project may register these tests using `add_subdirectory(backend/uwp)` 
 - `getSystemTimeAsMicroSeconds`: real FILETIME converted to Unix microseconds, with checked epoch subtraction.
 - `nanoSleep`: a private relative waitable timer in 100 ns units, rounded upward without overflow; zero duration yields with `Sleep(0)`. It does not spin or truncate the request into a DWORD millisecond timeout. Actual precision depends on the host scheduler/hardware.
 - `getCpuCount`: real `GetSystemInfo` count, with no invented fallback processor.
-- `listNodes`: strict UTF-8/UTF-16 conversion, `GetFileAttributesExFromAppW`, `FindFirstFileExFromAppW`, `FindNextFileW` and `FindClose`. Filenames and directory attributes come from the OS. Missing/inaccessible paths and invalid UTF-8 fail explicitly. Caller wildcards and extended-length `\\?\` paths are deliberately rejected pending a path-normalization policy. Native enumeration results replace the temporary snapshot only on success; the upstream wrapper appends that snapshot to its caller's results.
+- `listNodes`: strict UTF-8/UTF-16 conversion, `GetFileAttributesExFromAppW`, `FindFirstFileExFromAppW`, `FindNextFileW` and `FindClose`. Filenames and directory attributes come from the OS. Missing/inaccessible paths and invalid UTF-8 fail explicitly at the low-level API. The upstream void `listNodes` wrapper returns normally on those failures, leaves the caller's existing results unchanged, and retains the actual Win32 error through local temporary cleanup. Ordinary filesystem errors do not terminate the application. Caller wildcards and extended-length `\\?\` paths are deliberately rejected pending a path-normalization policy. Native enumeration results replace the temporary snapshot only on success; the upstream wrapper appends that snapshot to its caller's results.
 
 The `protondesktop_uwp_host_services` target compiles and links the Windows API implementation with `WINAPI_FAMILY_APP`. `protondesktop_uwp_platform_host` is an additional **object-only** compile target against the pinned declarations, and intentionally does not define remaining Platform methods. Do not link either adapter beside duplicate original Windows Platform definitions.
 
@@ -73,3 +73,9 @@ Additional API references:
 - [QueryPerformanceCounter](https://learn.microsoft.com/en-us/windows/win32/api/profileapi/nf-profileapi-queryperformancecounter)
 - [CreateWaitableTimerExW](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-createwaitabletimerexw)
 - [SetWaitableTimerEx](https://learn.microsoft.com/en-us/windows/win32/api/synchapi/nf-synchapi-setwaitabletimerex)
+
+### Directory failure contract
+
+The low-level `EnumerateDirectory` returns `false` and sets the real Win32 error for ordinary missing/denied paths; an existing empty directory is a successful empty snapshot. Its failed enumeration never replaces a previous result vector. The upstream-facing `Platform::listNodes` has no result status return, so it preserves the pinned upstream contract: failed listings append nothing and return normally. It does not convert a failed OS listing into a successful guest syscall or terminate the runtime. The caller can inspect `GetLastError` immediately after the wrapper call.
+
+The Windows host-service tests exercise the real low-level missing-path, file-as-directory and invalid-wildcard failure paths while preserving existing snapshots. They do not link and execute the upstream `BString`/`Platform::listNodes` wrapper; that wrapper currently has object-compile qualification only. No denied-access app-container/Xbox test has been performed.

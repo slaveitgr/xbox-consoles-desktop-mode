@@ -99,6 +99,16 @@ jobs:
         run: ./tools/ci/build_windows_core.ps1
       - name: Run real interpreter diagnostics
         run: python tools/ci/run_windows_core.py --executable build/windows-core/boxedwine64-windows.exe --output artifacts/windows-core
+      - name: Build and test UWP platform services on Windows
+        if: ${{ !cancelled() }}
+        run: |
+          $source = (Resolve-Path external/Boxedwine64-full).Path
+          cmake -S backend/uwp -B build/windows-platform -A x64 "-DBOXEDWINE_SOURCE=$source"
+          if ($LASTEXITCODE -ne 0) { throw 'Platform configure failed.' }
+          cmake --build build/windows-platform --config Release --parallel
+          if ($LASTEXITCODE -ne 0) { throw 'Platform build failed.' }
+          ctest --test-dir build/windows-platform -C Release --output-on-failure
+          if ($LASTEXITCODE -ne 0) { throw 'Platform tests failed.' }
       - name: Upload core evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,4 +118,5 @@ jobs:
             ProtonDesktop/artifacts/windows-core/
             ProtonDesktop/build/windows-core/compile_commands.json
             ProtonDesktop/build/windows-core/CMakeCache.txt
+            ProtonDesktop/build/windows-platform/Testing/Temporary/LastTest.log
           if-no-files-found: warn

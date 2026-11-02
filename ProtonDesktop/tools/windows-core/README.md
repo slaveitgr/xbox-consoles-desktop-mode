@@ -67,6 +67,13 @@ The following compiler pass also showed that this old clang-cl branch skipped
 The overlay includes the compiler's genuine intrinsic header before preserving
 the scalar SIMD selection; it does not replace CPU feature detection.
 
+The target explicitly selects SDL's real CRT (`LIBC=ON`) and probes standard C
+headers which SDL's old Windows configuration skips. It verifies that `stdint.h`
+provides a genuine pointer-width `intptr_t` before generating SDL's configuration.
+This fixes the incomplete legacy integer fallback instead of editing individual
+string/memory functions. Graphics switches use this version's actual unprefixed
+option names (`VIDEO_OPENGL`, `VIDEO_OPENGLES`, `VIDEO_VULKAN`).
+
 UWP memory adaptation has its own independent `backend/uwp` target. It cannot
 be linked with the unmodified desktop `platform/windows/platform.cpp`, which
 already defines those methods. A full UWP core needs that platform split and the

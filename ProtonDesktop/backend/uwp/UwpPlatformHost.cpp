@@ -51,10 +51,23 @@ U32 Platform::getCpuCount()
 }
 void Platform::listNodes(BString nativePath, std::vector<ListNodeResult>& results)
 {
+    // The upstream void API treats missing/inaccessible directories as an
+    // unsuccessful listing, not a fatal runtime error. Restore the actual OS
+    // error after temporary path/snapshot storage has been destroyed.
+    struct RestoreListingError
+    {
+        DWORD error = ERROR_SUCCESS;
+        bool failed = false;
+        ~RestoreListingError() { if (failed) SetLastError(error); }
+    } listingError;
     std::vector<protondesktop::uwp::DirectoryEntry> entries;
-    if (!protondesktop::uwp::EnumerateDirectory(
-            std::string(nativePath.c_str(), static_cast<std::size_t>(nativePath.length())), &entries))
-        HostFailure("listNodes");
+    const std::string path(nativePath.c_str(), static_cast<std::size_t>(nativePath.length()));
+    if (!protondesktop::uwp::EnumerateDirectory(path, &entries))
+    {
+        listingError.error = GetLastError();
+        listingError.failed = true;
+        return;
+    }
     // Preserve the upstream append-to-results contract; all OS enumeration and
     // UTF-8 conversion completed before adding any entries to the caller.
     for (const auto& entry : entries)
