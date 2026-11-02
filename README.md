@@ -1,33 +1,32 @@
-# Xbox Consoles Desktop Mode
+# XWindows OS
 
-An Xbox Developer Mode desktop project, starting with the existing
-[DesktopMode UWP](https://github.com/Pedro1234-code/DesktopMode_uwp) shell and
-its experimental Win32Bridge. Initial hardware target: Xbox One, One S and One X.
+A desktop application for Xbox One / One S / One X Developer Mode, with a
+Windows 11-inspired interface. The working UWP host provides Files, Notepad,
+Game Library, authenticated LAN transfer and a separate Edge WebView2 browser.
 
-The upstream desktop is the foundation. We are not recreating its taskbar, Start
-menu, file manager or Win32 window system from scratch. It is pinned as a Git
-submodule in [`external/DesktopMode_uwp`](external/DesktopMode_uwp).
+The native Wine goal is the real Wine Explorer, followed by Wine desktop,
+Start and taskbar with the same XWindows OS visual design. This requires a
+Wine-to-UWP runtime port; it is not yet working Wine on Xbox. MihawkOS supplies
+licensed reference code and theme components, with its credits preserved.
 
 ## Current scope
 
-| Component | Status |
+| Component | Verified status |
 | --- | --- |
-| Upstream desktop | Patched repack 1.0.46.5 installed and launched on One X with its matching process confirmed; a fresh desktop SteamSetup file-open trace remains unobserved |
-| Desktop and Win32Bridge source | Pinned upstream source; patched bridge builds and passes ABI comparison; repacks retain the upstream shell and Gecko binaries |
-| Native runtime diagnostics | Installed and tested on Xbox One X: both probes passed, returning 42 with error code 0 |
-| Portable PE validation | Version 0.10 passes all seven Linux sanitizer and seven Windows suites, including 323 PE32 loader/execution checks |
-| USB game inspection | Verified on One X: selected USB folder, read `gta_sa.exe`, parsed PE32/imports and retrieved saved report |
-| Integer x86 execution | Version 0.10 packaged bridge passed its self-authored PE32 smoke test on One X: 13 instructions and four typed host calls; native low-address probe also passed |
-| Bounded game startup trace | Version 0.9 returns normally through GetVersionExA and GetModuleHandleA, reaching 85 guest instructions and host gates before missing HeapCreate; no gameplay or graphics |
-| Patched Win32Bridge | Version 0.9 loads on One X with ABI 1 and no direct fallback; six host APIs implemented; 56 startup checks pass on Linux and Windows |
-| Steam installer startup | Version 0.10 companion on One X reads official SteamSetup.exe directly from USB and reaches missing SetErrorMode after 13 guest instructions and host gates; no installer UI |
-| Full desktop build | Requires upstream's external Gecko source and compiled runtime; see build guide |
-| Steam / Playden integration | Planned; no Steam client or login implementation in this repository yet |
-| PC game graphics | Not implemented here; upstream bridge currently renders classic GUI surfaces |
+| Native UWP desktop | Version 1.0.47.3 installed on One X; native RPC ready, zero rejected startup messages, 1920×1080 viewport at DPR 1 |
+| Product and design | XWindows OS branding and a compact Windows 11-inspired desktop replace the previous product presentation |
+| Edge WebView2 | Trusted desktop runs on Edge 150.0.4078.112; separate public browser initialized on One X |
+| LAN transfer | Physical upload/download and content hash passed, with missing-token, wrong-token, foreign-origin and traversal-name rejection; listener stopped after testing |
+| Wine Explorer | Actual pinned Wine source builds as a PE64 guest; 64 imports across 8 DLLs, including 13 ordinals; no Wine guest execution on Xbox yet |
+| Native Wine environment | Source/PE audit precedes guest PEB/TEB and consistent module-provider implementation; not implemented or hardware-qualified |
+| Experimental Win32Bridge | Retained from pinned DesktopMode UWP, with a bounded PE32 startup backend; not a general Windows compatibility guarantee |
+| Steam and commercial games | Installer/game startup traces only; no established Steam UI, game graphics or gameplay |
 
-**This is not yet a Steam-on-Xbox release or a general Windows executable runner.**
-Upstream reports partial success with selected classic Win32 applications; that
-is useful evidence, but does not establish support for Steam or Direct3D games.
+The current desktop build and native Wine source work are documented in
+[`desktop/README.md`](desktop/README.md) and
+[`desktop/wine-explorer/README.md`](desktop/wine-explorer/README.md).
+The earlier runtime measurements below remain historical evidence, separate
+from the desktop appearance and the proposed native Wine port.
 
 ## Get the source
 

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid slice">
+<!-- SPDX-License-Identifier: MIT; original XWindows Blue wallpaper, Copyright (c) 2026 the contributors. -->
+<defs>
+<linearGradient id="bg" x1="160" y1="0" x2="1680" y2="1080" gradientUnits="userSpaceOnUse"><stop stop-color="#12376a"/><stop offset=".5" stop-color="#184a99"/><stop offset="1" stop-color="#0a204a"/></linearGradient>
+<radialGradient id="glow" cx=".65" cy=".37" r=".66"><stop stop-color="#72bcff" stop-opacity=".47"/><stop offset=".64" stop-color="#2e78dc" stop-opacity=".12"/><stop offset="1" stop-color="#061632" stop-opacity=".1"/></radialGradient>
+<linearGradient id="ribbonA" x1="890" y1="150" x2="1380" y2="1030" gradientUnits="userSpaceOnUse"><stop stop-color="#9fddff"/><stop offset=".16" stop-color="#5cbbff"/><stop offset=".42" stop-color="#267bef"/><stop offset=".74" stop-color="#104cb7"/><stop offset="1" stop-color="#2d89ea"/></linearGradient>
+<linearGradient id="ribbonB" x1="790" y1="230" x2="1600" y2="900" gradientUnits="userSpaceOnUse"><stop stop-color="#b5e7ff"/><stop offset=".25" stop-color="#59b2ff"/><stop offset=".68" stop-color="#185ed5"/><stop offset="1" stop-color="#083d9c"/></linearGradient>
+<linearGradient id="fold" x1="950" y1="390" x2="1360" y2="880" gradientUnits="userSpaceOnUse"><stop stop-color="#2056bc"/><stop offset=".42" stop-color="#0c3483"/><stop offset=".72" stop-color="#338be9"/><stop offset="1" stop-color="#7bc9ff"/></linearGradient>
+<linearGradient id="edge" x1="760" y1="170" x2="1510" y2="940" gradientUnits="userSpaceOnUse"><stop stop-color="#d3f2ff" stop-opacity=".88"/><stop offset=".6" stop-color="#70b9ff" stop-opacity=".35"/><stop offset="1" stop-color="#96d4ff" stop-opacity=".75"/></linearGradient>
+<filter id="shadow" x="-30%" y="-30%" width="160%" height="170%"><feGaussianBlur stdDeviation="40"/></filter>
+</defs>
+<path fill="url(#bg)" d="M0 0h1920v1080H0z"/><path fill="url(#glow)" d="M0 0h1920v1080H0z"/>
+<path d="M695 818c62-210 422-369 759-253 266 90 277 321 41 387-336 92-710 27-800-134Z" fill="#030f35" opacity=".33" filter="url(#shadow)"/>
+<path d="M771 881C589 716 733 536 916 436c162-88 158-243 308-267 135-22 188 70 150 186-33 104-167 182-178 282-8 77 85 140 192 160 132 24 211 93 177 155-199 72-591 120-794-71Z" fill="url(#ribbonA)"/>
+<path d="M772 881c-113-119-36-259 127-346 166-89 322-133 406-279 17 105-65 188-146 272-104 107-118 193-31 270 77 68 209 92 369 99-184 81-505 126-725-16Z" fill="url(#fold)"/>
+<path d="M740 723c-27-128 64-226 245-300 183-76 323-121 335-249 53 19 74 57 68 106-16 129-214 185-333 299-88 84-86 157-9 221 112 94 302 98 501 102-194 50-480 41-637-44-111-60-165-103-170-135Z" fill="url(#ribbonB)"/>
+<path d="M742 723c-27-128 64-226 245-300 183-76 323-121 335-249M1055 579c-88 84-86 157-9 221 112 94 302 98 501 102" fill="none" stroke="url(#edge)" stroke-width="2.5"/>
+<path d="M916 436c162-88 158-243 308-267 135-22 188 70 150 186" fill="none" stroke="#b8e7ff" stroke-opacity=".5" stroke-width="2"/>
+</svg>

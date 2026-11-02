@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later
- * Mihawk desktop adaptation for Xbox, based on the MihawkOS shell prototype's
+ * XWindows OS desktop for Xbox, based on the MihawkOS shell prototype's
  * desktop/window/taskbar design. This focused frontend has no demonstration
  * filesystem or simulated programs: native operations use the UWP host bridge.
  * Copyright (c) 2026 the contributors. See packaged upstream notices. */
@@ -51,10 +51,34 @@
     node.addEventListener('click', fn); return node;
   }
   function appById(id) { for (var i = 0; i < apps.length; i++) if (apps[i].id === id) return apps[i]; return apps[0]; }
+  // Original compact app marks. Upstream fallback icons retain their packaged licenses.
+  function desktopIcon(name) {
+    var drawings = {
+      'games': [['rect', { x: 3, y: 7, width: 26, height: 20, rx: 7, fill: '#8356d9' }], ['path', { d: 'M9 14v8m-4-4h8', stroke: '#fff', 'stroke-width': 2.4, 'stroke-linecap': 'round' }], ['circle', { cx: 23, cy: 15, r: 1.5, fill: '#fff' }], ['circle', { cx: 26, cy: 19, r: 1.5, fill: '#fff' }]],
+      'folder': [['path', { d: 'M3 9a3 3 0 0 1 3-3h8l3 3h9a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3Z', fill: '#df9c25' }], ['path', { d: 'M3 13h26v11a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3Z', fill: '#ffc75b' }], ['path', { d: 'M5 14h22', stroke: '#ffe7b0', 'stroke-width': 1.3 }]],
+      'app-notepad': [['rect', { x: 7, y: 3, width: 20, height: 26, rx: 3, fill: '#37a4d8' }], ['rect', { x: 5, y: 5, width: 19, height: 24, rx: 2, fill: '#eef8ff' }], ['path', { d: 'M10 12h10m-10 5h10m-10 5h7', stroke: '#5e9dc9', 'stroke-width': 1.5, 'stroke-linecap': 'round' }], ['path', { d: 'M9 3v4m5-4v4m5-4v4', stroke: '#256285', 'stroke-width': 1.6, 'stroke-linecap': 'round' }]],
+      'app-calculator': [['rect', { x: 6, y: 3, width: 21, height: 27, rx: 4, fill: '#3b719e' }], ['rect', { x: 9, y: 6, width: 15, height: 7, rx: 1.5, fill: '#c3edff' }], ['path', { d: 'M10 18h2m5 0h2m4 0h0m-13 6h2m5 0h2m4 0h0', stroke: '#fff', 'stroke-width': 3, 'stroke-linecap': 'round' }]],
+      'app-browser': [['circle', { cx: 16, cy: 16, r: 13, fill: '#219cd5' }], ['path', { d: 'M3 16h26M16 3c-8 8-8 18 0 26M16 3c8 8 8 18 0 26M6 9h20M6 23h20', stroke: '#d5f8ff', 'stroke-width': 1.3, fill: 'none' }]],
+      'app-settings': [['path', { d: 'm13 2-1 4-3 2-4-1-3 5 3 3v3l-3 3 3 5 4-1 3 2 1 4h6l1-4 3-2 4 1 3-5-3-3v-3l3-3-3-5-4 1-3-2-1-4Z', fill: '#879bb1' }], ['circle', { cx: 16, cy: 16.5, r: 7, fill: '#dce8f3' }], ['circle', { cx: 16, cy: 16.5, r: 4.5, fill: '#3277bf' }]],
+      'downloads': [['rect', { x: 4, y: 20, width: 24, height: 10, rx: 3, fill: '#168d83' }], ['path', { d: 'M16 3v18m-7-7 7 7 7-7', stroke: '#37c4ac', 'stroke-width': 4, 'stroke-linecap': 'round', 'stroke-linejoin': 'round', fill: 'none' }], ['path', { d: 'M10 26h12', stroke: '#b8fff0', 'stroke-width': 1.5, 'stroke-linecap': 'round' }]],
+      'this-pc': [['rect', { x: 3, y: 4, width: 26, height: 20, rx: 3, fill: '#59758e' }], ['rect', { x: 5, y: 6, width: 22, height: 15, rx: 1, fill: '#74c2fa' }], ['path', { d: 'M11 29h10m-5-5v5', stroke: '#748ca1', 'stroke-width': 3, 'stroke-linecap': 'round' }], ['path', { d: 'm7 18 16-10', stroke: '#c4ecff', 'stroke-width': 2, opacity: .65 }]]
+    };
+    var drawing = drawings[name]; if (!drawing) return null;
+    var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('viewBox', '0 0 32 32'); svg.setAttribute('fill', 'none'); svg.setAttribute('focusable', 'false');
+    for (var i = 0; i < drawing.length; i++) {
+      var part = document.createElementNS('http://www.w3.org/2000/svg', drawing[i][0]), attrs = drawing[i][1];
+      for (var key in attrs) if (Object.prototype.hasOwnProperty.call(attrs, key)) part.setAttribute(key, String(attrs[key]));
+      svg.appendChild(part);
+    }
+    return svg;
+  }
   function icon(info) {
     var node = el('span', 'app-icon'), fallback = el('span', 'icon-fallback', info.glyph || '\u25a3');
     node.setAttribute('aria-hidden', 'true');
-    if (info.icon) {
+    var original = desktopIcon(info.icon);
+    if (original) { add(node, original); }
+    else if (info.icon) {
       var img = el('img'); img.alt = ''; img.src = 'assets/icons/' + info.icon + '.svg';
       img.addEventListener('error', function () { node.classList.add('icon-missing'); });
       add(node, img); add(node, fallback);
@@ -160,6 +184,22 @@
     }
     if (!list.firstChild) add(list, el('p', 'muted', 'No matching applications.'));
   }
+  function directionalFocus(container, event) {
+    var directions = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+    var direction = directions[event.key], current = document.activeElement;
+    if (!direction || !current || current.tagName !== 'BUTTON' || !container.contains(current)) return;
+    var origin = current.getBoundingClientRect(), cx = origin.left + origin.width / 2, cy = origin.top + origin.height / 2;
+    var candidates = container.querySelectorAll('button'), best = null, score = Infinity;
+    for (var i = 0; i < candidates.length; i++) {
+      if (candidates[i] === current || candidates[i].disabled || !candidates[i].offsetWidth) continue;
+      var bounds = candidates[i].getBoundingClientRect(), dx = bounds.left + bounds.width / 2 - cx, dy = bounds.top + bounds.height / 2 - cy;
+      var forward = direction[0] ? dx * direction[0] : dy * direction[1], across = direction[0] ? Math.abs(dy) : Math.abs(dx);
+      if (forward <= 1) continue;
+      var candidateScore = forward + across * 3;
+      if (candidateScore < score) { score = candidateScore; best = candidates[i]; }
+    }
+    if (best) { event.preventDefault(); best.focus(); }
+  }
   function refreshTaskbar() {
     var running = document.getElementById('running-apps'); clear(running);
     for (var i = 0; i < windows.length; i++) (function (win) {
@@ -242,7 +282,7 @@
   }
   function createWindow(kind, title, width, height) {
     var app = appById(kind), n = ++nextWindow;
-    var win = { id: 'window-' + n, kind: kind, title: title, x: 110 + (n % 6) * 26, y: 38 + (n % 6) * 24,
+    var win = { id: 'window-' + n, kind: kind, title: title, x: Math.max(110, Math.round((workspace.clientWidth - (width || 720)) / 2) - 100) + (n % 6) * 24, y: 64 + (n % 6) * 22,
       width: width || 720, height: height || 490, minimized: false, maximized: false, active: false, closed: false };
     win.node = el('section', 'window'); win.node.setAttribute('data-window-id', win.id); win.node.setAttribute('data-window-kind', kind);
     win.node.tabIndex = -1;
@@ -768,7 +808,7 @@
 
   function openSettings() {
     var win = createWindow('settings', 'Personalization', 620, 445), panel = add(win.body, el('div', 'content-pad'));
-    add(panel, el('h1', '', 'Make it yours')); add(panel, el('p', 'muted', 'These settings personalize your Mihawk desktop.'));
+    add(panel, el('h1', '', 'Make it yours')); add(panel, el('p', 'muted', 'Choose the look of your XWindows OS workspace.'));
     var row = add(panel, el('div', 'setting-row')); add(row, el('label', '', 'Appearance'));
     var theme = add(row, el('select')); theme.setAttribute('aria-label', 'Appearance');
     var light = el('option', '', 'Light'); light.value = 'light'; add(theme, light); var dark = el('option', '', 'Dark'); dark.value = 'dark'; add(theme, dark); theme.value = settings.theme;
@@ -784,10 +824,10 @@
     }(colors[i]));
     row = add(panel, el('div', 'setting-row')); add(row, el('label', '', 'Background'));
     var background = add(row, el('select')); background.setAttribute('aria-label', 'Background');
-    var meadow = el('option', '', 'Aero Meadow'); meadow.value = 'wallpaper'; add(background, meadow);
+    var meadow = el('option', '', 'XWindows Blue'); meadow.value = 'wallpaper'; add(background, meadow);
     var solid = el('option', '', 'Solid accent'); solid.value = 'solid'; add(background, solid); background.value = settings.wallpaper ? 'wallpaper' : 'solid';
     background.addEventListener('change', function () { settings.wallpaper = background.value === 'wallpaper'; applySettings(); });
-    add(panel, el('p', 'muted', 'Aero Meadow is original MihawkOS artwork.'));
+    add(panel, el('p', 'muted', 'XWindows Blue is original artwork created for XWindows OS.'));
     setStatus(win, 'Preferences save automatically on this device.'); return win;
   }
   function openBrowser() {
@@ -805,16 +845,16 @@
     setStatus(win, connected ? 'Ready' : 'Native host unavailable'); return win;
   }
   function openAbout() {
-    var win = createWindow('about', 'About Mihawk for Xbox', 650, 495), panel = add(win.body, el('div', 'content-pad'));
-    var mark = add(panel, el('img')); mark.src = 'assets/start.svg'; mark.alt = 'Mihawk'; mark.width = 48; mark.height = 48; mark.style.marginBottom = '14px';
-    add(panel, el('h1', '', 'Mihawk for Xbox'));
-    add(panel, el('p', 'muted', 'Your Xbox Tools desktop for files, saved programs, browsing and local transfers.'));
+    var win = createWindow('about', 'About XWindows OS', 650, 495), panel = add(win.body, el('div', 'content-pad'));
+    var mark = add(panel, el('img')); mark.src = 'assets/xwindows-logo.svg'; mark.alt = 'XWindows OS'; mark.width = 48; mark.height = 48; mark.style.marginBottom = '14px';
+    add(panel, el('h1', '', 'XWindows OS'));
+    add(panel, el('p', 'muted', 'A familiar workspace for your Xbox: files, saved programs, browsing and local transfers.'));
     function card(title, text) { var node = add(panel, el('div', 'info-card')); add(node, el('strong', '', title)); add(node, el('span', '', text)); }
     card('Native host', connected ? (hostInfo.platform || 'Xbox') + (hostInfo.version ? ' \u00b7 ' + hostInfo.version : '') : (hostInfo && hostInfo.error ? hostInfo.error : 'Not connected'));
     card('Your files', 'Xbox Files and Notepad use native Xbox storage. Add a folder or USB location through the system picker.');
     card('Game Library and transfers', 'Save programs with a cover, notes and input forwarding settings. LAN Transfer receives files into LAN Inbox from your paired phone or computer.');
     card('Windows programs', 'The experimental .exe bridge reports each program’s actual startup result. A native x64 Wine desktop is not implemented.');
-    card('Credits and license', 'MihawkOS by mihawk-99; Xbox adaptation by SlaveIT contributors. Frontend source: GPL-3.0-or-later. Original icons, fonts and artwork retain their component licenses in the package.');
+    card('Credits and license', 'XWindows OS by SlaveIT contributors. Desktop foundation and theme work adapted from MihawkOS by mihawk-99. Frontend source: GPL-3.0-or-later. Fonts and upstream components retain their packaged licenses.');
     add(panel, button('Reconnect native host', function () { connect().then(function () { toast('Native host', connected ? 'Connected to Xbox storage.' : 'The host is still unavailable.'); }); }));
     setStatus(win, 'Runs inside a UWP app; Xbox Home remains available.'); return win;
   }
@@ -835,6 +875,15 @@
   add(pinned, appButton(appById('library'), 'taskbar-button'));
   add(pinned, appButton(appById('files'), 'taskbar-button')); add(pinned, appButton(appById('notepad'), 'taskbar-button')); add(pinned, appButton(appById('browser'), 'taskbar-button'));
   startButton.addEventListener('click', function () { showStart(); });
+  desktop.addEventListener('keydown', function (event) { directionalFocus(desktop, event); });
+  document.getElementById('start-apps').addEventListener('keydown', function (event) { directionalFocus(document.getElementById('start-apps'), event); });
+  document.querySelector('.taskbar-apps').addEventListener('keydown', function (event) { directionalFocus(document.querySelector('.taskbar-apps'), event); });
+  document.getElementById('start-search').addEventListener('keydown', function (event) {
+    if (event.key === 'ArrowDown') {
+      var first = document.querySelector('#start-apps button');
+      if (first) { event.preventDefault(); first.focus(); }
+    }
+  });
   document.getElementById('start-search').addEventListener('input', function (event) { renderStart(event.target.value); });
   document.getElementById('start-about').addEventListener('click', function () { showStart(false); openAbout(); });
   document.getElementById('connection-status').addEventListener('click', openAbout);

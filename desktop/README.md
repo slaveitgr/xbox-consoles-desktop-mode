@@ -1,4 +1,4 @@
-# Mihawk Xbox desktop and native Wine port
+# XWindows OS desktop and native Wine port
 
 The requested Wine route is native x64 execution through Win32Bridge, outside
 BoxedWine. The first integration milestone is the actual Wine Explorer window
@@ -8,7 +8,7 @@ Pinned sources, concrete blockers and the build work are in `wine-explorer/`.
 A working native Wine Explorer, full Wine desktop, Steam and games have not
 been established on Xbox.
 
-The working desktop remains a native x64 UWP host with a focused adaptation of MihawkOS visual design for
+The working XWindows OS desktop is a native x64 UWP host with a Windows 11-inspired interface for
 Xbox One family Developer Mode. This replaces the compiled Gecko desktop UI;
 it does not port the PS5 Wine/Proton backend. Files, Game Library, LAN transfer
 and browser use this host. The frontend does not automatically launch Wine.
@@ -27,7 +27,7 @@ existing filenames and currently limits each file to 16 MiB.
 The browser overlay uses official Edge/Chromium WebView2 with tabs, address
 bar and navigation controls. It receives no desktop RPC or host objects.
 The trusted desktop uses a separate WebView2 mapped only to its packaged
-Mihawk folder. Its native RPC validates both the sending control and exact
+frontend folder. Its native RPC validates both the sending control and exact
 local origin/page; its CSP blocks external requests and frames.
 The official Microsoft Xbox sample is the integration reference:
 [Microsoft's WebView2 Xbox sample](https://github.com/microsoft/Media-App-Samples-for-Xbox/tree/main/WebView2).
@@ -44,7 +44,7 @@ Initialize submodules, install Python Pillow/numpy, then run
 `python tools/stage-mihawk.py --assets-only` for local UI inspection.
 On Windows with VS2022 C++ UWP/v143 and SDK26100, build the bridge with
 `./tools/build-upstream.ps1 -WithX86Backend`, then `./tools/build-mihawk.ps1`.
-The Mihawk workflow builds host checks and a development-signed MSIX.
+The XWindows OS workflow builds host checks and a development-signed MSIX.
 
 The new package retains the community DesktopMode identity and application ID
 to update an existing install while preserving app data. It is community
@@ -54,8 +54,8 @@ successful native writes. EXE launch delegates to the experimental bridge;
 Steam and GTA compatibility is not established by this desktop change.
 
 Source assets come from MihawkOS `f81a028a668b36f5bcb51b09e66d526979382f1d`.
-Only original object icons, start mark, tokens, Selawik font and generated
-Aero Meadow artwork are staged. The separately licensed Bubble City image is
+Licensed object icons, theme tokens and the Selawik font are staged alongside
+our original XWindows OS logo and abstract blue wallpaper. The separately licensed Bubble City image is
 not used. `tools/stage-mihawk.py` copies the relevant licenses into the MSIX.
 
 `LocalState/mihawk-desktop-status.json` records native start, page navigation,
@@ -86,3 +86,10 @@ Opt-in native integration smoke tests are requested only by a local
 They are off by default and never triggered by a website. Remove the file
 after testing. Separate desktop, browser and smoke status JSON files under
 LocalState record actual results; a successful build is not hardware proof.
+
+The product name is **XWindows OS**. The current frontend uses centered Start
+and taskbar controls, compact desktop spacing, rounded window frames and
+light/dark surfaces inspired by Windows 11. Original SVG branding lives in
+`branding/`; upstream notices remain in the package. The future native Wine
+desktop should adapt Mihawk's Wine theme to these same visual choices; the
+frontend styling does not implement or prove that Wine desktop.

@@ -1,4 +1,4 @@
-name: Mihawk Xbox desktop
+name: XWindows OS Xbox desktop
 
 on:
   push:
@@ -10,6 +10,7 @@ on:
       - 'external/**'
       - 'desktop/native/**'
       - 'desktop/mihawk/**'
+      - 'desktop/branding/**'
       - 'app/**'
       - 'bridge/**'
       - 'runtime/**'
@@ -26,7 +27,7 @@ permissions:
 
 jobs:
   mihawk:
-    name: Native Mihawk x64 UWP desktop
+    name: Native XWindows OS x64 UWP desktop
     runs-on: windows-2022
     timeout-minutes: 35
     defaults:
@@ -69,7 +70,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Host tests failed.' }
       - name: Build source-pinned Win32Bridge with PE32 backend
         run: ./tools/build-upstream.ps1 -Configuration Release -WithX86Backend
-      - name: Build and sign native Mihawk desktop
+      - name: Build and sign native XWindows OS desktop
         run: ./tools/build-mihawk.ps1 -Configuration Release
       - name: Reject signing keys in outputs
         if: always()
@@ -79,7 +80,7 @@ jobs:
       - name: Upload development desktop
         uses: actions/upload-artifact@v4
         with:
-          name: mihawk-xbox-x64-1.0.47.3-DEV-SIGNED
+          name: xwindows-os-xbox-x64-1.0.48.0-DEV-SIGNED
           path: |
             artifacts/mihawk-desktop/*.msix
             artifacts/mihawk-desktop/*.cer
@@ -90,7 +91,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: mihawk-build-logs
+          name: xwindows-os-build-logs
           path: |
             artifacts/mihawk-desktop/*.log
             artifacts/upstream-bridge-x86/Release/*.log

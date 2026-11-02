@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Edge/Chromium browser using Microsoft's supported UWP WebView2 control.
+// XWindows OS Browser using Microsoft's supported UWP WebView2 control.
 #pragma once
 #include <ppltasks.h>
 #include <memory>
@@ -131,8 +131,8 @@ class Browser : public std::enable_shared_from_this<Browser> {
             [self,tab](ModernView^ sender,CoreWebView2NavigationCompletedEventArgs^ args) {
                 if (self->m_closed || !tab->ready) return;
                 auto core=sender->CoreWebView2;
-                tab->button->Content=core->DocumentTitle->Length() ? core->DocumentTitle : L"Browser";
-                if (self->m_active==tab) self->m_message->Text=ref new String(args->IsSuccess ? L"Edge / Chromium" : L"Navigation failed.");
+                tab->button->Content=core->DocumentTitle->Length() ? core->DocumentTitle : L"XWindows OS Browser";
+                if (self->m_active==tab) self->m_message->Text=ref new String(args->IsSuccess ? (self->m_localHost ? L"XWindows OS / Wine view" : L"XWindows OS Browser") : L"Navigation failed.");
                 self->Status(ref new String(args->IsSuccess ? L"loaded" : L"navigation-failed"), args->IsSuccess ? nullptr : ref new String(L"The page could not be loaded."), core->Environment->BrowserVersionString);
             });
         return create_task(tab->view->EnsureCoreWebView2Async()).then([self,tab,uri](task<void> initialized) {
@@ -183,7 +183,7 @@ public:
         m_closed=false; m_parent=surface; m_title=title;
         auto self=shared_from_this();
         InitializeResources();
-        m_title->Text=m_localHost ? ref new String(L"Wine File Explorer") : ref new String(L"Edge / Chromium Browser");
+        m_title->Text=m_localHost ? ref new String(L"XWindows OS / Wine Explorer") : ref new String(L"XWindows OS Browser");
         m_root=ref new Grid();
         for (unsigned i=0;i<4;++i) { auto row=ref new RowDefinition(); if (i!=2) row->Height=GridLengthHelper::Auto; m_root->RowDefinitions->Append(row); }
         m_tabs=ref new StackPanel();m_tabs->Orientation=Orientation::Horizontal;
@@ -204,7 +204,7 @@ public:
         m_pages=ref new Grid();Grid::SetRow(m_pages,2);m_root->Children->Append(m_pages);
         auto footer=ref new StackPanel();footer->Orientation=Orientation::Horizontal;Grid::SetRow(footer,3);
         footer->Children->Append(ButtonFor(L"Close tab",ref new RoutedEventHandler([self](Object^,RoutedEventArgs^){self->CloseTab();})));
-        m_message=ref new TextBlock();m_message->Text=L"Starting Edge / Chromium...";m_message->Foreground=ref new SolidColorBrush(Windows::UI::Colors::White);m_message->VerticalAlignment=VerticalAlignment::Center;footer->Children->Append(m_message);m_root->Children->Append(footer);
+        m_message=ref new TextBlock();m_message->Text=m_localHost ? L"Opening XWindows OS Wine view..." : L"Starting XWindows OS Browser...";m_message->Foreground=ref new SolidColorBrush(Windows::UI::Colors::White);m_message->VerticalAlignment=VerticalAlignment::Center;footer->Children->Append(m_message);m_root->Children->Append(footer);
         surface->Children->Append(m_root);Status(L"initializing");return AddTab(uri);
     }
     task<JsonObject^> CapturePreviewAsync(String^ filename) {

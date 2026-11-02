@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+<!-- SPDX-License-Identifier: MIT; original XWindows OS mark, Copyright (c) 2026 the contributors. -->
+<defs><linearGradient id="blue" x1="15" y1="8" x2="84" y2="95" gradientUnits="userSpaceOnUse"><stop stop-color="#37b7ff"/><stop offset=".48" stop-color="#0876ec"/><stop offset="1" stop-color="#2948d5"/></linearGradient></defs>
+<rect x="8" y="8" width="84" height="84" rx="22" fill="url(#blue)"/>
+<path d="m32 29 36 42m0-42L32 71" stroke="#fff" stroke-width="10" stroke-linecap="round"/>
+</svg>

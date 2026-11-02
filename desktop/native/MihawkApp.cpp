@@ -1,4 +1,4 @@
-// Native Xbox UWP host for the packaged Mihawk desktop. No desktop process APIs.
+// Native Xbox UWP host for the packaged XWindows OS desktop. No desktop process APIs.
 #include <windows.h>
 #include <roapi.h>
 #include <ppltasks.h>
@@ -92,6 +92,8 @@ struct State {
     task<JsonObject^> wineLaunch = task_from_result<JsonObject^>(nullptr);
     DispatcherTimer^ wineCaptureTimer = nullptr;
     EventRegistrationToken wineCaptureTick{};
+    DispatcherTimer^ shellCaptureTimer = nullptr;
+    EventRegistrationToken shellCaptureTick{};
     std::shared_ptr<MihawkLan::Server> lan = std::make_shared<MihawkLan::Server>();
     TextBlock^ overlayTitle = nullptr;
     TextBlock^ fallback = nullptr;
@@ -125,7 +127,7 @@ task<void> Status(const std::shared_ptr<State>& state) {
     Bool(status, L"nativeStarted", true);
     Bool(status, L"javascriptReady", state->javascriptReady);
     Text(status, L"platform", L"Xbox UWP");
-    Text(status, L"host", L"MihawkDesktop");
+    Text(status, L"host", L"XWindows OS");
     Text(status, L"navigation", state->navigation);
     Text(status, L"userAgent", state->userAgent);
     Text(status, L"lastError", state->lastError);
@@ -534,7 +536,7 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
         return state->initialized.then([state](task<void> initialized) {
             initialized.get();
             auto result = ref new JsonObject();
-            Text(result, L"platform", L"Xbox UWP"); Text(result, L"version", L"Mihawk native host 1");
+            Text(result, L"platform", L"Xbox UWP"); Text(result, L"version", L"XWindows OS native host 1");
             Text(result, L"userAgent", state->userAgent);
             auto roots = ref new JsonArray(); roots->Append(Entry(state, L"workspace"));
             if (!state->usbId.empty()) roots->Append(Entry(state, Str(state->usbId)));
@@ -716,13 +718,13 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
         state->winePending = true;
         auto opening = CheckWinePayload().then([state, desktop](const std::shared_ptr<WinePayload>& check) -> task<JsonObject^> {
             if (!check->installed) Fail(L"The private Wine runtime payload is missing or incomplete. Install it in this app's WineRuntime folder first.");
-            OpenOverlay(state, desktop ? L"Initializing Wine desktop view" : L"Initializing Wine Explorer view", true);
+            OpenOverlay(state, desktop ? L"XWindows OS / Initializing Wine desktop" : L"XWindows OS / Initializing Wine Explorer", true);
             auto browser = std::make_shared<MihawkModern::Browser>(); state->modernBrowser = browser;
             browser->SetLocalFolder(L"wine.local", check->folder->Path);
             return browser->OpenAsync(state->surface, ref new Uri(ref new String(desktop ? WineDesktopUrl : WineExplorerUrl)), state->overlayTitle)
                 .then([state, desktop, browser](JsonObject^ result) {
                     if (state->modernBrowser != browser) throw ref new OperationCanceledException(L"The Wine view was replaced during initialization.");
-                    state->overlayTitle->Text = desktop ? L"Wine Desktop / BoxedWine" : L"Wine Explorer / BoxedWine";
+                    state->overlayTitle->Text = desktop ? L"XWindows OS / Wine Desktop / BoxedWine" : L"XWindows OS / Wine Explorer / BoxedWine";
                     Text(result, L"mode", desktop ? L"desktop" : L"explorer");
                     Text(result, L"status", L"view-initialized");
                     Text(result, L"runtime", L"BoxedWine single-threaded WASM interpreter");
@@ -747,7 +749,7 @@ task<JsonObject^> Dispatch(const std::shared_ptr<State>& state, String^ method, 
     if (name == L"browser") {
         auto uri = ref new Uri(Required(parameters, L"url", 4096));
         if (!WebAddress(uri)) Fail(L"The browser accepts only HTTP and HTTPS addresses.");
-        OpenOverlay(state, L"Starting Edge / Chromium", true);
+        OpenOverlay(state, L"Starting XWindows OS Browser", true);
         auto browser = std::make_shared<MihawkModern::Browser>(); state->modernBrowser = browser;
         return browser->OpenAsync(state->surface, uri, state->overlayTitle);
     }
@@ -766,6 +768,112 @@ task<void> SmokeRecord(String^ filename, JsonObject^ result) {
     auto buffer = CryptographicBuffer::ConvertStringToBinary(result->Stringify(), BinaryStringEncoding::Utf8);
     return create_task(ApplicationData::Current->LocalFolder->CreateFileAsync(filename, CreationCollisionOption::OpenIfExists))
         .then([buffer](StorageFile^ file) { return WriteBuffer(file, buffer); }, Ui());
+}
+void CancelShellCapture(const std::shared_ptr<State>& state) {
+    if (!state->shellCaptureTimer) return;
+    state->shellCaptureTimer->Stop();
+    state->shellCaptureTimer->Tick -= state->shellCaptureTick;
+    state->shellCaptureTimer = nullptr;
+}
+void RequireCapturedShell(const std::shared_ptr<State>& state, CoreWebView2^ core) {
+    if (!core || !state->shell || state->shellCore != core ||
+        state->shell->CoreWebView2 != core || !Trusted(state->shell->Source) ||
+        Wide(core->Source) != ShellUrl)
+        throw ref new OperationCanceledException(L"The original trusted desktop view is no longer available for capture.");
+}
+task<void> CaptureTrustedShell(const std::shared_ptr<State>& state, CoreWebView2^ core, JsonObject^ report) {
+    RequireCapturedShell(state, core);
+    return create_task(ApplicationData::Current->LocalFolder->CreateFileAsync(
+        L"xwindows-desktop-preview.png", CreationCollisionOption::ReplaceExisting))
+        .then([state, core](StorageFile^ file) {
+            RequireCapturedShell(state, core);
+            return file->OpenAsync(FileAccessMode::ReadWrite);
+        }, Ui()).then([state, core, report](IRandomAccessStream^ stream) -> task<void> {
+            task<void> preview = task_from_result();
+            try {
+                RequireCapturedShell(state, core);
+                preview = create_task(core->CapturePreviewAsync(CoreWebView2CapturePreviewImageFormat::Png, stream));
+            } catch (...) { delete stream; throw; }
+            return preview.then([state, core, stream, report](task<void> captured) -> task<void> {
+                task<bool> flush = task_from_result(false);
+                try {
+                    captured.get();
+                    RequireCapturedShell(state, core);
+                    flush = create_task(stream->FlushAsync());
+                } catch (...) { delete stream; throw; }
+                return flush.then([state, core, stream, report](task<bool> flushed) {
+                    unsigned long long bytes = 0;
+                    try {
+                        if (!flushed.get()) throw ref new FailureException(L"The desktop preview could not be flushed.");
+                        RequireCapturedShell(state, core);
+                        bytes = stream->Size;
+                        if (bytes == 0) throw ref new FailureException(L"The desktop preview is empty.");
+                    } catch (...) { delete stream; throw; }
+                    delete stream;
+                    Number(report, L"bytes", static_cast<double>(bytes));
+                    Bool(report, L"captured", true);
+                    Text(report, L"state", L"captured");
+                }, Ui());
+            }, Ui());
+        }, Ui());
+}
+task<void> ScheduleShellCapture(const std::shared_ptr<State>& state) {
+    auto report = ref new JsonObject();
+    Text(report, L"state", L"scheduled");
+    Text(report, L"view", L"trusted-desktop");
+    Text(report, L"url", ref new String(ShellUrl));
+    Text(report, L"file", L"xwindows-desktop-preview.png");
+    Bool(report, L"captured", false);
+    Number(report, L"delaySeconds", 5.0);
+    auto core = state->shellCore;
+    try {
+        RequireCapturedShell(state, core);
+        Number(report, L"viewWidth", state->shell->ActualWidth);
+        Number(report, L"viewHeight", state->shell->ActualHeight);
+    } catch (Exception^ error) {
+        Text(report, L"state", L"failed"); Text(report, L"error", error->Message);
+        Number(report, L"hresult", error->HResult);
+        return SmokeRecord(L"xwindows-desktop-capture.json", report);
+    } catch (...) {
+        Text(report, L"state", L"failed"); Text(report, L"error", L"The desktop preview could not be scheduled.");
+        return SmokeRecord(L"xwindows-desktop-capture.json", report);
+    }
+    return SmokeRecord(L"xwindows-desktop-capture.json", report).then([state, core, report]() -> task<void> {
+        try {
+            CancelShellCapture(state);
+            auto timer = ref new DispatcherTimer(); state->shellCaptureTimer = timer;
+            TimeSpan interval; interval.Duration = 50000000; timer->Interval = interval;
+            state->shellCaptureTick = timer->Tick += ref new EventHandler<Object^>([state, core, report](Object^, Object^) {
+                CancelShellCapture(state);
+                task<void> capture = task_from_result();
+                try { capture = CaptureTrustedShell(state, core, report); }
+                catch (Exception^ error) {
+                    Text(report, L"state", L"failed"); Text(report, L"error", error->Message);
+                    Number(report, L"hresult", error->HResult);
+                }
+                catch (...) { Text(report, L"state", L"failed"); Text(report, L"error", L"The desktop preview could not start."); }
+                Observe(capture.then([report](task<void> completed) {
+                    try { completed.get(); }
+                    catch (Exception^ error) {
+                        Text(report, L"state", L"failed"); Text(report, L"error", error->Message);
+                        Number(report, L"hresult", error->HResult);
+                    }
+                    catch (...) { Text(report, L"state", L"failed"); Text(report, L"error", L"The desktop preview failed."); }
+                    return SmokeRecord(L"xwindows-desktop-capture.json", report);
+                }, Ui()));
+            });
+            timer->Start();
+            return task_from_result();
+        } catch (Exception^ error) {
+            CancelShellCapture(state);
+            Text(report, L"state", L"failed"); Text(report, L"error", error->Message);
+            Number(report, L"hresult", error->HResult);
+        } catch (...) {
+            CancelShellCapture(state);
+            Text(report, L"state", L"failed"); Text(report, L"error", L"The desktop preview timer could not start.");
+        }
+        return SmokeRecord(L"xwindows-desktop-capture.json", report);
+    }, Ui());
 }
 void ScheduleWineCapture(const std::shared_ptr<State>& state, const std::shared_ptr<MihawkModern::Browser>& browser, double delay) {
     if (!browser || state->modernBrowser != browser || state->wineBrowser != browser)
@@ -818,6 +926,8 @@ void NativeSmoke(const std::shared_ptr<State>& state) {
             if (!text) return task_from_result();
             auto config = JsonObject::Parse(text);
             task<void> smoke = task_from_result();
+            if (config->HasKey(L"shellCapture") && config->GetNamedBoolean(L"shellCapture"))
+                smoke = smoke.then([state] { return ScheduleShellCapture(state); }, Ui());
             if (config->HasKey(L"lan") && config->GetNamedBoolean(L"lan"))
                 smoke = smoke.then([state] {
                     return Dispatch(state, L"lanStart", ref new JsonObject()).then([](JsonObject^ result) {
@@ -930,7 +1040,7 @@ protected:
                 Windows::UI::ViewManagement::ApplicationViewBoundsMode::UseCoreWindow);
         } catch (Exception^ error) { state->layoutError = error->Message; }
         Window::Current->Activate();
-        state->fallback = ref new TextBlock(); state->fallback->Text = L"Opening Mihawk desktop...";
+        state->fallback = ref new TextBlock(); state->fallback->Text = L"Opening XWindows OS...";
         state->fallback->TextWrapping = TextWrapping::Wrap;
         state->fallback->Foreground = ref new SolidColorBrush(Colors::White);
         state->fallback->Margin = ThicknessHelper::FromUniformLength(32);
